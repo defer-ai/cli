@@ -143,38 +143,3 @@ function generateMarkdown(cwd: string, store: DecisionStore): void {
   writeFileSync(mdPath(cwd), lines.join("\n"));
 }
 
-// Legacy support: parse old-format DECISIONS.md
-export function parseLegacyDecisions(cwd: string): Decision[] {
-  const path = mdPath(cwd);
-  if (!existsSync(path)) return [];
-
-  const content = readFileSync(path, "utf-8");
-  const decisions: Decision[] = [];
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|")) continue;
-
-    const cells = trimmed
-      .split("|")
-      .slice(1, -1)
-      .map((c) => c.trim());
-
-    if (cells.length < 5) continue;
-    const [id, category, question, answer, date] = cells;
-    if (id === "ID" || id.startsWith("-") || !id.includes("-")) continue;
-
-    decisions.push({
-      id,
-      category,
-      question,
-      options: [],
-      context: "",
-      answer: answer === "(pending)" ? null : answer,
-      delegated: answer.startsWith("DELEGATED"),
-      date,
-    });
-  }
-
-  return decisions;
-}

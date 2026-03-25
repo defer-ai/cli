@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "ai",
@@ -34,6 +35,7 @@
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.1"
   }
 }

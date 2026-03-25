@@ -24,4 +24,3 @@ export declare function saveStore(cwd: string, store: DecisionStore): void;
 export declare function createStore(cwd: string, task: string): DecisionStore;
 /** Generate a category-scoped ID like STACK-001, DATA-002 */
 export declare function nextDecisionId(decisions: Decision[], category: string): string;
-export declare function parseLegacyDecisions(cwd: string): Decision[];
