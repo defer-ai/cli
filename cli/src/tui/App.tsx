@@ -8,6 +8,7 @@ import { AgentManager } from "../agents/manager.js";
 import { Agent, type AgentState } from "../agents/agent.js";
 import type { LLMProvider } from "../providers/types.js";
 import type { ClaudeCodeProvider } from "../providers/claude-code.js";
+import { statusToMood, type MascotMood } from "./Mascot.js";
 
 type View = string; // "banner" | "stream" | "decisions" | "dashboard"
 
@@ -265,14 +266,17 @@ export function App({ task, provider }: AppProps) {
       return;
     }
 
-    // Tab: cycle between views
+    // Tab: cycle through views
     if (key.tab) {
-      if (view === "stream" || view === "banner") {
-        if (current && current.decisions.length > 0) {
-          setView("decisions");
-        }
+      const viewCycle = ["stream", "decisions", "git"];
+      const currentView = view === "banner" ? "stream" : view;
+      const idx = viewCycle.indexOf(currentView);
+      const next = viewCycle[(idx + 1) % viewCycle.length];
+      // Skip decisions tab if no decisions exist
+      if (next === "decisions" && (!current || current.decisions.length === 0)) {
+        setView("git");
       } else {
-        setView("stream");
+        setView(next);
       }
       return;
     }
@@ -331,10 +335,18 @@ export function App({ task, provider }: AppProps) {
     );
   }
 
+  const mood: MascotMood = current
+    ? statusToMood(current.status, current.phase)
+    : "idle";
+
   const tabs = [
     { key: "stream", label: "Chat", icon: ">" },
-    { key: "decisions", label: "Decisions", icon: "◇", count: current?.decisions.length || 0 },
+    { key: "decisions", label: "Decide", icon: "◇" },
+    { key: "git", label: "Git", icon: "±" },
   ];
+
+  const activeTabKey =
+    view === "banner" ? "stream" : view === "dashboard" ? "stream" : view;
 
   // Main layout: side panel + content
   return (
@@ -342,25 +354,19 @@ export function App({ task, provider }: AppProps) {
       {/* Side panel */}
       <Box
         flexDirection="column"
-        width={4}
-        borderStyle="single"
-        borderColor="gray"
-        borderRight
-        borderLeft={false}
-        borderTop={false}
-        borderBottom={false}
+        width={6}
         paddingTop={1}
       >
         {tabs.map((tab) => {
-          const isActive = view === tab.key || (view === "banner" && tab.key === "stream");
+          const isActive = activeTabKey === tab.key;
           return (
-            <Box key={tab.key} paddingX={1} marginBottom={1}>
+            <Box key={tab.key} paddingX={1}>
               <Text
                 color={isActive ? "cyan" : "gray"}
                 bold={isActive}
                 dimColor={!isActive}
               >
-                {tab.icon}
+                {isActive ? "▸" : " "} {tab.icon}
               </Text>
             </Box>
           );
@@ -372,9 +378,9 @@ export function App({ task, provider }: AppProps) {
         {/* Content */}
         <Box flexDirection="column" flexGrow={1} paddingX={1}>
           {view === "banner" && !current ? (
-            <Banner model={model} cwd={process.cwd()} />
+            <Banner model={model} cwd={process.cwd()} mood={mood} />
           ) : (
-            <Header model={model} />
+            <Header model={model} mood={mood} />
           )}
 
           {current?.status === "thinking" && outputLines.length === 0 && (
@@ -383,11 +389,15 @@ export function App({ task, provider }: AppProps) {
             </Box>
           )}
 
-          {visible.map((line, i) => (
-            <Text key={i} wrap="wrap">
-              {line}
-            </Text>
-          ))}
+          {view === "git" ? (
+            <GitView />
+          ) : (
+            visible.map((line, i) => (
+              <Text key={i} wrap="wrap">
+                {line}
+              </Text>
+            ))
+          )}
         </Box>
 
         {/* Status bar */}
@@ -432,6 +442,84 @@ export function App({ task, provider }: AppProps) {
           <Text color="gray">|</Text>
         </Box>
       </Box>
+    </Box>
+  );
+}
+
+/** Inline git info view */
+function GitView() {
+  const [info, setInfo] = React.useState<{
+    branch: string;
+    commits: string[];
+    dirty: string[];
+  } | null>(null);
+
+  React.useEffect(() => {
+    try {
+      const { execSync } = require("node:child_process");
+      execSync("git rev-parse --is-inside-work-tree", { stdio: "pipe" });
+      const branch = execSync("git branch --show-current", {
+        encoding: "utf-8",
+      }).trim();
+      let commits: string[] = [];
+      try {
+        commits = execSync("git log --oneline -10", { encoding: "utf-8" })
+          .trim()
+          .split("\n")
+          .filter(Boolean);
+      } catch {}
+      let dirty: string[] = [];
+      try {
+        dirty = execSync("git status --short", { encoding: "utf-8" })
+          .trim()
+          .split("\n")
+          .filter(Boolean);
+      } catch {}
+      setInfo({ branch, commits, dirty });
+    } catch {
+      setInfo(null);
+    }
+  }, []);
+
+  if (!info) {
+    return (
+      <Box paddingX={1} marginTop={1}>
+        <Text color="gray">Not a git repository.</Text>
+      </Box>
+    );
+  }
+
+  return (
+    <Box flexDirection="column" paddingX={1} marginTop={1}>
+      <Box>
+        <Text color="cyan" bold>
+          {info.branch}
+        </Text>
+      </Box>
+      {info.dirty.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="yellow" dimColor>
+            {info.dirty.length} uncommitted
+          </Text>
+          {info.dirty.slice(0, 8).map((f, i) => (
+            <Text key={i} color="gray" dimColor>
+              {"  "}{f}
+            </Text>
+          ))}
+        </Box>
+      )}
+      {info.commits.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="gray" dimColor>
+            Recent commits
+          </Text>
+          {info.commits.map((c, i) => (
+            <Text key={i} color="gray" dimColor>
+              {"  "}{c}
+            </Text>
+          ))}
+        </Box>
+      )}
     </Box>
   );
 }

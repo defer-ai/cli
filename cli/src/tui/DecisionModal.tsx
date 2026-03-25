@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
 import type { AgentState } from "../agents/agent.js";
 import { Header } from "./Banner.js";
+import type { MascotMood } from "./Mascot.js";
 
 type Mode = "browse" | "answer" | "change" | "ask" | "text";
 
@@ -176,7 +177,7 @@ export function DecisionModal({
   if (allDone) {
     return (
       <Box flexDirection="column" height={rows} paddingX={2} paddingY={1}>
-        <Header model="" />
+        <Header model="" mood="done" />
         <Box marginTop={1} flexDirection="column">
           <Text color="green" bold>
             All {decisions.length} decisions answered.

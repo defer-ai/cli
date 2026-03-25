@@ -144,7 +144,7 @@ export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, rows, 
     });
     // All done
     if (allDone) {
-        return (_jsxs(Box, { flexDirection: "column", height: rows, paddingX: 2, paddingY: 1, children: [_jsx(Header, { model: "" }), _jsxs(Box, { marginTop: 1, flexDirection: "column", children: [_jsxs(Text, { color: "green", bold: true, children: ["All ", decisions.length, " decisions answered."] }), decisions.map((d) => (_jsxs(Box, { children: [_jsxs(Text, { color: d.delegated ? "magenta" : "green", children: [d.delegated ? "◆" : "✓", " "] }), _jsxs(Text, { color: "gray", children: [d.id, " "] }), _jsxs(Text, { color: "gray", children: [d.question, " \u2192 ", d.answer] })] }, d.id)))] }), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "Proceeding..." })] }));
+        return (_jsxs(Box, { flexDirection: "column", height: rows, paddingX: 2, paddingY: 1, children: [_jsx(Header, { model: "", mood: "done" }), _jsxs(Box, { marginTop: 1, flexDirection: "column", children: [_jsxs(Text, { color: "green", bold: true, children: ["All ", decisions.length, " decisions answered."] }), decisions.map((d) => (_jsxs(Box, { children: [_jsxs(Text, { color: d.delegated ? "magenta" : "green", children: [d.delegated ? "◆" : "✓", " "] }), _jsxs(Text, { color: "gray", children: [d.id, " "] }), _jsxs(Text, { color: "gray", children: [d.question, " \u2192 ", d.answer] })] }, d.id)))] }), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "Proceeding..." })] }));
     }
     if (!current) {
         return (_jsx(Box, { flexDirection: "column", height: rows, padding: 2, children: _jsx(Text, { color: "gray", children: "Waiting for decisions..." }) }));

@@ -1,32 +1,17 @@
 import React from "react";
 import { Box, Text } from "ink";
-
-// Unique mascot: a small diamond-eyed listener with a thought bubble
-// Represents "I'm here to listen and ask, not decide"
-const MASCOT = [
-  `        ○`,
-  `       ╱│╲`,
-  `      ╱ │ ╲`,
-  `     ◇  │  ◇`,
-  `      ╲ │ ╱`,
-  `       ╲│╱`,
-  `        │`,
-];
+import { Mascot, type MascotMood } from "./Mascot.js";
 
 const VERSION = "0.1.0";
 
-export function Banner({ model, cwd }: { model: string; cwd: string }) {
+export function Banner({ model, cwd, mood }: { model: string; cwd: string; mood: MascotMood }) {
   const dir = cwd.replace(process.env.HOME || "", "~");
 
   return (
-    <Box flexDirection="column" paddingX={2} paddingTop={1}>
+    <Box flexDirection="column" paddingX={1} paddingTop={1}>
       <Box flexDirection="row">
-        <Box flexDirection="column" marginRight={3}>
-          {MASCOT.map((line, i) => (
-            <Text key={i} color="cyan">
-              {line}
-            </Text>
-          ))}
+        <Box marginRight={2}>
+          <Mascot mood={mood} />
         </Box>
         <Box flexDirection="column" paddingTop={1}>
           <Text bold>
@@ -34,9 +19,6 @@ export function Banner({ model, cwd }: { model: string; cwd: string }) {
             <Text color="gray" dimColor>
               {" "}v{VERSION}
             </Text>
-          </Text>
-          <Text color="gray" dimColor>
-            Zero-autonomy AI
           </Text>
           <Box marginTop={1}>
             <Text color="gray" dimColor>
@@ -60,12 +42,23 @@ export function Banner({ model, cwd }: { model: string; cwd: string }) {
   );
 }
 
-/** Compact header shown at the top of every view */
-export function Header({ model }: { model: string }) {
+/** Compact header with mini mascot face, always visible */
+export function Header({ model, mood }: { model: string; mood: MascotMood }) {
+  const face = {
+    idle: "( - - )",
+    thinking: "( ◠ ◠ )",
+    asking: "( ◉ ◉ )",
+    answering: "( ◠‿◠ )",
+    executing: "( ▪ ▪ )",
+    done: "( ^ ^ )",
+    error: "( x x )",
+  }[mood];
+
   return (
     <Box paddingX={1}>
+      <Text color="cyan">{face}</Text>
       <Text color="cyan" bold>
-        defer
+        {" "}defer
       </Text>
       <Text color="gray" dimColor>
         {" "}v{VERSION} | {model}

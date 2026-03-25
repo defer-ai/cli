@@ -1,11 +1,12 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { Banner, Header } from "./Banner.js";
 import { DecisionModal } from "./DecisionModal.js";
 import { DashboardOverlay } from "./DashboardOverlay.js";
 import { AgentManager } from "../agents/manager.js";
 import { Agent } from "../agents/agent.js";
+import { statusToMood } from "./Mascot.js";
 export function App({ task, provider }) {
     const { exit } = useApp();
     const { stdout } = useStdout();
@@ -222,15 +223,18 @@ export function App({ task, provider }) {
             exit();
             return;
         }
-        // Tab: cycle between views
+        // Tab: cycle through views
         if (key.tab) {
-            if (view === "stream" || view === "banner") {
-                if (current && current.decisions.length > 0) {
-                    setView("decisions");
-                }
+            const viewCycle = ["stream", "decisions", "git"];
+            const currentView = view === "banner" ? "stream" : view;
+            const idx = viewCycle.indexOf(currentView);
+            const next = viewCycle[(idx + 1) % viewCycle.length];
+            // Skip decisions tab if no decisions exist
+            if (next === "decisions" && (!current || current.decisions.length === 0)) {
+                setView("git");
             }
             else {
-                setView("stream");
+                setView(next);
             }
             return;
         }
@@ -264,13 +268,55 @@ export function App({ task, provider }) {
     if (view === "dashboard") {
         return (_jsx(DashboardOverlay, { agents: agents, selectedId: selectedAgent, onSelect: setSelectedAgent, onClose: () => setView("stream"), rows: rows }));
     }
+    const mood = current
+        ? statusToMood(current.status, current.phase)
+        : "idle";
     const tabs = [
         { key: "stream", label: "Chat", icon: ">" },
-        { key: "decisions", label: "Decisions", icon: "◇", count: current?.decisions.length || 0 },
+        { key: "decisions", label: "Decide", icon: "◇" },
+        { key: "git", label: "Git", icon: "±" },
     ];
+    const activeTabKey = view === "banner" ? "stream" : view === "dashboard" ? "stream" : view;
     // Main layout: side panel + content
-    return (_jsxs(Box, { flexDirection: "row", height: rows, children: [_jsx(Box, { flexDirection: "column", width: 4, borderStyle: "single", borderColor: "gray", borderRight: true, borderLeft: false, borderTop: false, borderBottom: false, paddingTop: 1, children: tabs.map((tab) => {
-                    const isActive = view === tab.key || (view === "banner" && tab.key === "stream");
-                    return (_jsx(Box, { paddingX: 1, marginBottom: 1, children: _jsx(Text, { color: isActive ? "cyan" : "gray", bold: isActive, dimColor: !isActive, children: tab.icon }) }, tab.key));
-                }) }), _jsxs(Box, { flexDirection: "column", flexGrow: 1, children: [_jsxs(Box, { flexDirection: "column", flexGrow: 1, paddingX: 1, children: [view === "banner" && !current ? (_jsx(Banner, { model: model, cwd: process.cwd() })) : (_jsx(Header, { model: model })), current?.status === "thinking" && outputLines.length === 0 && (_jsx(Box, { marginTop: 1, paddingX: 1, children: _jsx(Text, { color: "cyan", children: "Decomposing task..." }) })), visible.map((line, i) => (_jsx(Text, { wrap: "wrap", children: line }, i)))] }), _jsxs(Box, { paddingX: 1, children: [current ? (_jsxs(_Fragment, { children: [_jsx(Text, { color: statusColor, dimColor: true, children: current.status }), current.decisions.length > 0 && (_jsx(_Fragment, { children: _jsxs(Text, { color: "gray", dimColor: true, children: [" | ", current.decisions.length - pendingCount, "/", current.decisions.length, " decisions"] }) })), pendingCount > 0 && (_jsxs(Text, { color: "yellow", dimColor: true, children: [" ", "(", pendingCount, " pending)"] }))] })) : (_jsx(Text, { color: "gray", dimColor: true, children: model })), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "tab:switch  /help" })] }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: "cyan", bold: true, children: "defer > " }), _jsx(Text, { children: inputValue }), _jsx(Text, { color: "gray", children: "|" })] })] })] }));
+    return (_jsxs(Box, { flexDirection: "row", height: rows, children: [_jsx(Box, { flexDirection: "column", width: 6, paddingTop: 1, children: tabs.map((tab) => {
+                    const isActive = activeTabKey === tab.key;
+                    return (_jsx(Box, { paddingX: 1, children: _jsxs(Text, { color: isActive ? "cyan" : "gray", bold: isActive, dimColor: !isActive, children: [isActive ? "▸" : " ", " ", tab.icon] }) }, tab.key));
+                }) }), _jsxs(Box, { flexDirection: "column", flexGrow: 1, children: [_jsxs(Box, { flexDirection: "column", flexGrow: 1, paddingX: 1, children: [view === "banner" && !current ? (_jsx(Banner, { model: model, cwd: process.cwd(), mood: mood })) : (_jsx(Header, { model: model, mood: mood })), current?.status === "thinking" && outputLines.length === 0 && (_jsx(Box, { marginTop: 1, paddingX: 1, children: _jsx(Text, { color: "cyan", children: "Decomposing task..." }) })), view === "git" ? (_jsx(GitView, {})) : (visible.map((line, i) => (_jsx(Text, { wrap: "wrap", children: line }, i))))] }), _jsxs(Box, { paddingX: 1, children: [current ? (_jsxs(_Fragment, { children: [_jsx(Text, { color: statusColor, dimColor: true, children: current.status }), current.decisions.length > 0 && (_jsx(_Fragment, { children: _jsxs(Text, { color: "gray", dimColor: true, children: [" | ", current.decisions.length - pendingCount, "/", current.decisions.length, " decisions"] }) })), pendingCount > 0 && (_jsxs(Text, { color: "yellow", dimColor: true, children: [" ", "(", pendingCount, " pending)"] }))] })) : (_jsx(Text, { color: "gray", dimColor: true, children: model })), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "tab:switch  /help" })] }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: "cyan", bold: true, children: "defer > " }), _jsx(Text, { children: inputValue }), _jsx(Text, { color: "gray", children: "|" })] })] })] }));
+}
+/** Inline git info view */
+function GitView() {
+    const [info, setInfo] = React.useState(null);
+    React.useEffect(() => {
+        try {
+            const { execSync } = require("node:child_process");
+            execSync("git rev-parse --is-inside-work-tree", { stdio: "pipe" });
+            const branch = execSync("git branch --show-current", {
+                encoding: "utf-8",
+            }).trim();
+            let commits = [];
+            try {
+                commits = execSync("git log --oneline -10", { encoding: "utf-8" })
+                    .trim()
+                    .split("\n")
+                    .filter(Boolean);
+            }
+            catch { }
+            let dirty = [];
+            try {
+                dirty = execSync("git status --short", { encoding: "utf-8" })
+                    .trim()
+                    .split("\n")
+                    .filter(Boolean);
+            }
+            catch { }
+            setInfo({ branch, commits, dirty });
+        }
+        catch {
+            setInfo(null);
+        }
+    }, []);
+    if (!info) {
+        return (_jsx(Box, { paddingX: 1, marginTop: 1, children: _jsx(Text, { color: "gray", children: "Not a git repository." }) }));
+    }
+    return (_jsxs(Box, { flexDirection: "column", paddingX: 1, marginTop: 1, children: [_jsx(Box, { children: _jsx(Text, { color: "cyan", bold: true, children: info.branch }) }), info.dirty.length > 0 && (_jsxs(Box, { flexDirection: "column", marginTop: 1, children: [_jsxs(Text, { color: "yellow", dimColor: true, children: [info.dirty.length, " uncommitted"] }), info.dirty.slice(0, 8).map((f, i) => (_jsxs(Text, { color: "gray", dimColor: true, children: ["  ", f] }, i)))] })), info.commits.length > 0 && (_jsxs(Box, { flexDirection: "column", marginTop: 1, children: [_jsx(Text, { color: "gray", dimColor: true, children: "Recent commits" }), info.commits.map((c, i) => (_jsxs(Text, { color: "gray", dimColor: true, children: ["  ", c] }, i)))] }))] }));
 }
