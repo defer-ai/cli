@@ -200,8 +200,8 @@ export function WebMascot({
   );
 }
 
-/** Hero mascot - larger, constant white noise in the eyes */
-export function HeroMascot() {
+/** Logo mascot: noise eyes + "defer.sh" as the mouth */
+export function MascotLogo() {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -209,14 +209,9 @@ export function HeroMascot() {
     return () => clearInterval(interval);
   }, []);
 
-  // Generate noise-filled eyes
-  const W = 21;
+  const px = 7;
   const eyeW = 6;
-  const gap = 3;
-  const eyeStartL = 1;
-  const eyeStartR = eyeStartL + eyeW + gap;
-  const mouthStart = Math.floor((W - 8) / 2);
-  const px = 8;
+  const eyeH = MAX_EYE_H;
 
   const noiseColors = [
     "bg-gray-100",
@@ -227,68 +222,61 @@ export function HeroMascot() {
     "bg-cyan-200",
   ];
 
-  const rows: number[][] = [];
-
-  // Top border
-  const top = new Array(W).fill(0);
-  for (let x = eyeStartL + 1; x < eyeStartL + eyeW - 1; x++) top[x] = 1;
-  for (let x = eyeStartR + 1; x < eyeStartR + eyeW - 1; x++) top[x] = 1;
-  rows.push(top);
-
-  // Eye body (2 rows)
-  for (let y = 0; y < MAX_EYE_H; y++) {
-    const row = new Array(W).fill(0);
-    row[eyeStartL] = 1;
-    row[eyeStartL + eyeW - 1] = 1;
-    for (let x = 1; x < eyeW - 1; x++) row[eyeStartL + x] = 5 + ((frame + y * 3 + x) % 6);
-    row[eyeStartR] = 1;
-    row[eyeStartR + eyeW - 1] = 1;
-    for (let x = 1; x < eyeW - 1; x++) row[eyeStartR + x] = 5 + ((frame + y * 7 + x * 3) % 6);
-    rows.push(row);
+  function NoiseEye() {
+    const rows = [];
+    // Top border
+    rows.push(
+      <div key="top" className="flex">
+        <div style={{ width: px, height: px }} />
+        {Array.from({ length: eyeW - 2 }, (_, i) => (
+          <div key={i} className="bg-cyan-400" style={{ width: px, height: px }} />
+        ))}
+        <div style={{ width: px, height: px }} />
+      </div>
+    );
+    // Body
+    for (let y = 0; y < eyeH; y++) {
+      rows.push(
+        <div key={`body-${y}`} className="flex">
+          <div className="bg-cyan-400" style={{ width: px, height: px }} />
+          {Array.from({ length: eyeW - 2 }, (_, x) => {
+            const colorIdx = (frame + y * 7 + x * 3) % noiseColors.length;
+            return (
+              <div
+                key={x}
+                className={noiseColors[colorIdx]}
+                style={{ width: px, height: px }}
+              />
+            );
+          })}
+          <div className="bg-cyan-400" style={{ width: px, height: px }} />
+        </div>
+      );
+    }
+    // Bottom border
+    rows.push(
+      <div key="bot" className="flex">
+        <div style={{ width: px, height: px }} />
+        {Array.from({ length: eyeW - 2 }, (_, i) => (
+          <div key={i} className="bg-cyan-400" style={{ width: px, height: px }} />
+        ))}
+        <div style={{ width: px, height: px }} />
+      </div>
+    );
+    return <div className="inline-flex flex-col">{rows}</div>;
   }
 
-  // Bottom border
-  const bot = new Array(W).fill(0);
-  for (let x = eyeStartL + 1; x < eyeStartL + eyeW - 1; x++) bot[x] = 1;
-  for (let x = eyeStartR + 1; x < eyeStartR + eyeW - 1; x++) bot[x] = 1;
-  rows.push(bot);
-
-  // Gap
-  rows.push(new Array(W).fill(0));
-
-  // Mouth
-  const mouth = new Array(W).fill(0);
-  for (let x = mouthStart; x < mouthStart + 8; x++) mouth[x] = 1;
-  rows.push(mouth);
-
-  const allColors: Record<number, string> = {
-    0: "",
-    1: "bg-cyan-400",
-    5: noiseColors[0],
-    6: noiseColors[1],
-    7: noiseColors[2],
-    8: noiseColors[3],
-    9: noiseColors[4],
-    10: noiseColors[5],
-  };
-
   return (
-    <div className="inline-flex flex-col">
-      {rows.map((row, y) => (
-        <div key={y} className="flex">
-          {row.map((cell, x) => (
-            <div
-              key={x}
-              className={allColors[cell] || ""}
-              style={{
-                width: px,
-                height: px,
-                ...(cell === 0 ? { background: "transparent" } : {}),
-              }}
-            />
-          ))}
-        </div>
-      ))}
+    <div className="inline-flex flex-col items-center gap-3">
+      {/* Eyes */}
+      <div className="flex gap-6">
+        <NoiseEye />
+        <NoiseEye />
+      </div>
+      {/* Mouth = defer.sh */}
+      <span className="font-mono text-sm text-accent tracking-widest">
+        defer.sh
+      </span>
     </div>
   );
 }

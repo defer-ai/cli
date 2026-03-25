@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CopyButton } from "./copy-button";
 import { Demo } from "./demo";
-import { HeroMascot } from "./mascot";
+import { MascotLogo } from "./mascot";
 
 export default function Home() {
   return (
@@ -10,14 +10,8 @@ export default function Home() {
       <header className="relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-accent/8 via-transparent to-transparent" />
         <div className="relative max-w-3xl mx-auto px-6 pt-16 pb-10">
-          <div className="flex items-center gap-6 mb-8">
-            <HeroMascot />
-            <Link
-              href="/"
-              className="font-mono text-sm text-accent tracking-wider"
-            >
-              defer.sh
-            </Link>
+          <div className="mb-10">
+            <MascotLogo />
           </div>
 
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-6 leading-[1.1]">
