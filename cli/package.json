@@ -6,6 +6,15 @@
   "bin": {
     "defer": "./dist/index.js"
   },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/defer-ai/cli"
+  },
+  "homepage": "https://defer.sh",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
