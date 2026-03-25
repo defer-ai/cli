@@ -9,7 +9,7 @@ export default function Home() {
       {/* Hero */}
       <header className="relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-accent/8 via-transparent to-transparent" />
-        <div className="relative max-w-3xl mx-auto px-6 pt-24 pb-16">
+        <div className="relative max-w-3xl mx-auto px-6 pt-16 pb-10">
           <div className="flex items-center gap-6 mb-8">
             <HeroMascot />
             <Link
@@ -59,7 +59,7 @@ export default function Home() {
       </header>
 
       {/* Demo */}
-      <section className="max-w-3xl mx-auto px-6 py-16">
+      <section className="max-w-3xl mx-auto px-6 py-10">
         <h2 className="text-2xl font-bold mb-3">See it work</h2>
         <p className="text-muted mb-8">
           You give it a task. It decomposes it into decisions, asks you
@@ -69,7 +69,7 @@ export default function Home() {
       </section>
 
       {/* Install */}
-      <section id="get-started" className="max-w-3xl mx-auto px-6 py-20">
+      <section id="get-started" className="max-w-3xl mx-auto px-6 py-10">
         <h2 className="text-2xl font-bold mb-3">Get started</h2>
         <p className="text-muted mb-8">
           Defer wraps Claude Code. No API key needed, just your existing
@@ -110,7 +110,7 @@ export default function Home() {
       </section>
 
       {/* Features */}
-      <section className="max-w-3xl mx-auto px-6 py-16">
+      <section className="max-w-3xl mx-auto px-6 py-10">
         <h2 className="text-2xl font-bold mb-8">How it works</h2>
         <div className="space-y-4">
           <div className="p-5 border border-border rounded-xl bg-surface">
@@ -179,7 +179,7 @@ export default function Home() {
       </section>
 
       {/* Decision Record */}
-      <section className="max-w-3xl mx-auto px-6 py-16">
+      <section className="max-w-3xl mx-auto px-6 py-10">
         <h2 className="text-2xl font-bold mb-3">The decision record</h2>
         <p className="text-muted mb-8">
           Every choice that shaped your project. Who decided, what they
@@ -254,7 +254,7 @@ export default function Home() {
       </section>
 
       {/* Commands */}
-      <section className="max-w-3xl mx-auto px-6 py-16">
+      <section className="max-w-3xl mx-auto px-6 py-10">
         <h2 className="text-2xl font-bold mb-3">Commands</h2>
         <div className="p-5 border border-border rounded-xl bg-surface font-mono text-xs space-y-1">
           <p className="text-muted"># Slash commands</p>
@@ -335,7 +335,7 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="max-w-3xl mx-auto px-6 py-16 border-t border-border">
+      <footer className="max-w-3xl mx-auto px-6 py-10 border-t border-border">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <span className="font-mono text-sm text-accent">defer.sh</span>
           <div className="flex gap-6 text-sm text-muted">

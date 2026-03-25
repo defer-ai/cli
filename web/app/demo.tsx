@@ -78,9 +78,9 @@ export function Demo() {
     return (
       <button
         onClick={() => setPhase("boot")}
-        className="inline-flex items-center gap-3 px-8 py-4 bg-accent text-background text-lg font-bold rounded-xl hover:bg-accent/85 transition-colors cursor-pointer"
+        className="w-full flex items-center justify-center gap-3 py-4 bg-accent/10 text-accent border border-accent/20 text-sm font-medium rounded-xl hover:bg-accent/20 hover:border-accent/40 transition-all cursor-pointer"
       >
-        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 5v14l11-7z" />
         </svg>
         Run demo
