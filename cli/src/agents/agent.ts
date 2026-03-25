@@ -39,31 +39,43 @@ export interface AgentState {
 
 const DEFER_SYSTEM_PROMPT = `You are in DEFER MODE, a zero-autonomy protocol.
 
-Before acting on any task:
+YOUR ONLY JOB on the first response is to output decisions. Do NOT write code. Do NOT explain. Do NOT discuss. Just output the decisions.
+
+Rules:
 1. Identify every decision the task requires. Group by category.
 2. Ask high-level first. Let answers cascade. Bundle related decisions.
-3. For each decision, offer concrete options plus "Choose for me."
-4. After answers, confirm the decision record before executing.
-5. If new decisions emerge during execution, stop and ask.
+3. Every decision MUST have concrete options plus "Choose for me" as the last option.
+4. After the user answers, confirm the decision record, then execute.
+5. If new decisions emerge during execution, stop and output more decisions.
 
-CRITICAL: After listing your questions in human-readable form, also output a JSON block that the CLI can parse. Wrap it in \`\`\`defer-decisions tags:
+You MUST output a \`\`\`defer-decisions JSON block. This is not optional. If you respond without this block, the CLI cannot parse your decisions and the user sees nothing.
+
+Each decision has a "category" field. Use short, descriptive category names like "Stack", "Data", "API", "Auth", "UI", "DevEx", etc.
+
+FORMAT — you must output EXACTLY this structure:
 
 \`\`\`defer-decisions
 [
   {
-    "category": "Technology Stack",
-    "question": "Backend language & framework?",
+    "category": "Stack",
+    "question": "Backend language and framework?",
     "options": [
-      {"key": "A", "label": "Node.js (TypeScript)"},
-      {"key": "B", "label": "Python (FastAPI)"},
+      {"key": "A", "label": "Node.js with Express"},
+      {"key": "B", "label": "Python with FastAPI"},
       {"key": "C", "label": "Choose for me"}
     ],
-    "context": "Affects ecosystem and deployment model"
+    "context": "Determines the entire backend ecosystem"
   }
 ]
 \`\`\`
 
-Always include this JSON block alongside your human-readable questions. Each object needs: category, question, options (array of {key, label}), context (one sentence).`;
+Rules for the JSON:
+- "category": short name (will be used to generate IDs like STACK-001, DATA-001)
+- "question": clear, specific question
+- "options": 2-6 options, each with "key" (single uppercase letter) and "label". Last option must be "Choose for me"
+- "context": one sentence explaining why this decision matters
+
+You may include a brief human-readable summary before the JSON block, but the JSON block is MANDATORY.`;
 
 export class Agent {
   state: AgentState;
@@ -293,6 +305,9 @@ export class Agent {
     await this.runCompletion();
   }
 
+  private retryCount = 0;
+  private static MAX_RETRIES = 2;
+
   private async runCompletion(): Promise<void> {
     try {
       let fullResponse = "";
@@ -325,9 +340,28 @@ export class Agent {
         (d) => !existingQuestions.has(d.question)
       );
 
+      // If this was supposed to be a decomposition but no decisions came back, retry
+      if (
+        unique.length === 0 &&
+        this.state.phase === "decomposing" &&
+        this.state.decisions.length === 0 &&
+        this.retryCount < Agent.MAX_RETRIES
+      ) {
+        this.retryCount++;
+        this.state.messages.push({
+          role: "user",
+          content:
+            "You did not output a ```defer-decisions JSON block. This is required. Please list all decisions as structured questions and include the ```defer-decisions JSON block as specified in your instructions.",
+        });
+        this.update({ currentOutput: "Retrying: no decisions were generated..." });
+        await this.runCompletion();
+        return;
+      }
+
       if (unique.length > 0) {
         this.state.decisions.push(...unique);
         this.persist();
+        this.retryCount = 0;
       }
 
       const pendingIdx = this.findNextPendingIndex();
@@ -340,7 +374,10 @@ export class Agent {
           pendingIndex: pendingIdx,
           parsedOptions,
         });
-      } else if (this.state.phase === "confirming" || this.state.phase === "executing") {
+      } else if (
+        this.state.phase === "confirming" ||
+        this.state.phase === "executing"
+      ) {
         this.update({ status: "done", phase: "executing" });
       } else {
         this.update({ status: "done" });
@@ -374,10 +411,11 @@ export class Agent {
 
       for (const item of raw) {
         // Use accumulated result + existing decisions for ID generation
-        const id = nextDecisionId([...this.state.decisions, ...result]);
+        const cat = item.category || "General";
+        const id = nextDecisionId([...this.state.decisions, ...result], cat);
         result.push({
           id,
-          category: item.category || "General",
+          category: cat,
           question: item.question || "",
           options: (item.options || []).map((o: { key: string; label: string }) => ({
             key: o.key,
@@ -414,7 +452,7 @@ export class Agent {
       const qMatch = line.match(/\*\*Q\d+:\s*(.+?)\*\*/);
       if (qMatch) {
         const d: Decision = {
-          id: nextDecisionId([...this.state.decisions, ...decisions]),
+          id: nextDecisionId([...this.state.decisions, ...decisions], currentCategory),
           category: currentCategory,
           question: qMatch[1],
           options: [],

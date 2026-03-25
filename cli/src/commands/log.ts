@@ -54,7 +54,7 @@ export async function logCommand(options: LogOptions): Promise<void> {
   }
 
   const today = new Date().toISOString().split("T")[0];
-  const id = nextDecisionId(store.decisions);
+  const id = nextDecisionId(store.decisions, category);
 
   store.decisions.push({
     id,

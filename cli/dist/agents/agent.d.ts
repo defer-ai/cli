@@ -37,6 +37,8 @@ export declare class Agent {
     start(): Promise<void>;
     sendUserMessage(content: string): Promise<void>;
     revisitDecision(decisionId: string, newAnswer: string): Promise<void>;
+    private retryCount;
+    private static MAX_RETRIES;
     private runCompletion;
     /** Parse the ```defer-decisions JSON block from AI output */
     private parseStructuredDecisions;

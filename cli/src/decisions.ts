@@ -75,12 +75,46 @@ export function createStore(cwd: string, task: string): DecisionStore {
   return store;
 }
 
-export function nextDecisionId(decisions: Decision[]): string {
-  const maxNum = decisions.reduce((max, d) => {
-    const num = parseInt(d.id.slice(1), 10);
+/** Generate a category-scoped ID like STACK-001, DATA-002 */
+export function nextDecisionId(
+  decisions: Decision[],
+  category: string
+): string {
+  const prefix = categoryPrefix(category);
+  const existing = decisions.filter((d) =>
+    d.id.startsWith(prefix + "-")
+  );
+  const maxNum = existing.reduce((max, d) => {
+    const parts = d.id.split("-");
+    const num = parseInt(parts[parts.length - 1], 10);
     return num > max ? num : max;
   }, 0);
-  return `D${String(maxNum + 1).padStart(3, "0")}`;
+  return `${prefix}-${String(maxNum + 1).padStart(3, "0")}`;
+}
+
+/** Convert a category name to a short uppercase prefix */
+function categoryPrefix(category: string): string {
+  // Use the category as-is if it's already short and uppercase
+  const clean = category
+    .replace(/[^a-zA-Z0-9\s]/g, "")
+    .trim()
+    .toUpperCase();
+
+  // If single word and short, use it directly
+  if (clean.length <= 6 && !clean.includes(" ")) {
+    return clean;
+  }
+
+  // Take first letters of each word, or first 4 chars
+  const words = clean.split(/\s+/);
+  if (words.length > 1) {
+    return words
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 5);
+  }
+
+  return clean.slice(0, 4);
 }
 
 /** Generate DECISIONS.md from the JSON store */
@@ -128,7 +162,7 @@ export function parseLegacyDecisions(cwd: string): Decision[] {
 
     if (cells.length < 5) continue;
     const [id, category, question, answer, date] = cells;
-    if (id === "ID" || id.startsWith("-") || !id.match(/^D\d+$/)) continue;
+    if (id === "ID" || id.startsWith("-") || !id.includes("-")) continue;
 
     decisions.push({
       id,
