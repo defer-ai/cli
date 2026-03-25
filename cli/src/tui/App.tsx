@@ -51,7 +51,6 @@ export function App({ task, provider }: AppProps) {
     if (resumed) {
       setSelectedAgent(resumed.state.id);
       setAgents([{ ...resumed.state }]);
-      // If there are pending decisions, just show them (don't re-run AI)
       if (resumed.state.status !== "asking") {
         resumed.start();
       }
@@ -68,17 +67,26 @@ export function App({ task, provider }: AppProps) {
   useInput((input, key) => {
     if (inputMode) return;
 
-    if (input === "q" || key.escape) {
+    if (input === "q") {
       exit();
       return;
     }
 
-    if (input === "1") setActiveTab("Decisions");
-    if (input === "2") setActiveTab("Agents");
-    if (input === "3") setActiveTab("Git");
+    // Tab key cycles through tabs
+    if (key.tab) {
+      setActiveTab((prev) => {
+        const idx = TABS.indexOf(prev);
+        return TABS[(idx + 1) % TABS.length];
+      });
+      return;
+    }
 
+    // Enter input mode
     if (input === "i" || key.return) {
-      if (currentAgent?.status === "asking" || currentAgent?.status === "done") {
+      if (
+        currentAgent?.status === "asking" ||
+        currentAgent?.status === "done"
+      ) {
         setInputMode(true);
       }
     }
@@ -103,8 +111,7 @@ export function App({ task, provider }: AppProps) {
     [currentAgent, manager]
   );
 
-  // Calculate content height
-  const contentHeight = Math.max(rows - 4, 10); // tabs(1) + border(2) + status(1)
+  const contentHeight = Math.max(rows - 4, 10);
 
   const statusColor = currentAgent
     ? currentAgent.status === "asking"
@@ -123,20 +130,20 @@ export function App({ task, provider }: AppProps) {
       {/* Tab bar */}
       <Box>
         <Text> </Text>
-        {TABS.map((tab, i) => (
+        {TABS.map((tab) => (
           <React.Fragment key={tab}>
             <Text
               color={activeTab === tab ? "cyan" : "gray"}
               bold={activeTab === tab}
             >
-              [{i + 1}:{tab}]
+              [{tab}]
             </Text>
             <Text> </Text>
           </React.Fragment>
         ))}
         <Box flexGrow={1} />
         <Text color="gray" dimColor>
-          q:quit i:input 1-3:tabs
+          q:quit i:respond tab:switch
         </Text>
       </Box>
 
@@ -170,7 +177,9 @@ export function App({ task, provider }: AppProps) {
             <Text color="gray"> | </Text>
             <Text color={statusColor}>{currentAgent.status}</Text>
             <Text color="gray"> | </Text>
-            <Text color="gray">{currentAgent.decisions.length} decisions</Text>
+            <Text color="gray">
+              {currentAgent.decisions.length} decisions
+            </Text>
             {currentAgent.status === "asking" && (
               <Text color="yellow"> | press i to respond</Text>
             )}
@@ -180,9 +189,14 @@ export function App({ task, provider }: AppProps) {
         )}
       </Box>
 
-      {/* Input bar */}
+      {/* Input bar with selectable options */}
       {inputMode && (
         <InputBar
+          options={
+            currentAgent?.parsedOptions && currentAgent.parsedOptions.length > 0
+              ? currentAgent.parsedOptions
+              : undefined
+          }
           onSubmit={handleInput}
           onCancel={() => setInputMode(false)}
         />

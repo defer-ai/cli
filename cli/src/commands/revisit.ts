@@ -56,7 +56,7 @@ export async function revisitCommand(idArg?: string): Promise<void> {
   );
   console.log(
     chalk.dim(
-      "Your AI will use the updated answer for future work in this project."
+      "The updated answer will be used for future work in this project."
     )
   );
 }

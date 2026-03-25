@@ -37,7 +37,6 @@ export function App({ task, provider }) {
         if (resumed) {
             setSelectedAgent(resumed.state.id);
             setAgents([{ ...resumed.state }]);
-            // If there are pending decisions, just show them (don't re-run AI)
             if (resumed.state.status !== "asking") {
                 resumed.start();
             }
@@ -52,18 +51,22 @@ export function App({ task, provider }) {
     useInput((input, key) => {
         if (inputMode)
             return;
-        if (input === "q" || key.escape) {
+        if (input === "q") {
             exit();
             return;
         }
-        if (input === "1")
-            setActiveTab("Decisions");
-        if (input === "2")
-            setActiveTab("Agents");
-        if (input === "3")
-            setActiveTab("Git");
+        // Tab key cycles through tabs
+        if (key.tab) {
+            setActiveTab((prev) => {
+                const idx = TABS.indexOf(prev);
+                return TABS[(idx + 1) % TABS.length];
+            });
+            return;
+        }
+        // Enter input mode
         if (input === "i" || key.return) {
-            if (currentAgent?.status === "asking" || currentAgent?.status === "done") {
+            if (currentAgent?.status === "asking" ||
+                currentAgent?.status === "done") {
                 setInputMode(true);
             }
         }
@@ -82,8 +85,7 @@ export function App({ task, provider }) {
         }
         agent.sendUserMessage(value);
     }, [currentAgent, manager]);
-    // Calculate content height
-    const contentHeight = Math.max(rows - 4, 10); // tabs(1) + border(2) + status(1)
+    const contentHeight = Math.max(rows - 4, 10);
     const statusColor = currentAgent
         ? currentAgent.status === "asking"
             ? "yellow"
@@ -95,5 +97,7 @@ export function App({ task, provider }) {
                         ? "green"
                         : "white"
         : "gray";
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { children: " " }), TABS.map((tab, i) => (_jsxs(React.Fragment, { children: [_jsxs(Text, { color: activeTab === tab ? "cyan" : "gray", bold: activeTab === tab, children: ["[", i + 1, ":", tab, "]"] }), _jsx(Text, { children: " " })] }, tab))), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "q:quit i:input 1-3:tabs" })] }), _jsxs(Box, { borderStyle: "single", borderColor: "gray", flexDirection: "column", height: contentHeight, overflow: "hidden", children: [activeTab === "Decisions" && (_jsx(DecisionsTab, { agent: currentAgent })), activeTab === "Agents" && (_jsx(AgentsTab, { agents: agents, selectedId: selectedAgent, onSelect: setSelectedAgent })), activeTab === "Git" && _jsx(GitTab, {})] }), _jsxs(Box, { children: [_jsx(Text, { children: " " }), currentAgent ? (_jsxs(_Fragment, { children: [_jsx(Text, { color: "cyan", children: currentAgent.id }), _jsx(Text, { color: "gray", children: " | " }), _jsx(Text, { color: statusColor, children: currentAgent.status }), _jsx(Text, { color: "gray", children: " | " }), _jsxs(Text, { color: "gray", children: [currentAgent.decisions.length, " decisions"] }), currentAgent.status === "asking" && (_jsx(Text, { color: "yellow", children: " | press i to respond" }))] })) : (_jsx(Text, { color: "gray", children: "No agents" }))] }), inputMode && (_jsx(InputBar, { onSubmit: handleInput, onCancel: () => setInputMode(false) }))] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { children: " " }), TABS.map((tab) => (_jsxs(React.Fragment, { children: [_jsxs(Text, { color: activeTab === tab ? "cyan" : "gray", bold: activeTab === tab, children: ["[", tab, "]"] }), _jsx(Text, { children: " " })] }, tab))), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "q:quit i:respond tab:switch" })] }), _jsxs(Box, { borderStyle: "single", borderColor: "gray", flexDirection: "column", height: contentHeight, overflow: "hidden", children: [activeTab === "Decisions" && (_jsx(DecisionsTab, { agent: currentAgent })), activeTab === "Agents" && (_jsx(AgentsTab, { agents: agents, selectedId: selectedAgent, onSelect: setSelectedAgent })), activeTab === "Git" && _jsx(GitTab, {})] }), _jsxs(Box, { children: [_jsx(Text, { children: " " }), currentAgent ? (_jsxs(_Fragment, { children: [_jsx(Text, { color: "cyan", children: currentAgent.id }), _jsx(Text, { color: "gray", children: " | " }), _jsx(Text, { color: statusColor, children: currentAgent.status }), _jsx(Text, { color: "gray", children: " | " }), _jsxs(Text, { color: "gray", children: [currentAgent.decisions.length, " decisions"] }), currentAgent.status === "asking" && (_jsx(Text, { color: "yellow", children: " | press i to respond" }))] })) : (_jsx(Text, { color: "gray", children: "No agents" }))] }), inputMode && (_jsx(InputBar, { options: currentAgent?.parsedOptions && currentAgent.parsedOptions.length > 0
+                    ? currentAgent.parsedOptions
+                    : undefined, onSubmit: handleInput, onCancel: () => setInputMode(false) }))] }));
 }

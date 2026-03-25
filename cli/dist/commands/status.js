@@ -11,7 +11,7 @@ export async function statusCommand() {
     const decisions = parseDecisions(cwd);
     if (decisions.length === 0) {
         console.log(chalk.yellow("No decisions recorded yet."));
-        console.log(chalk.dim("Run your AI tool with Defer mode to start collecting decisions."));
+        console.log(chalk.dim("Run defer with a task to start collecting decisions."));
         return;
     }
     console.log(chalk.bold(`\n  Decision Record (${decisions.length} decisions)\n`));
@@ -58,6 +58,6 @@ export async function statusCommand() {
         });
         console.log();
         console.log(chalk.cyan(`To revisit ${id}, tell your AI: "Revisit ${id}"`));
-        console.log(chalk.dim("The AI will re-ask the question and update the record."));
+        console.log(chalk.dim("The question will be re-opened and the record updated."));
     }
 }

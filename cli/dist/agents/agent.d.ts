@@ -2,6 +2,10 @@ import type { LLMProvider, Message } from "../providers/types.js";
 import type { Decision } from "../decisions.js";
 export type AgentStatus = "idle" | "thinking" | "asking" | "executing" | "done" | "error";
 export type AgentPhase = "decomposing" | "confirming" | "executing";
+export interface ParsedOption {
+    label: string;
+    value: string;
+}
 export interface AgentState {
     id: string;
     task: string;
@@ -10,6 +14,7 @@ export interface AgentState {
     decisions: Decision[];
     messages: Message[];
     currentOutput: string;
+    parsedOptions: ParsedOption[];
     error?: string;
 }
 export declare class Agent {
@@ -30,4 +35,6 @@ export declare class Agent {
     revisitDecision(decisionId: string, newAnswer: string): Promise<void>;
     private runCompletion;
     private parseDecisionsFromOutput;
+    /** Extract selectable options from AI output (e.g. "A) JWT  B) Sessions  C) Choose for me") */
+    private parseOptionsFromOutput;
 }

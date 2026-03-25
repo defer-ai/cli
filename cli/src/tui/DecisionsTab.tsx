@@ -36,7 +36,7 @@ export function DecisionsTab({ agent }: Props) {
   if (agent.decisions.length === 0 && !agent.currentOutput) {
     return (
       <Box padding={1}>
-        <Text color="gray">Waiting for AI to decompose task...</Text>
+        <Text color="gray">Decomposing task...</Text>
       </Box>
     );
   }
@@ -112,14 +112,14 @@ export function DecisionsTab({ agent }: Props) {
       {agent.status === "asking" && (
         <Box marginTop={1}>
           <Text color="yellow">
-            AI is waiting for your answers. Press i to respond.
+            Waiting for your answers. Press i to respond.
           </Text>
         </Box>
       )}
 
       {agent.status === "thinking" && (
         <Box marginTop={1}>
-          <Text color="cyan">AI is thinking...</Text>
+          <Text color="cyan">Thinking...</Text>
         </Box>
       )}
     </Box>

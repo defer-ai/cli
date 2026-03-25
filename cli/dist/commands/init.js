@@ -47,5 +47,5 @@ export async function initCommand(targetArg) {
     }
     console.log();
     console.log(chalk.cyan("Defer mode is active."));
-    console.log(`Your AI will now ask before every decision.`);
+    console.log(`Every decision will be surfaced before any code is written.`);
 }

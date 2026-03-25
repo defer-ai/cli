@@ -17,7 +17,7 @@ export async function diffCommand() {
     const decisions = parseDecisions(cwd);
     if (decisions.length === 0) {
         console.log(chalk.yellow("No decisions recorded yet."));
-        console.log(chalk.dim("Run your AI tool with Defer mode to start collecting decisions."));
+        console.log(chalk.dim("Run defer with a task to start collecting decisions."));
         return;
     }
     // Find the most recent decision date

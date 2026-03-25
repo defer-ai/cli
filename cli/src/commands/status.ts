@@ -14,7 +14,7 @@ export async function statusCommand(): Promise<void> {
 
   if (decisions.length === 0) {
     console.log(chalk.yellow("No decisions recorded yet."));
-    console.log(chalk.dim("Run your AI tool with Defer mode to start collecting decisions."));
+    console.log(chalk.dim("Run defer with a task to start collecting decisions."));
     return;
   }
 
@@ -74,7 +74,7 @@ export async function statusCommand(): Promise<void> {
       chalk.cyan(`To revisit ${id}, tell your AI: "Revisit ${id}"`)
     );
     console.log(
-      chalk.dim("The AI will re-ask the question and update the record.")
+      chalk.dim("The question will be re-opened and the record updated.")
     );
   }
 }

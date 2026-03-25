@@ -39,5 +39,5 @@ export async function revisitCommand(idArg) {
     }
     updateDecision(cwd, id, newAnswer.trim());
     console.log(chalk.green(`Updated ${id}: ${decision.question} -> ${newAnswer.trim()}`));
-    console.log(chalk.dim("Your AI will use the updated answer for future work in this project."));
+    console.log(chalk.dim("The updated answer will be used for future work in this project."));
 }

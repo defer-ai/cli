@@ -22,7 +22,7 @@ export function DecisionsTab({ agent }) {
         return (_jsx(Box, { padding: 1, children: _jsx(Text, { color: "gray", children: "No agent running." }) }));
     }
     if (agent.decisions.length === 0 && !agent.currentOutput) {
-        return (_jsx(Box, { padding: 1, children: _jsx(Text, { color: "gray", children: "Waiting for AI to decompose task..." }) }));
+        return (_jsx(Box, { padding: 1, children: _jsx(Text, { color: "gray", children: "Decomposing task..." }) }));
     }
     if (showOutput) {
         return (_jsxs(Box, { padding: 1, flexDirection: "column", children: [_jsx(Text, { color: "gray", dimColor: true, children: "[o: back to decisions]" }), _jsx(Box, { marginTop: 1, children: _jsx(Text, { wrap: "wrap", children: agent.currentOutput || "(no output yet)" }) })] }));
@@ -46,5 +46,5 @@ export function DecisionsTab({ agent }) {
                                         : isDelegated
                                             ? "magenta"
                                             : "green", children: d.answer })] }, d.id));
-                    })] }, category))), agent.status === "asking" && (_jsx(Box, { marginTop: 1, children: _jsx(Text, { color: "yellow", children: "AI is waiting for your answers. Press i to respond." }) })), agent.status === "thinking" && (_jsx(Box, { marginTop: 1, children: _jsx(Text, { color: "cyan", children: "AI is thinking..." }) }))] }));
+                    })] }, category))), agent.status === "asking" && (_jsx(Box, { marginTop: 1, children: _jsx(Text, { color: "yellow", children: "Waiting for your answers. Press i to respond." }) })), agent.status === "thinking" && (_jsx(Box, { marginTop: 1, children: _jsx(Text, { color: "cyan", children: "Thinking..." }) }))] }));
 }

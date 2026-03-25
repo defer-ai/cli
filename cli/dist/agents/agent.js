@@ -42,6 +42,7 @@ export class Agent {
             decisions: existing,
             messages: [],
             currentOutput: "",
+            parsedOptions: [],
         };
     }
     update(partial) {
@@ -155,7 +156,8 @@ export class Agent {
             const hasQuestions = /\*\*Q\d+:/.test(fullResponse);
             const isExecuting = !hasQuestions && this.state.phase === "confirming";
             if (hasQuestions) {
-                this.update({ status: "asking", phase: "decomposing" });
+                const parsedOptions = this.parseOptionsFromOutput(fullResponse);
+                this.update({ status: "asking", phase: "decomposing", parsedOptions });
             }
             else if (isExecuting) {
                 this.update({ status: "executing", phase: "executing" });
@@ -204,5 +206,38 @@ export class Agent {
             }
         }
         return questions;
+    }
+    /** Extract selectable options from AI output (e.g. "A) JWT  B) Sessions  C) Choose for me") */
+    parseOptionsFromOutput(output) {
+        const options = [];
+        const lines = output.split("\n");
+        for (const line of lines) {
+            // Match lines like "Options: A) foo  B) bar  C) baz"
+            // or "- **A.** foo" or "- **A)** foo"
+            const optionLineMatch = line.match(/(?:Options:\s*)?([A-Z][.)]\s*.+)/);
+            if (!optionLineMatch)
+                continue;
+            // Extract individual options: "A) thing", "B) thing", etc.
+            const optRegex = /([A-Z])[.)]\s*\*{0,2}\.?\s*\*{0,2}\s*([^A-Z)]+?)(?=\s+[A-Z][.)]|\s*$)/g;
+            let match;
+            while ((match = optRegex.exec(optionLineMatch[1])) !== null) {
+                const label = match[2].trim().replace(/\*+/g, "").trim();
+                if (label) {
+                    options.push({ label: `${match[1]}) ${label}`, value: match[1] });
+                }
+            }
+        }
+        // Also match markdown list style: "- **A.** Description here"
+        for (const line of lines) {
+            const mdMatch = line.match(/^[-*]\s+\*{0,2}([A-Z])[.)]\*{0,2}\s+(.+)/);
+            if (mdMatch) {
+                const label = mdMatch[2].trim().replace(/\*+/g, "").trim();
+                if (label &&
+                    !options.some((o) => o.value === mdMatch[1])) {
+                    options.push({ label: `${mdMatch[1]}) ${label}`, value: mdMatch[1] });
+                }
+            }
+        }
+        return options;
     }
 }
