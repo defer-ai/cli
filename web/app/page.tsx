@@ -1,13 +1,8 @@
 import Link from "next/link";
-import { prompts } from "./prompts";
-import { PromptCard } from "./prompt-card";
 import { CopyButton } from "./copy-button";
 import { Demo } from "./demo";
 
 export default function Home() {
-  const universalPrompt = prompts.find((p) => p.id === "universal")!;
-  const otherPrompts = prompts.filter((p) => p.id !== "universal");
-
   return (
     <div className="min-h-screen">
       {/* Hero */}
@@ -42,27 +37,13 @@ export default function Home() {
           </p>
 
           <div className="flex flex-wrap gap-3">
+            <CopyButton
+              text='npx @defer/cli "build a todo app"'
+              label="Copy install command"
+              className="px-5 py-2.5 text-sm font-medium"
+            />
             <a
-              href="#get-started"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-background font-medium rounded-lg hover:bg-accent/90 transition-colors text-sm"
-            >
-              Get started
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </a>
-            <a
-              href="https://github.com/gabrielmanhaes/defer"
+              href="https://github.com/defer-ai/cli"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-5 py-2.5 border border-border text-foreground font-medium rounded-lg hover:bg-surface hover:border-border transition-colors text-sm"
@@ -77,117 +58,119 @@ export default function Home() {
       <section className="max-w-3xl mx-auto px-6 py-16">
         <h2 className="text-2xl font-bold mb-3">See it work</h2>
         <p className="text-muted mb-8">
-          You say: &ldquo;Build user auth.&rdquo; Without Defer, the AI just
-          starts building. With Defer, it asks first.
+          You give it a task. It decomposes it into decisions, asks you
+          each one, then executes with full context.
         </p>
         <Demo />
       </section>
 
-      {/* Why */}
-      <section className="max-w-3xl mx-auto px-6 py-16">
-        <h2 className="text-2xl font-bold mb-8">Why this works</h2>
-        <div className="space-y-4">
-          <div className="p-5 border border-border rounded-xl bg-surface">
-            <h3 className="font-semibold text-foreground text-sm mb-2">
-              You can always grant autonomy. You can&apos;t claw back silent decisions.
-            </h3>
-            <p className="text-sm text-muted leading-relaxed">
-              Start with the AI asking everything. Then tell it: &ldquo;You decide
-              naming conventions.&rdquo; &ldquo;Skip styling questions.&rdquo;
-              Autonomy you grant is autonomy you understand. Autonomy the AI assumes
-              is a bug you find later.
-            </p>
-          </div>
-          <div className="p-5 border border-border rounded-xl bg-surface">
-            <h3 className="font-semibold text-foreground text-sm mb-2">
-              Decisions are the product
-            </h3>
-            <p className="text-sm text-muted leading-relaxed">
-              The code is the output. The decision record is the value.{" "}
-              <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
-                DECISIONS.md
-              </code>{" "}
-              gives you a searchable log of why everything is the way it is. No
-              more &ldquo;why did we use Redis?&rdquo; six months later.
-            </p>
-          </div>
-          <div className="p-5 border border-border rounded-xl bg-surface">
-            <h3 className="font-semibold text-foreground text-sm mb-2">
-              Structured questions beat blank prompts
-            </h3>
-            <p className="text-sm text-muted leading-relaxed">
-              You shouldn&apos;t have to describe your entire system in one prompt
-              just to get started. Give the AI a task. It figures out what it needs
-              to know and asks.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Get Started */}
+      {/* Install */}
       <section id="get-started" className="max-w-3xl mx-auto px-6 py-20">
         <h2 className="text-2xl font-bold mb-3">Get started</h2>
         <p className="text-muted mb-8">
-          Copy the prompt and paste it into your AI tool. Or use the CLI for
-          decision tracking across sessions.
-        </p>
-
-        {/* Universal prompt, prominent */}
-        <div className="mb-6">
-          <PromptCard prompt={universalPrompt} defaultExpanded />
-        </div>
-
-        {/* Other tools, collapsed */}
-        <details className="group">
-          <summary className="text-sm text-muted cursor-pointer hover:text-foreground transition-colors mb-4 list-none">
-            <span className="group-open:hidden">+ Show prompts for Claude Code, ChatGPT, Cursor, API</span>
-            <span className="hidden group-open:inline">- Hide tool-specific prompts</span>
-          </summary>
-          <div className="space-y-4">
-            {otherPrompts.map((prompt) => (
-              <PromptCard key={prompt.id} prompt={prompt} />
-            ))}
-          </div>
-        </details>
-      </section>
-
-      {/* CLI */}
-      <section className="max-w-3xl mx-auto px-6 py-16">
-        <h2 className="text-2xl font-bold mb-3">CLI</h2>
-        <p className="text-muted mb-8">
-          The prompt handles AI behavior. The CLI handles everything else:
-          scaffolding, decision tracking, revisiting choices, git integration.
+          Defer wraps Claude Code. No API key needed, just your existing
+          Claude Code installation.
         </p>
 
         <div className="p-5 border border-border rounded-xl bg-surface font-mono text-sm space-y-4">
           <div>
             <p className="text-muted text-xs mb-2">
-              # Scaffold Defer into your project
+              # Run directly with any task
             </p>
-            <p className="text-foreground">$ npx @defer/cli init</p>
+            <p className="text-foreground">
+              $ npx @defer/cli &quot;build a REST API for a todo app&quot;
+            </p>
           </div>
           <div className="border-t border-border/50 pt-4">
             <p className="text-muted text-xs mb-2">
-              # View decisions, grouped by category
+              # Or start interactive mode
             </p>
-            <p className="text-foreground">$ npx @defer/cli status</p>
+            <p className="text-foreground">$ npx @defer/cli</p>
           </div>
           <div className="border-t border-border/50 pt-4">
             <p className="text-muted text-xs mb-2">
-              # Change a previous decision
+              # Install globally
             </p>
-            <p className="text-foreground">$ npx @defer/cli revisit D003</p>
-          </div>
-          <div className="border-t border-border/50 pt-4">
-            <p className="text-muted text-xs mb-2">
-              # See what changed since your last decision review
-            </p>
-            <p className="text-foreground">$ npx @defer/cli diff</p>
+            <p className="text-foreground">$ npm install -g @defer/cli</p>
+            <p className="text-foreground">$ defer &quot;build auth&quot;</p>
           </div>
         </div>
 
-        <div className="mt-6">
-          <CopyButton text="npx @defer/cli init" label="Copy install command" />
+        <p className="text-sm text-muted mt-4">
+          Requires Claude Code (
+          <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
+            npm i -g @anthropic-ai/claude-code && claude login
+          </code>
+          ).
+        </p>
+      </section>
+
+      {/* Features */}
+      <section className="max-w-3xl mx-auto px-6 py-16">
+        <h2 className="text-2xl font-bold mb-8">How it works</h2>
+        <div className="space-y-4">
+          <div className="p-5 border border-border rounded-xl bg-surface">
+            <h3 className="font-semibold text-foreground text-sm mb-2">
+              Domain priorities
+            </h3>
+            <p className="text-sm text-muted leading-relaxed">
+              Before answering decisions, set how much you care about each
+              domain on a scale from &ldquo;skip&rdquo; to &ldquo;paranoid.&rdquo;
+              Skip auto-delegates. Paranoid generates sub-questions. You add
+              domains the AI missed.
+            </p>
+          </div>
+          <div className="p-5 border border-border rounded-xl bg-surface">
+            <h3 className="font-semibold text-foreground text-sm mb-2">
+              Assumption tracking
+            </h3>
+            <p className="text-sm text-muted leading-relaxed">
+              During execution, every choice the AI makes is tagged as an
+              assumption with reasoning. Variable names, file paths, error
+              messages, library versions. Nothing is invisible. Use{" "}
+              <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
+                /decisions
+              </code>{" "}
+              to see everything: your decisions (✓), delegated (◆), and
+              assumptions (⚠).
+            </p>
+          </div>
+          <div className="p-5 border border-border rounded-xl bg-surface">
+            <h3 className="font-semibold text-foreground text-sm mb-2">
+              Profiles
+            </h3>
+            <p className="text-sm text-muted leading-relaxed">
+              Save your decisions as a reusable template with{" "}
+              <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
+                /profile save my-stack
+              </code>
+              . Next project, apply it with{" "}
+              <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
+                /profile use my-stack
+              </code>{" "}
+              and only answer what&apos;s new.
+            </p>
+          </div>
+          <div className="p-5 border border-border rounded-xl bg-surface">
+            <h3 className="font-semibold text-foreground text-sm mb-2">
+              Revisit and undo
+            </h3>
+            <p className="text-sm text-muted leading-relaxed">
+              Change your mind with{" "}
+              <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
+                /revisit STACK-001
+              </code>
+              . The AI adapts everything downstream. Press{" "}
+              <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
+                u
+              </code>{" "}
+              to undo the last answer. Press{" "}
+              <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
+                w
+              </code>{" "}
+              on any option to see tradeoffs before choosing.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -195,14 +178,17 @@ export default function Home() {
       <section className="max-w-3xl mx-auto px-6 py-16">
         <h2 className="text-2xl font-bold mb-3">The decision record</h2>
         <p className="text-muted mb-8">
-          Every choice that shaped your project, in one file. Who decided, what
-          they decided, and when.
+          Every choice that shaped your project. Who decided, what they
+          decided, and what the AI assumed on its own.
         </p>
 
         <div className="p-5 border border-border rounded-xl bg-surface">
           <p className="text-xs text-muted mb-3 font-mono">DECISIONS.md</p>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs font-mono">
+            <p className="text-xs font-mono text-accent mb-2">
+              ## Decisions
+            </p>
+            <table className="w-full text-xs font-mono mb-4">
               <thead>
                 <tr className="text-left text-muted border-b border-border">
                   <th className="pb-2 pr-4">ID</th>
@@ -213,34 +199,134 @@ export default function Home() {
               </thead>
               <tbody className="text-foreground/70">
                 <tr className="border-b border-border/50">
-                  <td className="py-2 pr-4 text-accent">D001</td>
-                  <td className="py-2 pr-4">Auth</td>
-                  <td className="py-2 pr-4">Session-based or JWT?</td>
-                  <td className="py-2 pr-4">JWT</td>
+                  <td className="py-2 pr-4 text-accent">STACK-001</td>
+                  <td className="py-2 pr-4">Stack</td>
+                  <td className="py-2 pr-4">Backend language?</td>
+                  <td className="py-2 pr-4">Node.js (TypeScript)</td>
                 </tr>
                 <tr className="border-b border-border/50">
-                  <td className="py-2 pr-4 text-accent">D002</td>
-                  <td className="py-2 pr-4">Auth</td>
-                  <td className="py-2 pr-4">Token storage?</td>
-                  <td className="py-2 pr-4">httpOnly cookies</td>
+                  <td className="py-2 pr-4 text-accent">DATA-001</td>
+                  <td className="py-2 pr-4">Data</td>
+                  <td className="py-2 pr-4">Database?</td>
+                  <td className="py-2 pr-4 italic text-muted">
+                    DELEGATED: PostgreSQL
+                  </td>
                 </tr>
+              </tbody>
+            </table>
+            <p className="text-xs font-mono text-yellow-400 mb-2">
+              ## Assumptions
+            </p>
+            <table className="w-full text-xs font-mono">
+              <thead>
+                <tr className="text-left text-muted border-b border-border">
+                  <th className="pb-2 pr-4">ID</th>
+                  <th className="pb-2 pr-4">Category</th>
+                  <th className="pb-2 pr-4">What was decided</th>
+                  <th className="pb-2 pr-4">Reasoning</th>
+                </tr>
+              </thead>
+              <tbody className="text-foreground/70">
                 <tr className="border-b border-border/50">
-                  <td className="py-2 pr-4 text-accent">D003</td>
-                  <td className="py-2 pr-4">Security</td>
-                  <td className="py-2 pr-4">Password hashing?</td>
-                  <td className="py-2 pr-4">argon2</td>
+                  <td className="py-2 pr-4 text-yellow-400">NAMI-001</td>
+                  <td className="py-2 pr-4">naming</td>
+                  <td className="py-2 pr-4">camelCase for routes</td>
+                  <td className="py-2 pr-4 text-muted">
+                    framework convention
+                  </td>
                 </tr>
                 <tr>
-                  <td className="py-2 pr-4 text-accent">D004</td>
-                  <td className="py-2 pr-4">UX</td>
-                  <td className="py-2 pr-4">Failed login message?</td>
-                  <td className="py-2 pr-4 italic text-muted">
-                    DELEGATED: generic &ldquo;invalid credentials&rdquo;
+                  <td className="py-2 pr-4 text-yellow-400">ERRO-001</td>
+                  <td className="py-2 pr-4">error</td>
+                  <td className="py-2 pr-4">422 for validation</td>
+                  <td className="py-2 pr-4 text-muted">
+                    more semantically correct
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      {/* Commands */}
+      <section className="max-w-3xl mx-auto px-6 py-16">
+        <h2 className="text-2xl font-bold mb-3">Commands</h2>
+        <div className="p-5 border border-border rounded-xl bg-surface font-mono text-xs space-y-1">
+          <p className="text-muted"># Slash commands</p>
+          <p>
+            <span className="text-accent">/decisions</span>
+            <span className="text-muted">
+              {"          "}View all decisions and assumptions
+            </span>
+          </p>
+          <p>
+            <span className="text-accent">/revisit STACK-001</span>
+            <span className="text-muted">
+              {"  "}Change a specific decision
+            </span>
+          </p>
+          <p>
+            <span className="text-accent">/profile save my-stack</span>
+            <span className="text-muted">
+              {"  "}Save as reusable template
+            </span>
+          </p>
+          <p>
+            <span className="text-accent">/profile use my-stack</span>
+            <span className="text-muted">
+              {"   "}Pre-fill from template
+            </span>
+          </p>
+          <p>
+            <span className="text-accent">/model opus</span>
+            <span className="text-muted">
+              {"            "}Switch model
+            </span>
+          </p>
+          <p>
+            <span className="text-accent">/export</span>
+            <span className="text-muted">
+              {"               "}Markdown table for PRs
+            </span>
+          </p>
+          <p>
+            <span className="text-accent">/cost</span>
+            <span className="text-muted">
+              {"                 "}Session cost and tokens
+            </span>
+          </p>
+          <p>
+            <span className="text-accent">/history</span>
+            <span className="text-muted">
+              {"              "}Previous sessions
+            </span>
+          </p>
+          <p className="mt-2 text-muted"># In decision view</p>
+          <p>
+            <span className="text-accent">↑↓ enter</span>
+            <span className="text-muted">
+              {"  "}Pick an option
+            </span>
+            {"  "}
+            <span className="text-accent">u</span>
+            <span className="text-muted"> Undo</span>
+            {"  "}
+            <span className="text-accent">w</span>
+            <span className="text-muted"> Explain tradeoffs</span>
+          </p>
+          <p>
+            <span className="text-accent">t</span>
+            <span className="text-muted">
+              {"        "}Type custom answer
+            </span>
+            {"  "}
+            <span className="text-accent">a</span>
+            <span className="text-muted"> Ask about</span>
+            {"  "}
+            <span className="text-accent">c</span>
+            <span className="text-muted"> Change answered</span>
+          </p>
         </div>
       </section>
 
@@ -250,13 +336,13 @@ export default function Home() {
           <span className="font-mono text-sm text-accent">defer.sh</span>
           <div className="flex gap-6 text-sm text-muted">
             <a
-              href="https://github.com/gabrielmanhaes/defer"
+              href="https://github.com/defer-ai/cli"
               className="hover:text-foreground transition-colors"
             >
               GitHub
             </a>
             <a
-              href="https://github.com/gabrielmanhaes/defer/blob/main/LICENSE"
+              href="https://github.com/defer-ai/cli/blob/main/LICENSE"
               className="hover:text-foreground transition-colors"
             >
               MIT License

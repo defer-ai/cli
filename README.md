@@ -1,86 +1,159 @@
 # Defer
 
-## Zero-Autonomy AI. Every Decision Is Yours.
+## Zero-Autonomy AI. Every decision is yours.
 
-The entire AI industry is racing toward autonomy. More agentic. More autonomous. Less human involvement.
+AI keeps making choices you didn't ask for. It picks your tech stack, your file structure, your error messages. You don't find out until the code is wrong.
 
-**Defer runs in the opposite direction.**
-
-Defer is a design philosophy where the AI makes **zero decisions that belong to the human**. It doesn't guess. It doesn't assume. It doesn't "pick the most reasonable default." It asks.
-
-The AI's job is not to decide. The AI's job is to **find every decision hidden in a task, surface it, and wait.**
+Defer makes the AI ask first, then execute. Slow upfront. Zero rework later.
 
 ## Quick Start
 
-Go to [defer.sh](https://defer.sh), pick your AI tool, copy the prompt, paste it in. Done.
-
-Or grab one directly:
-
-### Universal (any AI tool)
-
-Copy the [Universal Defer Prompt](https://defer.sh#prompts) and paste it into your AI tool's system instructions or at the start of a conversation.
-
-### Claude Code
-
-Create a `CLAUDE.md` in your project root with the [Claude Code prompt](https://defer.sh#prompts).
-
-### Cursor
-
-Save the [Cursor prompt](https://defer.sh#prompts) as `.cursor/rules/defer.mdc` in your project.
-
-### ChatGPT
-
-Paste the [ChatGPT prompt](https://defer.sh#prompts) into Settings → Personalization → Custom Instructions.
-
-### API / System Prompt
-
-Use the [API prompt](https://defer.sh#prompts) as the `system` parameter in your LLM API calls.
-
-## Why This Works
-
-1. **AI is bad at knowing what you care about.** It's great at identifying *that* a decision exists. It's terrible at knowing which ones matter to you.
-
-2. **Structured questions > blank prompts.** Humans engage far more with AI-generated questions than with open-ended input fields. Asking is a better interface than telling.
-
-3. **Autonomy failures are silent.** When AI makes a wrong autonomous decision, you often don't notice until it's cascaded. When you answer wrong, at least *you* know where to look.
-
-4. **Decisions are the product.** The code is the output. The real value is the decision record — an auditable trail of every choice that shaped the output.
-
-## The Spectrum
-
-```
-Full Autonomy ←————————————————→ Full Defer
-"Just do it"                     "Ask me everything"
+```bash
+# Requires Claude Code installed and logged in
+npx @defer/cli "build a todo app"
 ```
 
-You can always move left from Defer (granting autonomy selectively), but you can never fully move right from autonomy (you don't know what the AI decided silently).
+That's it. Defer wraps Claude Code, decomposes your task into decisions, and asks before writing a single line.
 
-## What Defer is NOT
+## What Happens
 
-- **Not the AI being dumb.** A Defer-mode AI needs to be *more* intelligent — it has to decompose a task into its full decision tree.
-- **Not "asking permission."** It's requirements elicitation. The AI does the analysis. You do the deciding.
-- **Not slow by default.** After the first pass, grant autonomy selectively: "You decide naming conventions." "Use your judgment on error handling."
+1. You give it a task
+2. The AI decomposes it into categorized decisions with selectable options
+3. You set how much you care about each domain (skip to paranoid)
+4. You answer decisions one by one (or say "choose for me")
+5. The AI executes with full context of every choice
+6. Every decision the AI makes during execution is tracked as an assumption
 
-## The Decision Record
+```
+defer > build a todo app
 
-The most underrated output of Defer is `DECISIONS.md` — a complete, searchable log of why everything is the way it is.
+[? ?]  How much do you care about each area?
+
+  > Stack             ██░░░  medium    3 decisions
+    Data              █████  paranoid  2 decisions
+    API               ░░░░░  skip      2 decisions
+    UI                ██░░░  medium    3 decisions
+
+---
+
+[◉ ◉]  1/8  Stack  STACK-001
+
+  Backend language and framework?
+
+  Determines ecosystem and deployment model
+
+   > A) Node.js (TypeScript)
+     B) Python (FastAPI)
+     C) Go
+     D) Choose for me
+```
+
+## Features
+
+**Decision workflow:**
+- Categorized decisions with selectable options
+- Per-domain care levels: skip, low, medium, high, paranoid
+- "Choose for me" delegates to AI with logged reasoning
+- Undo last answer, ask about tradeoffs, revisit by ID
+
+**Assumption tracking:**
+- Every choice the AI makes during execution is tagged
+- `[ASSUMPTION naming: Used camelCase because framework convention]`
+- Assumptions logged alongside user decisions in DECISIONS.md
+- Nothing is invisible. `/decisions` shows everything.
+
+**Profiles and history:**
+- `/profile save my-stack` saves your decisions as a reusable template
+- `/profile use my-stack` pre-fills matching decisions on new projects
+- `/history` shows previous sessions with cost and duration
+
+**Session management:**
+- Decisions persisted to `.defer/decisions.json` + human-readable `DECISIONS.md`
+- Quit and resume where you left off
+- Cost and token tracking in the status bar
+
+## Commands
+
+```
+defer                          Interactive mode
+defer "build auth"             Start with a task
+
+/help                          All commands
+/model <sonnet|opus|haiku>     Switch model
+/decisions                     View all decisions inline
+/revisit STACK-001             Change a specific decision
+/profile save|use|list         Manage reusable decision templates
+/history                       Previous sessions
+/export                        Decision record as markdown table
+/cost                          Session cost and tokens
+/clear                         Clear output
+/quit                          Exit (auto-saves to history)
+```
+
+**In the decision view:**
+```
+↑↓   navigate options
+enter confirm selection
+t     type custom answer
+u     undo last answer
+w     explain tradeoffs of highlighted option
+a     ask a question about the decision
+c     change an answered decision
+esc   back to stream
+```
+
+## How It Works
+
+Defer spawns `claude` as a subprocess using your existing Claude Code authentication. No API key needed, no extra setup.
+
+The system prompt instructs Claude to decompose tasks into structured decisions (as a parseable JSON block), and to tag every autonomous choice during execution as an assumption. The TUI renders the decisions as a selection interface, persists everything to disk, and streams execution output.
+
+## Decision Record
+
+After a session, you have `DECISIONS.md`:
+
+```markdown
+## Decisions
 
 | ID | Category | Question | Answer | Date |
 |----|----------|----------|--------|------|
-| D001 | Auth | Session-based or JWT? | JWT | 2026-03-25 |
-| D002 | Auth | Token storage? | httpOnly cookies | 2026-03-25 |
-| D003 | Security | Password hashing? | argon2 | 2026-03-25 |
-| D004 | UX | Failed login message? | DELEGATED — generic | 2026-03-25 |
+| STACK-001 | Stack | Backend language? | Node.js (TypeScript) | 2026-03-25 |
+| DATA-001 | Data | Database? | DELEGATED: PostgreSQL | 2026-03-25 |
+
+## Assumptions
+
+| ID | Category | What was decided | Reasoning |
+|----|----------|------------------|-----------|
+| NAMI-001 | naming | camelCase for routes | framework convention |
+| ERRO-001 | error | 422 for validation | more semantically correct |
+```
+
+## Install
+
+```bash
+# Run directly
+npx @defer/cli
+
+# Or install globally
+npm install -g @defer/cli
+defer "build something"
+```
+
+Requires Claude Code (`npm install -g @anthropic-ai/claude-code && claude login`).
+
+## Development
+
+```bash
+git clone https://github.com/defer-ai/cli
+cd cli
+npm install
+npm run build
+npm test
+```
 
 ## Website
 
-The website is a Next.js app in the `web/` directory, deployed to [defer.sh](https://defer.sh) via Vercel.
-
-```bash
-cd web
-npm install
-npm run dev
-```
+[defer.sh](https://defer.sh) - Next.js app in `web/`, deployed via Vercel.
 
 ## License
 
