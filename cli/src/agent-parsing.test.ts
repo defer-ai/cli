@@ -32,7 +32,7 @@ function parseStructuredDecisions(
         context: item.context || "",
         answer: null,
         delegated: false,
-        assumption: false,
+        implicit: false,
         date: today,
       });
     }
@@ -70,7 +70,7 @@ function parseFallbackDecisions(
         context: "",
         answer: null,
         delegated: false,
-        assumption: false,
+        implicit: false,
         date: today,
       };
       decisions.push(d);
@@ -159,7 +159,7 @@ describe("parseStructuredDecisions", () => {
         context: "",
         answer: "Yes",
         delegated: false,
-        assumption: false,
+        implicit: false,
         date: "2026-03-25",
       },
     ];
@@ -257,7 +257,7 @@ describe("deduplication", () => {
         context: "",
         answer: "TypeScript",
         delegated: false,
-        assumption: false,
+        implicit: false,
         date: "2026-03-25",
       },
     ];

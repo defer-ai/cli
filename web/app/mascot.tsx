@@ -200,18 +200,95 @@ export function WebMascot({
   );
 }
 
+/** Hero mascot - larger, constant white noise in the eyes */
 export function HeroMascot() {
-  const [mood, setMood] = useState<Mood>("idle");
+  const [frame, setFrame] = useState(0);
 
   useEffect(() => {
-    const moods: Mood[] = ["idle", "thinking", "asking", "done"];
-    let idx = 0;
-    const interval = setInterval(() => {
-      idx = (idx + 1) % moods.length;
-      setMood(moods[idx]);
-    }, 3000);
+    const interval = setInterval(() => setFrame((f) => f + 1), 80);
     return () => clearInterval(interval);
   }, []);
 
-  return <WebMascot mood={mood} pixelSize={5} />;
+  // Generate noise-filled eyes
+  const W = 21;
+  const eyeW = 6;
+  const gap = 3;
+  const eyeStartL = 1;
+  const eyeStartR = eyeStartL + eyeW + gap;
+  const mouthStart = Math.floor((W - 8) / 2);
+  const px = 8;
+
+  const noiseColors = [
+    "bg-gray-100",
+    "bg-gray-300",
+    "bg-gray-200",
+    "bg-white",
+    "bg-cyan-100",
+    "bg-cyan-200",
+  ];
+
+  const rows: number[][] = [];
+
+  // Top border
+  const top = new Array(W).fill(0);
+  for (let x = eyeStartL + 1; x < eyeStartL + eyeW - 1; x++) top[x] = 1;
+  for (let x = eyeStartR + 1; x < eyeStartR + eyeW - 1; x++) top[x] = 1;
+  rows.push(top);
+
+  // Eye body (2 rows)
+  for (let y = 0; y < MAX_EYE_H; y++) {
+    const row = new Array(W).fill(0);
+    row[eyeStartL] = 1;
+    row[eyeStartL + eyeW - 1] = 1;
+    for (let x = 1; x < eyeW - 1; x++) row[eyeStartL + x] = 5 + ((frame + y * 3 + x) % 6);
+    row[eyeStartR] = 1;
+    row[eyeStartR + eyeW - 1] = 1;
+    for (let x = 1; x < eyeW - 1; x++) row[eyeStartR + x] = 5 + ((frame + y * 7 + x * 3) % 6);
+    rows.push(row);
+  }
+
+  // Bottom border
+  const bot = new Array(W).fill(0);
+  for (let x = eyeStartL + 1; x < eyeStartL + eyeW - 1; x++) bot[x] = 1;
+  for (let x = eyeStartR + 1; x < eyeStartR + eyeW - 1; x++) bot[x] = 1;
+  rows.push(bot);
+
+  // Gap
+  rows.push(new Array(W).fill(0));
+
+  // Mouth
+  const mouth = new Array(W).fill(0);
+  for (let x = mouthStart; x < mouthStart + 8; x++) mouth[x] = 1;
+  rows.push(mouth);
+
+  const allColors: Record<number, string> = {
+    0: "",
+    1: "bg-cyan-400",
+    5: noiseColors[0],
+    6: noiseColors[1],
+    7: noiseColors[2],
+    8: noiseColors[3],
+    9: noiseColors[4],
+    10: noiseColors[5],
+  };
+
+  return (
+    <div className="inline-flex flex-col">
+      {rows.map((row, y) => (
+        <div key={y} className="flex">
+          {row.map((cell, x) => (
+            <div
+              key={x}
+              className={allColors[cell] || ""}
+              style={{
+                width: px,
+                height: px,
+                ...(cell === 0 ? { background: "transparent" } : {}),
+              }}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }

@@ -200,15 +200,13 @@ export function App({ task, provider }: AppProps) {
               lines.push(`  ${d.category}`);
               lastCat = d.category;
             }
-            const icon = d.answer === null ? "○" : d.assumption ? "⚠" : d.delegated ? "◆" : "✓";
+            const icon = d.answer === null ? "○" : d.implicit ? "▪" : d.delegated ? "◆" : "✓";
             const answer =
               d.answer === null
                 ? "pending"
-                : d.assumption
-                  ? `assumed: ${d.answer}${d.reasoning ? ` (${d.reasoning})` : ""}`
-                  : d.delegated
-                    ? `delegated: ${d.answer}`
-                    : d.answer;
+                : d.delegated
+                  ? `delegated: ${d.answer}`
+                  : d.answer;
             lines.push(`    ${icon} ${d.id}  ${d.question}  →  ${answer}`);
           }
           lines.push("");

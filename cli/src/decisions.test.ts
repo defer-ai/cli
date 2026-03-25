@@ -24,7 +24,7 @@ function makeDecision(overrides: Partial<Decision> = {}): Decision {
     context: "Test context",
     answer: null,
     delegated: false,
-    assumption: false,
+    implicit: false,
     date: "2026-03-25",
     ...overrides,
   };

@@ -79,8 +79,8 @@ function categoryPrefix(category) {
 }
 /** Generate DECISIONS.md from the JSON store */
 function generateMarkdown(cwd, store) {
-    const userDecisions = store.decisions.filter((d) => !d.assumption);
-    const assumptions = store.decisions.filter((d) => d.assumption);
+    const userDecisions = store.decisions.filter((d) => !d.implicit);
+    const aiDecisions = store.decisions.filter((d) => d.implicit);
     const lines = [
         "# DECISIONS.md",
         "",
@@ -99,15 +99,13 @@ function generateMarkdown(cwd, store) {
             : "(pending)";
         lines.push(`| ${d.id} | ${d.category} | ${d.question} | ${answer} | ${d.date} |`);
     }
-    if (assumptions.length > 0) {
+    if (aiDecisions.length > 0) {
         lines.push("");
-        lines.push("## Assumptions");
-        lines.push("");
-        lines.push("Choices made by the AI during execution. Review and challenge any you disagree with.");
+        lines.push("## AI Choices");
         lines.push("");
         lines.push("| ID | Category | What was decided | Reasoning |");
         lines.push("|----|----------|------------------|-----------|");
-        for (const d of assumptions) {
+        for (const d of aiDecisions) {
             lines.push(`| ${d.id} | ${d.category} | ${d.answer || d.question} | ${d.reasoning || ""} |`);
         }
     }

@@ -41,28 +41,22 @@ Rules for the JSON:
 
 You may include a brief human-readable summary before the JSON block, but the JSON block is MANDATORY.
 
-## ASSUMPTION TRACKING
+## IMPLICIT CHOICE TRACKING
 
-During execution, every choice you make — no matter how small — MUST be tagged as an assumption. This includes: variable names, file paths, error messages, library versions, patterns, defaults, ordering, formatting, EVERYTHING.
+During execution, every choice you make — no matter how small — MUST be tracked. This includes: variable names, file paths, error messages, library versions, patterns, defaults, ordering, formatting, EVERYTHING.
 
-Tag assumptions inline in your output using this format:
-[ASSUMPTION category: description of what you chose and why]
+Tag choices inline using: [CHOSE category: what you chose and why]
 
-Examples:
-[ASSUMPTION naming: Used camelCase for API routes because the framework convention is camelCase]
-[ASSUMPTION error: Return 422 for validation errors instead of 400 because it's more semantically correct]
-[ASSUMPTION structure: Put routes in src/routes/ following the framework's recommended layout]
+At the end of each execution turn, output a JSON block:
 
-Also output a JSON block at the end of each execution turn:
-
-\`\`\`defer-assumptions
+\`\`\`defer-choices
 [
   {"category": "naming", "decision": "camelCase for API routes", "reasoning": "framework convention"},
   {"category": "error", "decision": "422 for validation errors", "reasoning": "more semantically correct than 400"}
 ]
 \`\`\`
 
-These assumptions are logged alongside user decisions. The user can review them with /decisions and challenge any they disagree with. Every decision must be accounted for, whether the user made it or you did.`;
+These are logged alongside user decisions. The user can review any of them with /decisions and challenge ones they disagree with. Every decision is accounted for.`;
 export class Agent {
     state;
     provider;
@@ -299,10 +293,10 @@ export class Agent {
                 this.persist();
                 this.retryCount = 0;
             }
-            // Parse assumptions from execution output
-            const assumptions = this.parseAssumptions(fullResponse);
-            if (assumptions.length > 0) {
-                this.state.decisions.push(...assumptions);
+            // Parse implicit AI choices from execution output
+            const implicitChoices = this.parseImplicitChoices(fullResponse);
+            if (implicitChoices.length > 0) {
+                this.state.decisions.push(...implicitChoices);
                 this.persist();
             }
             const pendingIdx = this.findNextPendingIndex();
@@ -359,7 +353,7 @@ export class Agent {
                     context: item.context || "",
                     answer: null,
                     delegated: false,
-                    assumption: false,
+                    implicit: false,
                     date: today,
                 });
             }
@@ -392,7 +386,7 @@ export class Agent {
                     context: "",
                     answer: null,
                     delegated: false,
-                    assumption: false,
+                    implicit: false,
                     date: today,
                 };
                 decisions.push(d);
@@ -416,32 +410,28 @@ export class Agent {
         }
         return decisions;
     }
-    /** Parse assumptions from ```defer-assumptions JSON blocks and inline [ASSUMPTION] tags */
-    parseAssumptions(output) {
-        const assumptions = [];
+    /** Parse implicit AI choices from ```defer-choices blocks and inline [CHOSE] tags */
+    parseImplicitChoices(output) {
+        const choices = [];
         const today = new Date().toISOString().split("T")[0];
-        const existingDecisions = [
-            ...this.state.decisions,
-            ...assumptions,
-        ];
         // Parse JSON block
-        const jsonMatch = output.match(/```defer-assumptions\s*\n([\s\S]*?)\n```/);
+        const jsonMatch = output.match(/```defer-choices\s*\n([\s\S]*?)\n```/);
         if (jsonMatch) {
             try {
                 const raw = JSON.parse(jsonMatch[1]);
                 if (Array.isArray(raw)) {
                     for (const item of raw) {
-                        const cat = item.category || "Assumption";
-                        const id = nextDecisionId([...existingDecisions, ...assumptions], cat);
-                        assumptions.push({
+                        const cat = item.category || "General";
+                        const id = nextDecisionId([...this.state.decisions, ...choices], cat);
+                        choices.push({
                             id,
                             category: cat,
                             question: item.decision || "",
                             options: [],
                             context: "",
                             answer: item.decision || "",
-                            delegated: true,
-                            assumption: true,
+                            delegated: false,
+                            implicit: true,
                             reasoning: item.reasoning || "",
                             date: today,
                         });
@@ -449,33 +439,31 @@ export class Agent {
                 }
             }
             catch {
-                // ignore parse errors
+                // ignore
             }
         }
-        // Also parse inline [ASSUMPTION category: description] tags
-        const inlineRegex = /\[ASSUMPTION\s+(\w+):\s*([^\]]+)\]/g;
+        // Parse inline [CHOSE category: description] tags
+        const inlineRegex = /\[CHOSE\s+(\w+):\s*([^\]]+)\]/g;
         let match;
         while ((match = inlineRegex.exec(output)) !== null) {
             const cat = match[1];
             const desc = match[2].trim();
-            // Skip if already captured from JSON block
-            if (assumptions.some((a) => a.question === desc || a.answer === desc)) {
+            if (choices.some((c) => c.question === desc || c.answer === desc))
                 continue;
-            }
-            const id = nextDecisionId([...existingDecisions, ...assumptions], cat);
-            assumptions.push({
+            const id = nextDecisionId([...this.state.decisions, ...choices], cat);
+            choices.push({
                 id,
                 category: cat,
                 question: desc,
                 options: [],
                 context: "",
                 answer: desc,
-                delegated: true,
-                assumption: true,
+                delegated: false,
+                implicit: true,
                 reasoning: "",
                 date: today,
             });
         }
-        return assumptions;
+        return choices;
     }
 }

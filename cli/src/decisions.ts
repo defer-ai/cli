@@ -14,9 +14,9 @@ export interface Decision {
   context: string;
   answer: string | null;
   delegated: boolean;
-  /** AI made this choice autonomously during execution */
-  assumption: boolean;
-  /** AI's reasoning for the assumption */
+  /** true = AI chose this during execution (not the user) */
+  implicit: boolean;
+  /** AI's reasoning for the choice */
   reasoning?: string;
   date: string;
 }
@@ -123,8 +123,8 @@ function categoryPrefix(category: string): string {
 
 /** Generate DECISIONS.md from the JSON store */
 function generateMarkdown(cwd: string, store: DecisionStore): void {
-  const userDecisions = store.decisions.filter((d) => !d.assumption);
-  const assumptions = store.decisions.filter((d) => d.assumption);
+  const userDecisions = store.decisions.filter((d) => !d.implicit);
+  const aiDecisions = store.decisions.filter((d) => d.implicit);
 
   const lines = [
     "# DECISIONS.md",
@@ -148,16 +148,14 @@ function generateMarkdown(cwd: string, store: DecisionStore): void {
     );
   }
 
-  if (assumptions.length > 0) {
+  if (aiDecisions.length > 0) {
     lines.push("");
-    lines.push("## Assumptions");
-    lines.push("");
-    lines.push("Choices made by the AI during execution. Review and challenge any you disagree with.");
+    lines.push("## AI Choices");
     lines.push("");
     lines.push("| ID | Category | What was decided | Reasoning |");
     lines.push("|----|----------|------------------|-----------|");
 
-    for (const d of assumptions) {
+    for (const d of aiDecisions) {
       lines.push(
         `| ${d.id} | ${d.category} | ${d.answer || d.question} | ${d.reasoning || ""} |`
       );

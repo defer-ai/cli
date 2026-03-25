@@ -27,16 +27,15 @@ export default function Home() {
           </h1>
 
           <p className="text-lg text-muted leading-relaxed max-w-2xl mb-4">
-            AI keeps making choices you didn&apos;t ask for. It picks your tech
-            stack, your file structure, your error messages. You don&apos;t find
-            out until the code is wrong.
+            Ship a feature in one prompt. Spend the next hour undoing
+            choices you never made. Defer fixes that.
           </p>
           <p className="text-lg leading-relaxed max-w-2xl mb-10">
             <span className="text-foreground">
-              Defer makes the AI ask first, then execute.
+              The AI asks every question upfront. You answer. It builds exactly what you meant.
             </span>{" "}
             <span className="text-muted">
-              Slow upfront. Zero rework later.
+              Every decision recorded. Every AI choice visible. Nothing hidden.
             </span>
           </p>
 
@@ -126,17 +125,16 @@ export default function Home() {
           </div>
           <div className="p-5 border border-border rounded-xl bg-surface">
             <h3 className="font-semibold text-foreground text-sm mb-2">
-              Assumption tracking
+              Full visibility
             </h3>
             <p className="text-sm text-muted leading-relaxed">
-              During execution, every choice the AI makes is tagged as an
-              assumption with reasoning. Variable names, file paths, error
-              messages, library versions. Nothing is invisible. Use{" "}
+              Every choice is recorded, whether you made it or the AI did.
+              Variable names, file paths, error codes, library versions.
+              Use{" "}
               <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
                 /decisions
               </code>{" "}
-              to see everything: your decisions (✓), delegated (◆), and
-              assumptions (⚠).
+              to see everything: ✓ yours, ◆ delegated, ▪ AI chose.
             </p>
           </div>
           <div className="p-5 border border-border rounded-xl bg-surface">
@@ -218,8 +216,8 @@ export default function Home() {
                 </tr>
               </tbody>
             </table>
-            <p className="text-xs font-mono text-yellow-400 mb-2">
-              ## Assumptions
+            <p className="text-xs font-mono text-gray-500 mb-2">
+              ## AI Choices
             </p>
             <table className="w-full text-xs font-mono">
               <thead>
@@ -230,9 +228,9 @@ export default function Home() {
                   <th className="pb-2 pr-4">Reasoning</th>
                 </tr>
               </thead>
-              <tbody className="text-foreground/70">
+              <tbody className="text-foreground/50">
                 <tr className="border-b border-border/50">
-                  <td className="py-2 pr-4 text-yellow-400">NAMI-001</td>
+                  <td className="py-2 pr-4 text-gray-500">▪ NAMI-001</td>
                   <td className="py-2 pr-4">naming</td>
                   <td className="py-2 pr-4">camelCase for routes</td>
                   <td className="py-2 pr-4 text-muted">
@@ -240,7 +238,7 @@ export default function Home() {
                   </td>
                 </tr>
                 <tr>
-                  <td className="py-2 pr-4 text-yellow-400">ERRO-001</td>
+                  <td className="py-2 pr-4 text-gray-500">▪ ERRO-001</td>
                   <td className="py-2 pr-4">error</td>
                   <td className="py-2 pr-4">422 for validation</td>
                   <td className="py-2 pr-4 text-muted">
@@ -261,7 +259,7 @@ export default function Home() {
           <p>
             <span className="text-accent">/decisions</span>
             <span className="text-muted">
-              {"          "}View all decisions and assumptions
+              {"          "}View all decisions
             </span>
           </p>
           <p>
