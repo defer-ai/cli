@@ -8,7 +8,7 @@ import { AgentManager } from "../agents/manager.js";
 import { Agent, type AgentState } from "../agents/agent.js";
 import type { LLMProvider } from "../providers/types.js";
 import type { ClaudeCodeProvider } from "../providers/claude-code.js";
-import { statusToMood, type MascotMood } from "./Mascot.js";
+import { Mascot, statusToMood, type MascotMood } from "./Mascot.js";
 
 type View = string; // "banner" | "stream" | "decisions" | "dashboard"
 
@@ -363,34 +363,48 @@ export function App({ task, provider }: AppProps) {
             />
           ) : (
             <>
-              {/* Header / Banner */}
-              <Box paddingX={1}>
-                {view === "banner" && !current ? (
-                  <Banner model={model} cwd={process.cwd()} mood={mood} />
-                ) : (
-                  <Header model={model} mood={mood} />
-                )}
-              </Box>
+              {/* Mascot + content side by side */}
+              <Box flexGrow={1}>
+                {/* Mascot column */}
+                <Box flexDirection="column" paddingX={1} paddingTop={1}>
+                  <Mascot mood={mood} />
+                </Box>
 
-              {/* Stream or Git content */}
-              <Box flexDirection="column" flexGrow={1} paddingX={1}>
-                {view === "git" ? (
-                  <GitView />
-                ) : (
-                  <>
-                    {current?.status === "thinking" &&
-                      outputLines.length === 0 && (
-                        <Box marginTop={1}>
-                          <Text color="cyan">Decomposing task...</Text>
-                        </Box>
-                      )}
-                    {visible.map((line, i) => (
-                      <Text key={i} wrap="wrap">
-                        {line}
+                {/* Content column */}
+                <Box flexDirection="column" flexGrow={1} paddingX={1}>
+                  {/* Header info */}
+                  <Box paddingTop={1} marginBottom={1}>
+                    <Text color="cyan" bold>defer</Text>
+                    <Text color="gray" dimColor> v0.1.0 | {model}</Text>
+                  </Box>
+
+                  {view === "banner" && !current ? (
+                    <Box flexDirection="column">
+                      <Text color="gray" dimColor>
+                        cwd {process.cwd().replace(process.env.HOME || "", "~")}
                       </Text>
-                    ))}
-                  </>
-                )}
+                      <Box marginTop={1}>
+                        <Text color="gray" dimColor>
+                          /help for commands, tab to switch views
+                        </Text>
+                      </Box>
+                    </Box>
+                  ) : view === "git" ? (
+                    <GitView />
+                  ) : (
+                    <Box flexDirection="column" flexGrow={1}>
+                      {current?.status === "thinking" &&
+                        outputLines.length === 0 && (
+                          <Text color="cyan">Decomposing task...</Text>
+                        )}
+                      {visible.map((line, i) => (
+                        <Text key={i} wrap="wrap">
+                          {line}
+                        </Text>
+                      ))}
+                    </Box>
+                  )}
+                </Box>
               </Box>
 
               {/* Status bar */}

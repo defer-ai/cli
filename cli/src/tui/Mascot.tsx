@@ -184,13 +184,13 @@ const FRAMES: Record<MascotMood, string[][][]> = {
 
 // Animation speeds per mood (ms)
 const SPEEDS: Record<MascotMood, number> = {
-  idle: 2000,
-  thinking: 200,
-  asking: 800,
-  answering: 500,
-  executing: 400,
-  done: 600,
-  error: 150,
+  idle: 600,
+  thinking: 150,
+  asking: 500,
+  answering: 350,
+  executing: 300,
+  done: 400,
+  error: 100,
 };
 
 const LABELS: Record<MascotMood, string> = {
