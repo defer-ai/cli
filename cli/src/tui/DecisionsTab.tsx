@@ -35,7 +35,7 @@ export function DecisionsTab({ agent }: Props) {
 
   if (agent.decisions.length === 0 && !agent.currentOutput) {
     return (
-      <Box padding={1}>
+      <Box padding={1} flexDirection="column">
         <Text color="gray">Decomposing task...</Text>
       </Box>
     );
@@ -45,7 +45,7 @@ export function DecisionsTab({ agent }: Props) {
     return (
       <Box padding={1} flexDirection="column">
         <Text color="gray" dimColor>
-          [o: back to decisions]
+          press o to go back
         </Text>
         <Box marginTop={1}>
           <Text wrap="wrap">
@@ -65,61 +65,142 @@ export function DecisionsTab({ agent }: Props) {
   }
 
   let globalIdx = 0;
+  const selected = agent.decisions[selectedIdx];
 
   return (
-    <Box padding={1} flexDirection="column">
-      <Box marginBottom={1}>
-        <Text color="gray" dimColor>
-          j/k:navigate o:output i:respond
-        </Text>
+    <Box padding={1} flexDirection="row">
+      {/* Decision list */}
+      <Box flexDirection="column" width="60%">
+        <Box marginBottom={1}>
+          <Text color="gray" dimColor>
+            j/k:navigate o:raw output i:respond
+          </Text>
+        </Box>
+
+        {Array.from(categories.entries()).map(([category, decisions]) => (
+          <Box key={category} flexDirection="column" marginBottom={1}>
+            <Text color="cyan" bold>
+              {category}
+            </Text>
+            {decisions.map((d) => {
+              const idx = globalIdx++;
+              const isSelected = idx === selectedIdx;
+              const isPending = d.answer === null;
+              const isDelegated = d.delegated;
+
+              return (
+                <Box key={d.id} paddingLeft={1}>
+                  <Text color={isSelected ? "cyan" : "gray"}>
+                    {isSelected ? ">" : " "}{" "}
+                  </Text>
+                  <Text color="gray" dimColor>
+                    {d.id}{" "}
+                  </Text>
+                  <Text color={isSelected ? "white" : "gray"}>
+                    {d.question}{" "}
+                  </Text>
+                  <Text
+                    color={
+                      isPending
+                        ? "yellow"
+                        : isDelegated
+                          ? "magenta"
+                          : "green"
+                    }
+                  >
+                    {isPending
+                      ? "pending"
+                      : isDelegated
+                        ? `delegated: ${d.answer}`
+                        : d.answer}
+                  </Text>
+                </Box>
+              );
+            })}
+          </Box>
+        ))}
+
+        {agent.status === "asking" && (
+          <Box marginTop={1}>
+            <Text color="yellow">
+              Waiting for your answers. Press i to respond.
+            </Text>
+          </Box>
+        )}
+
+        {agent.status === "thinking" && (
+          <Box marginTop={1}>
+            <Text color="cyan">Thinking...</Text>
+          </Box>
+        )}
       </Box>
 
-      {Array.from(categories.entries()).map(([category, decisions]) => (
-        <Box key={category} flexDirection="column" marginBottom={1}>
+      {/* Detail panel */}
+      {selected && (
+        <Box
+          flexDirection="column"
+          width="40%"
+          borderStyle="single"
+          borderColor="gray"
+          paddingX={1}
+        >
           <Text color="cyan" bold>
-            {category}
+            {selected.id}
           </Text>
-          {decisions.map((d) => {
-            const idx = globalIdx++;
-            const isSelected = idx === selectedIdx;
-            const isDelegated = d.answer.startsWith("DELEGATED");
-            const isPending = d.answer === "(pending)";
-
-            return (
-              <Box key={d.id} paddingLeft={1}>
-                <Text color={isSelected ? "cyan" : "white"}>
-                  {isSelected ? "> " : "  "}
-                </Text>
-                <Text color="gray">{d.id} </Text>
-                <Text>{d.question} </Text>
-                <Text
-                  color={
-                    isPending
-                      ? "yellow"
-                      : isDelegated
-                        ? "magenta"
-                        : "green"
-                  }
-                >
-                  {d.answer}
-                </Text>
-              </Box>
-            );
-          })}
-        </Box>
-      ))}
-
-      {agent.status === "asking" && (
-        <Box marginTop={1}>
-          <Text color="yellow">
-            Waiting for your answers. Press i to respond.
+          <Text color="gray" dimColor>
+            {selected.category}
           </Text>
-        </Box>
-      )}
+          <Box marginTop={1}>
+            <Text bold>{selected.question}</Text>
+          </Box>
 
-      {agent.status === "thinking" && (
-        <Box marginTop={1}>
-          <Text color="cyan">Thinking...</Text>
+          {selected.context ? (
+            <Box marginTop={1}>
+              <Text color="gray" italic>
+                {selected.context}
+              </Text>
+            </Box>
+          ) : null}
+
+          {selected.options.length > 0 && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text color="gray" dimColor>
+                Options:
+              </Text>
+              {selected.options.map((o) => (
+                <Box key={o.key} paddingLeft={1}>
+                  <Text color="white">
+                    {o.key}) {o.label}
+                  </Text>
+                </Box>
+              ))}
+            </Box>
+          )}
+
+          <Box marginTop={1}>
+            <Text color="gray">Answer: </Text>
+            <Text
+              color={
+                selected.answer === null
+                  ? "yellow"
+                  : selected.delegated
+                    ? "magenta"
+                    : "green"
+              }
+            >
+              {selected.answer === null
+                ? "pending"
+                : selected.delegated
+                  ? `delegated: ${selected.answer}`
+                  : selected.answer}
+            </Text>
+          </Box>
+
+          <Box marginTop={1}>
+            <Text color="gray" dimColor>
+              {selected.date}
+            </Text>
+          </Box>
         </Box>
       )}
     </Box>

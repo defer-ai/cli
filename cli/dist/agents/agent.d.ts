@@ -22,19 +22,19 @@ export declare class Agent {
     private provider;
     private onUpdate;
     private cwd;
+    private store;
     constructor(id: string, task: string, provider: LLMProvider, onUpdate: (state: AgentState) => void, cwd?: string);
     private update;
-    /** Persist current decisions to DECISIONS.md */
-    private persistDecisions;
-    /** Save session state so it can be resumed later */
+    private persist;
     private saveSession;
-    /** Try to load a previous session */
     static loadSession(provider: LLMProvider, onUpdate: (state: AgentState) => void, cwd?: string): Agent | null;
+    private buildOptionsFromDecisions;
     start(): Promise<void>;
     sendUserMessage(content: string): Promise<void>;
     revisitDecision(decisionId: string, newAnswer: string): Promise<void>;
     private runCompletion;
-    private parseDecisionsFromOutput;
-    /** Extract selectable options from AI output */
-    private parseOptionsFromOutput;
+    /** Parse the ```defer-decisions JSON block from AI output */
+    private parseStructuredDecisions;
+    /** Fallback: parse Q&A format if no JSON block */
+    private parseFallbackDecisions;
 }

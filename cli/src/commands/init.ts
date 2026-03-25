@@ -3,7 +3,7 @@ import { writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import chalk from "chalk";
 import { templates, type Target } from "../templates.js";
-import { createDecisionsFile, decisionsExist } from "../decisions.js";
+import { storeExists, createStore } from "../decisions.js";
 
 const targetChoices = [
   { name: "Claude Code (CLAUDE.md)", value: "claude-code" as Target },
@@ -49,9 +49,9 @@ export async function initCommand(targetArg?: string): Promise<void> {
   writeFileSync(filepath, template.content);
   console.log(chalk.green(`Created ${template.filename}`));
 
-  if (!decisionsExist(cwd)) {
-    createDecisionsFile(cwd);
-    console.log(chalk.green("Created DECISIONS.md"));
+  if (!storeExists(cwd)) {
+    createStore(cwd, "(not started)");
+    console.log(chalk.green("Created .defer/decisions.json"));
   }
 
   console.log();

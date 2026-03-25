@@ -1,14 +1,26 @@
+export interface DecisionOption {
+    key: string;
+    label: string;
+}
 export interface Decision {
     id: string;
     category: string;
     question: string;
-    answer: string;
+    options: DecisionOption[];
+    context: string;
+    answer: string | null;
+    delegated: boolean;
     date: string;
 }
-export declare function decisionsExist(cwd: string): boolean;
-export declare function createDecisionsFile(cwd: string): void;
-export declare function parseDecisions(cwd: string): Decision[];
-export declare function parseDecisionsFromString(content: string): Decision[];
+export interface DecisionStore {
+    task: string;
+    decisions: Decision[];
+    createdAt: string;
+    updatedAt: string;
+}
+export declare function storeExists(cwd: string): boolean;
+export declare function loadStore(cwd: string): DecisionStore | null;
+export declare function saveStore(cwd: string, store: DecisionStore): void;
+export declare function createStore(cwd: string, task: string): DecisionStore;
 export declare function nextDecisionId(decisions: Decision[]): string;
-export declare function addDecision(cwd: string, decision: Omit<Decision, "id">): Decision;
-export declare function updateDecision(cwd: string, id: string, newAnswer: string): boolean;
+export declare function parseLegacyDecisions(cwd: string): Decision[];

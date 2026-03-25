@@ -1,66 +1,78 @@
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+
+export interface DecisionOption {
+  key: string;
+  label: string;
+}
 
 export interface Decision {
   id: string;
   category: string;
   question: string;
-  answer: string;
+  options: DecisionOption[];
+  context: string;
+  answer: string | null;
+  delegated: boolean;
   date: string;
 }
 
-const DECISIONS_FILE = "DECISIONS.md";
-const HEADER = `# DECISIONS.md
-
-| ID | Category | Question | Answer | Date |
-|----|----------|----------|--------|------|`;
-
-function getPath(cwd: string): string {
-  return join(cwd, DECISIONS_FILE);
+export interface DecisionStore {
+  task: string;
+  decisions: Decision[];
+  createdAt: string;
+  updatedAt: string;
 }
 
-export function decisionsExist(cwd: string): boolean {
-  return existsSync(getPath(cwd));
-}
+const DEFER_DIR = ".defer";
+const DECISIONS_JSON = "decisions.json";
+const DECISIONS_MD = "DECISIONS.md";
 
-export function createDecisionsFile(cwd: string): void {
-  writeFileSync(getPath(cwd), HEADER + "\n");
-}
-
-export function parseDecisions(cwd: string): Decision[] {
-  const path = getPath(cwd);
-  if (!existsSync(path)) return [];
-
-  const content = readFileSync(path, "utf-8");
-  return parseDecisionsFromString(content);
-}
-
-export function parseDecisionsFromString(content: string): Decision[] {
-  const lines = content.split("\n");
-  const decisions: Decision[] = [];
-
-  for (const line of lines) {
-    // Match table rows, being lenient with whitespace and content
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|")) continue;
-
-    const cells = trimmed
-      .split("|")
-      .slice(1, -1)
-      .map((c) => c.trim());
-
-    if (cells.length < 5) continue;
-
-    const [id, category, question, answer, date] = cells;
-
-    // Skip header and separator rows
-    if (id === "ID" || id.startsWith("-")) continue;
-    if (!id.match(/^D\d+$/)) continue;
-
-    decisions.push({ id, category, question, answer, date });
+function ensureDir(cwd: string): void {
+  const dir = join(cwd, DEFER_DIR);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
   }
+}
 
-  return decisions;
+function jsonPath(cwd: string): string {
+  return join(cwd, DEFER_DIR, DECISIONS_JSON);
+}
+
+function mdPath(cwd: string): string {
+  return join(cwd, DECISIONS_MD);
+}
+
+export function storeExists(cwd: string): boolean {
+  return existsSync(jsonPath(cwd));
+}
+
+export function loadStore(cwd: string): DecisionStore | null {
+  const path = jsonPath(cwd);
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+export function saveStore(cwd: string, store: DecisionStore): void {
+  ensureDir(cwd);
+  store.updatedAt = new Date().toISOString();
+  writeFileSync(jsonPath(cwd), JSON.stringify(store, null, 2));
+  generateMarkdown(cwd, store);
+}
+
+export function createStore(cwd: string, task: string): DecisionStore {
+  const store: DecisionStore = {
+    task,
+    decisions: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  saveStore(cwd, store);
+  return store;
 }
 
 export function nextDecisionId(decisions: Decision[]): string {
@@ -71,58 +83,64 @@ export function nextDecisionId(decisions: Decision[]): string {
   return `D${String(maxNum + 1).padStart(3, "0")}`;
 }
 
-export function addDecision(
-  cwd: string,
-  decision: Omit<Decision, "id">
-): Decision {
-  const existing = parseDecisions(cwd);
-  const id = nextDecisionId(existing);
-  const newDecision: Decision = { id, ...decision };
+/** Generate DECISIONS.md from the JSON store */
+function generateMarkdown(cwd: string, store: DecisionStore): void {
+  const lines = [
+    "# DECISIONS.md",
+    "",
+    `> Task: ${store.task}`,
+    "",
+    "| ID | Category | Question | Answer | Date |",
+    "|----|----------|----------|--------|------|",
+  ];
 
-  const line = `| ${id} | ${decision.category} | ${decision.question} | ${decision.answer} | ${decision.date} |`;
-
-  const path = getPath(cwd);
-  if (!existsSync(path)) {
-    writeFileSync(path, HEADER + "\n" + line + "\n");
-  } else {
-    const content = readFileSync(path, "utf-8");
-    writeFileSync(path, content.trimEnd() + "\n" + line + "\n");
+  for (const d of store.decisions) {
+    const answer = d.answer
+      ? d.delegated
+        ? `DELEGATED: ${d.answer}`
+        : d.answer
+      : "(pending)";
+    lines.push(
+      `| ${d.id} | ${d.category} | ${d.question} | ${answer} | ${d.date} |`
+    );
   }
 
-  return newDecision;
+  lines.push("");
+  writeFileSync(mdPath(cwd), lines.join("\n"));
 }
 
-export function updateDecision(
-  cwd: string,
-  id: string,
-  newAnswer: string
-): boolean {
-  const path = getPath(cwd);
-  if (!existsSync(path)) return false;
+// Legacy support: parse old-format DECISIONS.md
+export function parseLegacyDecisions(cwd: string): Decision[] {
+  const path = mdPath(cwd);
+  if (!existsSync(path)) return [];
 
   const content = readFileSync(path, "utf-8");
-  const lines = content.split("\n");
-  const today = new Date().toISOString().split("T")[0];
-  let found = false;
+  const decisions: Decision[] = [];
 
-  const updated = lines.map((line: string) => {
+  for (const line of content.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed.startsWith("|")) return line;
+    if (!trimmed.startsWith("|")) continue;
 
     const cells = trimmed
       .split("|")
       .slice(1, -1)
       .map((c) => c.trim());
 
-    if (cells.length >= 5 && cells[0] === id) {
-      found = true;
-      return `| ${cells[0]} | ${cells[1]} | ${cells[2]} | ${newAnswer} | ${today} |`;
-    }
-    return line;
-  });
+    if (cells.length < 5) continue;
+    const [id, category, question, answer, date] = cells;
+    if (id === "ID" || id.startsWith("-") || !id.match(/^D\d+$/)) continue;
 
-  if (found) {
-    writeFileSync(path, updated.join("\n"));
+    decisions.push({
+      id,
+      category,
+      question,
+      options: [],
+      context: "",
+      answer: answer === "(pending)" ? null : answer,
+      delegated: answer.startsWith("DELEGATED"),
+      date,
+    });
   }
-  return found;
+
+  return decisions;
 }

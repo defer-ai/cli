@@ -1,23 +1,18 @@
 import chalk from "chalk";
 import { select } from "@inquirer/prompts";
-import { parseDecisions } from "../decisions.js";
-function formatDecision(d, index) {
-    const isDelegated = d.answer.startsWith("DELEGATED");
-    const answerColor = isDelegated ? chalk.yellow : chalk.white;
-    return `${chalk.cyan(d.id)} ${chalk.dim(d.category.padEnd(15))} ${d.question.padEnd(40)} ${answerColor(d.answer)} ${chalk.dim(d.date)}`;
-}
+import { loadStore } from "../decisions.js";
 export async function statusCommand() {
     const cwd = process.cwd();
-    const decisions = parseDecisions(cwd);
-    if (decisions.length === 0) {
+    const store = loadStore(cwd);
+    if (!store || store.decisions.length === 0) {
         console.log(chalk.yellow("No decisions recorded yet."));
         console.log(chalk.dim("Run defer with a task to start collecting decisions."));
         return;
     }
-    console.log(chalk.bold(`\n  Decision Record (${decisions.length} decisions)\n`));
-    // Group by category
+    console.log(chalk.bold(`\n  Decision Record (${store.decisions.length} decisions)\n`));
+    console.log(chalk.dim(`  Task: ${store.task}\n`));
     const categories = new Map();
-    for (const d of decisions) {
+    for (const d of store.decisions) {
         const cat = d.category || "Uncategorized";
         if (!categories.has(cat))
             categories.set(cat, []);
@@ -26,20 +21,19 @@ export async function statusCommand() {
     for (const [category, items] of categories) {
         console.log(chalk.cyan.bold(`  ${category}`));
         for (const d of items) {
-            const isDelegated = d.answer.startsWith("DELEGATED");
-            const marker = isDelegated ? chalk.yellow("  [delegated]") : "";
+            const isPending = d.answer === null;
+            const marker = d.delegated ? chalk.magenta("  [delegated]") : "";
             console.log(`    ${chalk.dim(d.id)} ${d.question}`);
-            console.log(`         ${chalk.white(d.answer)}${marker} ${chalk.dim(d.date)}`);
+            console.log(`         ${isPending ? chalk.yellow("(pending)") : chalk.white(d.answer)}${marker} ${chalk.dim(d.date)}`);
         }
         console.log();
     }
-    // Summary
-    const delegated = decisions.filter((d) => d.answer.startsWith("DELEGATED")).length;
-    const userDecided = decisions.length - delegated;
+    const delegated = store.decisions.filter((d) => d.delegated).length;
+    const pending = store.decisions.filter((d) => d.answer === null).length;
+    const answered = store.decisions.length - pending - delegated;
     console.log(chalk.dim("  ---"));
-    console.log(`  ${chalk.white(String(userDecided))} decided by you, ${chalk.yellow(String(delegated))} delegated to AI`);
+    console.log(`  ${chalk.white(String(answered))} decided by you, ${chalk.magenta(String(delegated))} delegated, ${chalk.yellow(String(pending))} pending`);
     console.log();
-    // Offer to revisit
     const action = await select({
         message: "What next?",
         choices: [
@@ -48,8 +42,8 @@ export async function statusCommand() {
         ],
     });
     if (action === "revisit") {
-        const choices = decisions.map((d) => ({
-            name: `${d.id}: ${d.question} [${d.answer}]`,
+        const choices = store.decisions.map((d) => ({
+            name: `${d.id}: ${d.question} [${d.answer ?? "pending"}]`,
             value: d.id,
         }));
         const id = await select({
@@ -57,7 +51,6 @@ export async function statusCommand() {
             choices,
         });
         console.log();
-        console.log(chalk.cyan(`To revisit ${id}, tell your AI: "Revisit ${id}"`));
-        console.log(chalk.dim("The question will be re-opened and the record updated."));
+        console.log(chalk.cyan(`To revisit ${id}, run: defer revisit ${id}`));
     }
 }

@@ -1,11 +1,10 @@
 import chalk from "chalk";
 import { execSync } from "node:child_process";
-import { parseDecisions } from "../decisions.js";
+import { loadStore } from "../decisions.js";
 
 export async function diffCommand(): Promise<void> {
   const cwd = process.cwd();
 
-  // Check if we're in a git repo
   try {
     execSync("git rev-parse --is-inside-work-tree", {
       cwd,
@@ -16,16 +15,15 @@ export async function diffCommand(): Promise<void> {
     return;
   }
 
-  const decisions = parseDecisions(cwd);
+  const store = loadStore(cwd);
 
-  if (decisions.length === 0) {
+  if (!store || store.decisions.length === 0) {
     console.log(chalk.yellow("No decisions recorded yet."));
     console.log(chalk.dim("Run defer with a task to start collecting decisions."));
     return;
   }
 
-  // Find the most recent decision date
-  const lastDate = decisions
+  const lastDate = store.decisions
     .map((d) => d.date)
     .filter((d) => d.match(/^\d{4}-\d{2}-\d{2}$/))
     .sort()
@@ -40,7 +38,6 @@ export async function diffCommand(): Promise<void> {
     chalk.bold(`\n  Changes since last decision (${lastDate})\n`)
   );
 
-  // Get commits since that date
   try {
     const commits = execSync(
       `git log --oneline --after="${lastDate}" --no-merges`,
@@ -61,7 +58,6 @@ export async function diffCommand(): Promise<void> {
 
   console.log();
 
-  // Get file changes
   try {
     const diffStat = execSync(
       `git diff --stat HEAD~5 2>/dev/null || git diff --stat`,
@@ -81,27 +77,4 @@ export async function diffCommand(): Promise<void> {
   }
 
   console.log();
-
-  // Check if DECISIONS.md was modified in recent commits
-  try {
-    const decisionsModified = execSync(
-      `git log --oneline --after="${lastDate}" -- DECISIONS.md`,
-      { cwd, encoding: "utf-8" }
-    ).trim();
-
-    if (!decisionsModified) {
-      console.log(
-        chalk.yellow(
-          "  Code has changed but no new decisions were recorded."
-        )
-      );
-      console.log(
-        chalk.dim(
-          "  Consider: were any decisions made silently during these changes?"
-        )
-      );
-    }
-  } catch {
-    // ignore
-  }
 }

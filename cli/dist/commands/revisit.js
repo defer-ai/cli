@@ -1,17 +1,17 @@
 import chalk from "chalk";
 import { select, input } from "@inquirer/prompts";
-import { parseDecisions, updateDecision, } from "../decisions.js";
+import { loadStore, saveStore } from "../decisions.js";
 export async function revisitCommand(idArg) {
     const cwd = process.cwd();
-    const decisions = parseDecisions(cwd);
-    if (decisions.length === 0) {
+    const store = loadStore(cwd);
+    if (!store || store.decisions.length === 0) {
         console.log(chalk.yellow("No decisions recorded yet."));
         return;
     }
     let id = idArg?.toUpperCase();
     if (!id) {
-        const choices = decisions.map((d) => ({
-            name: `${chalk.cyan(d.id)} ${d.question} ${chalk.dim(`[${d.answer}]`)}`,
+        const choices = store.decisions.map((d) => ({
+            name: `${chalk.cyan(d.id)} ${d.question} ${chalk.dim(`[${d.answer ?? "pending"}]`)}`,
             value: d.id,
         }));
         id = await select({
@@ -19,7 +19,7 @@ export async function revisitCommand(idArg) {
             choices,
         });
     }
-    const decision = decisions.find((d) => d.id === id);
+    const decision = store.decisions.find((d) => d.id === id);
     if (!decision) {
         console.log(chalk.red(`Decision ${id} not found.`));
         return;
@@ -28,7 +28,16 @@ export async function revisitCommand(idArg) {
     console.log(chalk.bold(`  Revisiting ${decision.id}`));
     console.log(`  Category: ${chalk.cyan(decision.category)}`);
     console.log(`  Question: ${decision.question}`);
-    console.log(`  Current:  ${chalk.dim(decision.answer)}`);
+    if (decision.context) {
+        console.log(`  Context:  ${chalk.dim(decision.context)}`);
+    }
+    console.log(`  Current:  ${chalk.dim(decision.answer ?? "(pending)")}`);
+    if (decision.options.length > 0) {
+        console.log(`  Options:`);
+        for (const o of decision.options) {
+            console.log(`    ${o.key}) ${o.label}`);
+        }
+    }
     console.log();
     const newAnswer = await input({
         message: "New answer (or empty to cancel):",
@@ -37,7 +46,9 @@ export async function revisitCommand(idArg) {
         console.log(chalk.yellow("Cancelled."));
         return;
     }
-    updateDecision(cwd, id, newAnswer.trim());
+    decision.answer = newAnswer.trim();
+    decision.date = new Date().toISOString().split("T")[0];
+    saveStore(cwd, store);
     console.log(chalk.green(`Updated ${id}: ${decision.question} -> ${newAnswer.trim()}`));
     console.log(chalk.dim("The updated answer will be used for future work in this project."));
 }

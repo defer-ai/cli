@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { input, select } from "@inquirer/prompts";
-import { addDecision, decisionsExist, createDecisionsFile } from "../decisions.js";
+import { loadStore, saveStore, createStore, nextDecisionId } from "../decisions.js";
 
 interface LogOptions {
   category?: string;
@@ -23,9 +23,9 @@ const CATEGORIES = [
 
 export async function logCommand(options: LogOptions): Promise<void> {
   const cwd = process.cwd();
-
-  if (!decisionsExist(cwd)) {
-    createDecisionsFile(cwd);
+  let store = loadStore(cwd);
+  if (!store) {
+    store = createStore(cwd, "(manual)");
   }
 
   const category =
@@ -53,17 +53,20 @@ export async function logCommand(options: LogOptions): Promise<void> {
     return;
   }
 
-  if (options.delegated) {
-    answer = `DELEGATED: ${answer}`;
-  }
-
   const today = new Date().toISOString().split("T")[0];
-  const decision = addDecision(cwd, {
+  const id = nextDecisionId(store.decisions);
+
+  store.decisions.push({
+    id,
     category,
     question: question.trim(),
+    options: [],
+    context: "",
     answer: answer.trim(),
+    delegated: !!options.delegated,
     date: today,
   });
 
-  console.log(chalk.green(`Logged ${decision.id}: ${question.trim()}`));
+  saveStore(cwd, store);
+  console.log(chalk.green(`Logged ${id}: ${question.trim()}`));
 }

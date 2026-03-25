@@ -1,31 +1,86 @@
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-const DECISIONS_FILE = "DECISIONS.md";
-const HEADER = `# DECISIONS.md
-
-| ID | Category | Question | Answer | Date |
-|----|----------|----------|--------|------|`;
-function getPath(cwd) {
-    return join(cwd, DECISIONS_FILE);
+const DEFER_DIR = ".defer";
+const DECISIONS_JSON = "decisions.json";
+const DECISIONS_MD = "DECISIONS.md";
+function ensureDir(cwd) {
+    const dir = join(cwd, DEFER_DIR);
+    if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+    }
 }
-export function decisionsExist(cwd) {
-    return existsSync(getPath(cwd));
+function jsonPath(cwd) {
+    return join(cwd, DEFER_DIR, DECISIONS_JSON);
 }
-export function createDecisionsFile(cwd) {
-    writeFileSync(getPath(cwd), HEADER + "\n");
+function mdPath(cwd) {
+    return join(cwd, DECISIONS_MD);
 }
-export function parseDecisions(cwd) {
-    const path = getPath(cwd);
+export function storeExists(cwd) {
+    return existsSync(jsonPath(cwd));
+}
+export function loadStore(cwd) {
+    const path = jsonPath(cwd);
+    if (!existsSync(path))
+        return null;
+    try {
+        return JSON.parse(readFileSync(path, "utf-8"));
+    }
+    catch {
+        return null;
+    }
+}
+export function saveStore(cwd, store) {
+    ensureDir(cwd);
+    store.updatedAt = new Date().toISOString();
+    writeFileSync(jsonPath(cwd), JSON.stringify(store, null, 2));
+    generateMarkdown(cwd, store);
+}
+export function createStore(cwd, task) {
+    const store = {
+        task,
+        decisions: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+    saveStore(cwd, store);
+    return store;
+}
+export function nextDecisionId(decisions) {
+    const maxNum = decisions.reduce((max, d) => {
+        const num = parseInt(d.id.slice(1), 10);
+        return num > max ? num : max;
+    }, 0);
+    return `D${String(maxNum + 1).padStart(3, "0")}`;
+}
+/** Generate DECISIONS.md from the JSON store */
+function generateMarkdown(cwd, store) {
+    const lines = [
+        "# DECISIONS.md",
+        "",
+        `> Task: ${store.task}`,
+        "",
+        "| ID | Category | Question | Answer | Date |",
+        "|----|----------|----------|--------|------|",
+    ];
+    for (const d of store.decisions) {
+        const answer = d.answer
+            ? d.delegated
+                ? `DELEGATED: ${d.answer}`
+                : d.answer
+            : "(pending)";
+        lines.push(`| ${d.id} | ${d.category} | ${d.question} | ${answer} | ${d.date} |`);
+    }
+    lines.push("");
+    writeFileSync(mdPath(cwd), lines.join("\n"));
+}
+// Legacy support: parse old-format DECISIONS.md
+export function parseLegacyDecisions(cwd) {
+    const path = mdPath(cwd);
     if (!existsSync(path))
         return [];
     const content = readFileSync(path, "utf-8");
-    return parseDecisionsFromString(content);
-}
-export function parseDecisionsFromString(content) {
-    const lines = content.split("\n");
     const decisions = [];
-    for (const line of lines) {
-        // Match table rows, being lenient with whitespace and content
+    for (const line of content.split("\n")) {
         const trimmed = line.trim();
         if (!trimmed.startsWith("|"))
             continue;
@@ -36,61 +91,18 @@ export function parseDecisionsFromString(content) {
         if (cells.length < 5)
             continue;
         const [id, category, question, answer, date] = cells;
-        // Skip header and separator rows
-        if (id === "ID" || id.startsWith("-"))
+        if (id === "ID" || id.startsWith("-") || !id.match(/^D\d+$/))
             continue;
-        if (!id.match(/^D\d+$/))
-            continue;
-        decisions.push({ id, category, question, answer, date });
+        decisions.push({
+            id,
+            category,
+            question,
+            options: [],
+            context: "",
+            answer: answer === "(pending)" ? null : answer,
+            delegated: answer.startsWith("DELEGATED"),
+            date,
+        });
     }
     return decisions;
-}
-export function nextDecisionId(decisions) {
-    const maxNum = decisions.reduce((max, d) => {
-        const num = parseInt(d.id.slice(1), 10);
-        return num > max ? num : max;
-    }, 0);
-    return `D${String(maxNum + 1).padStart(3, "0")}`;
-}
-export function addDecision(cwd, decision) {
-    const existing = parseDecisions(cwd);
-    const id = nextDecisionId(existing);
-    const newDecision = { id, ...decision };
-    const line = `| ${id} | ${decision.category} | ${decision.question} | ${decision.answer} | ${decision.date} |`;
-    const path = getPath(cwd);
-    if (!existsSync(path)) {
-        writeFileSync(path, HEADER + "\n" + line + "\n");
-    }
-    else {
-        const content = readFileSync(path, "utf-8");
-        writeFileSync(path, content.trimEnd() + "\n" + line + "\n");
-    }
-    return newDecision;
-}
-export function updateDecision(cwd, id, newAnswer) {
-    const path = getPath(cwd);
-    if (!existsSync(path))
-        return false;
-    const content = readFileSync(path, "utf-8");
-    const lines = content.split("\n");
-    const today = new Date().toISOString().split("T")[0];
-    let found = false;
-    const updated = lines.map((line) => {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("|"))
-            return line;
-        const cells = trimmed
-            .split("|")
-            .slice(1, -1)
-            .map((c) => c.trim());
-        if (cells.length >= 5 && cells[0] === id) {
-            found = true;
-            return `| ${cells[0]} | ${cells[1]} | ${cells[2]} | ${newAnswer} | ${today} |`;
-        }
-        return line;
-    });
-    if (found) {
-        writeFileSync(path, updated.join("\n"));
-    }
-    return found;
 }
