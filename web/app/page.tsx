@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prompts } from "./prompts";
 import { PromptCard } from "./prompt-card";
 import { CopyButton } from "./copy-button";
@@ -9,14 +10,9 @@ export default function Home() {
       <header className="relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-accent/8 via-transparent to-transparent" />
         <div className="relative max-w-3xl mx-auto px-6 pt-24 pb-20">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-8 h-8 rounded-lg bg-accent/15 border border-accent/25 flex items-center justify-center">
-              <span className="font-mono text-accent text-sm font-bold">d</span>
-            </div>
-            <span className="font-mono text-sm text-muted tracking-wider uppercase">
-              Defer
-            </span>
-          </div>
+          <Link href="/" className="font-mono text-sm text-accent tracking-wider mb-8 inline-block">
+            defer.sh
+          </Link>
 
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-6 leading-[1.1]">
             Zero-Autonomy AI.
@@ -24,11 +20,14 @@ export default function Home() {
             <span className="text-accent">Every Decision Is Yours.</span>
           </h1>
 
+          <p className="text-lg text-muted leading-relaxed max-w-2xl mb-4">
+            For when you want AI to do the job but don&apos;t want it to do it wrong.
+            For when you don&apos;t want to describe everything in one prompt just to get started.
+          </p>
           <p className="text-lg text-muted leading-relaxed max-w-2xl mb-10">
-            The entire AI industry is racing toward autonomy. More agentic. More
-            autonomous. Less human involvement.{" "}
+            Defer makes the AI ask you every question it needs answered before it writes a single line.{" "}
             <span className="text-foreground">
-              Defer runs in the opposite direction.
+              You decide. It executes.
             </span>
           </p>
 
@@ -108,7 +107,7 @@ export default function Home() {
             },
             {
               title: "Decisions are the product",
-              body: "The code is the output. The real value is the decision record — an auditable trail of every choice that shaped the output.",
+              body: "The code is the output. The real value is the decision record: an auditable trail of every choice that shaped the output.",
             },
           ].map((item) => (
             <div
@@ -143,7 +142,7 @@ export default function Home() {
           </div>
           <p className="mt-5 text-xs text-muted leading-relaxed font-sans">
             You can always move left from Defer (granting autonomy selectively),
-            but you can never fully move right from autonomy — you don&apos;t
+            but you can never fully move right from autonomy. You don&apos;t
             know what the AI decided silently.
           </p>
         </div>
@@ -157,7 +156,7 @@ export default function Home() {
             {
               not: "The AI being dumb or incapable",
               actually:
-                "A Defer-mode AI needs to be more intelligent — it has to decompose a task into its full decision tree and sequence questions so they build on each other.",
+                "A Defer-mode AI needs to be more intelligent. It has to decompose a task into its full decision tree and sequence questions so they build on each other.",
             },
             {
               not: '"Asking permission"',
@@ -190,12 +189,12 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Prompts — the main event */}
+      {/* Prompts */}
       <section id="prompts" className="max-w-3xl mx-auto px-6 py-20">
         <div className="mb-10">
           <h2 className="text-2xl font-bold mb-3">Get the Prompt</h2>
           <p className="text-muted">
-            Copy a prompt for your tool. Paste it in. That&apos;s it — your AI
+            Copy a prompt for your tool. Paste it in. Your AI
             now runs in Defer mode.
           </p>
         </div>
@@ -204,6 +203,38 @@ export default function Home() {
           {prompts.map((prompt) => (
             <PromptCard key={prompt.id} prompt={prompt} />
           ))}
+        </div>
+      </section>
+
+      {/* CLI */}
+      <section className="max-w-3xl mx-auto px-6 py-16">
+        <h2 className="text-2xl font-bold mb-3">CLI Companion</h2>
+        <p className="text-muted mb-8">
+          The prompt handles the AI behavior. The CLI handles the state: track
+          decisions, revisit them, queue topics for decomposition.
+        </p>
+
+        <div className="p-5 border border-border rounded-xl bg-surface font-mono text-sm space-y-4">
+          <div>
+            <p className="text-muted text-xs mb-2"># Scaffold Defer into your project</p>
+            <p className="text-foreground">$ npx @defer/cli init</p>
+          </div>
+          <div className="border-t border-border/50 pt-4">
+            <p className="text-muted text-xs mb-2"># View your decision record</p>
+            <p className="text-foreground">$ npx @defer/cli status</p>
+          </div>
+          <div className="border-t border-border/50 pt-4">
+            <p className="text-muted text-xs mb-2"># Revisit a previous decision</p>
+            <p className="text-foreground">$ npx @defer/cli revisit D003</p>
+          </div>
+          <div className="border-t border-border/50 pt-4">
+            <p className="text-muted text-xs mb-2"># Queue a topic for the AI to ask about</p>
+            <p className="text-foreground">$ npx @defer/cli ask &quot;authentication&quot;</p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <CopyButton text="npx @defer/cli init" label="Copy install command" />
         </div>
       </section>
 
@@ -220,14 +251,14 @@ export default function Home() {
             why everything is the way it is.
           </p>
           <p>
-            No more &ldquo;why did we use Redis here?&rdquo; six months later —
-            the answer is in the record.
+            No more &ldquo;why did we use Redis here?&rdquo; six months later.
+            The answer is in the record.
           </p>
         </div>
 
         <div className="mt-8 p-5 border border-border rounded-xl bg-surface">
           <p className="text-xs text-muted mb-3 font-mono">
-            DECISIONS.md — example
+            DECISIONS.md example
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs font-mono">
@@ -263,7 +294,7 @@ export default function Home() {
                   <td className="py-2 pr-4">UX</td>
                   <td className="py-2 pr-4">Failed login message?</td>
                   <td className="py-2 pr-4 italic text-muted">
-                    DELEGATED — generic &ldquo;invalid credentials&rdquo;
+                    DELEGATED: generic &ldquo;invalid credentials&rdquo;
                   </td>
                 </tr>
               </tbody>
@@ -314,7 +345,7 @@ export default function Home() {
                 ## Error Handling
               </p>
               <p>
-                <strong>Q3:</strong> On failed login — generic or specific
+                <strong>Q3:</strong> On failed login, generic or specific
                 message?
               </p>
               <p className="text-muted">
@@ -340,16 +371,9 @@ export default function Home() {
       {/* Footer */}
       <footer className="max-w-3xl mx-auto px-6 py-16 border-t border-border">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 rounded bg-accent/15 border border-accent/25 flex items-center justify-center">
-              <span className="font-mono text-accent text-xs font-bold">
-                d
-              </span>
-            </div>
-            <span className="text-sm text-muted">
-              Defer — Zero-Autonomy AI
-            </span>
-          </div>
+          <span className="font-mono text-sm text-accent">
+            defer.sh
+          </span>
           <div className="flex gap-6 text-sm text-muted">
             <a
               href="https://github.com/gabrielmanhaes/defer"

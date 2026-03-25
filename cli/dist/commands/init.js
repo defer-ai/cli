@@ -1,0 +1,58 @@
+import { select, confirm } from "@inquirer/prompts";
+import { writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+import chalk from "chalk";
+import { templates } from "../templates.js";
+import { createDecisionsFile, decisionsExist } from "../decisions.js";
+const targetChoices = [
+    { name: "Claude Code (CLAUDE.md)", value: "claude-code" },
+    { name: "Cursor (.cursor/rules/defer.mdc)", value: "cursor" },
+    { name: "ChatGPT (custom instructions)", value: "chatgpt" },
+    { name: "Universal (any AI tool)", value: "universal" },
+    { name: "API (system prompt)", value: "api" },
+];
+export async function initCommand(targetArg) {
+    const cwd = process.cwd();
+    let target;
+    if (targetArg && targetArg in templates) {
+        target = targetArg;
+    }
+    else {
+        target = await select({
+            message: "Which AI tool are you using?",
+            choices: targetChoices,
+        });
+    }
+    const template = templates[target];
+    const filepath = join(cwd, template.filename);
+    if (existsSync(filepath)) {
+        const overwrite = await confirm({
+            message: `${template.filename} already exists. Overwrite?`,
+            default: false,
+        });
+        if (!overwrite) {
+            console.log(chalk.yellow("Skipped."));
+            return;
+        }
+    }
+    // Create parent directories if needed (e.g. .cursor/rules/)
+    const dir = dirname(filepath);
+    if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(filepath, template.content);
+    console.log(chalk.green(`Created ${template.filename}`));
+    // Create DECISIONS.md if it doesn't exist
+    if (!decisionsExist(cwd)) {
+        createDecisionsFile(cwd);
+        console.log(chalk.green("Created DECISIONS.md"));
+    }
+    console.log();
+    console.log(chalk.cyan("Defer mode is active."));
+    console.log(`Your AI will now ask before every decision.`);
+    console.log();
+    console.log(chalk.dim("Commands:"));
+    console.log(chalk.dim("  defer status     View your decision record"));
+    console.log(chalk.dim("  defer revisit    Change a previous decision"));
+    console.log(chalk.dim('  defer ask        Queue a topic for decomposition'));
+}
