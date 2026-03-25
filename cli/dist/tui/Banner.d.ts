@@ -1,11 +1,10 @@
 import { type MascotMood } from "./Mascot.js";
-export declare function Banner({ model, cwd, mood }: {
+export declare function Banner({ model, cwd, mood, }: {
     model: string;
     cwd: string;
     mood: MascotMood;
 }): import("react/jsx-runtime").JSX.Element;
-/** Compact header with mini mascot face, always visible */
-export declare function Header({ model, mood }: {
+export declare function Header({ model, mood, }: {
     model: string;
     mood: MascotMood;
 }): import("react/jsx-runtime").JSX.Element;

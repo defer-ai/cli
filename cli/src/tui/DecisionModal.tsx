@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
 import type { AgentState } from "../agents/agent.js";
-import { Header } from "./Banner.js";
-import type { MascotMood } from "./Mascot.js";
+import { MiniMascot } from "./Mascot.js";
 
 type Mode = "browse" | "answer" | "change" | "ask" | "text";
 
@@ -13,12 +12,6 @@ interface Props {
   onAsk: (decisionId: string, question: string) => void;
   onRevise: (decisionId: string, newAnswer: string) => void;
   rows: number;
-}
-
-/** Truncate text to fit width, adding ... if needed */
-function truncate(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen - 1) + "…";
 }
 
 export function DecisionModal({
@@ -32,7 +25,6 @@ export function DecisionModal({
   const { stdout } = useStdout();
   const cols = stdout?.columns || 80;
 
-  const [cursorIdx, setCursorIdx] = useState(0);
   const [selectedOption, setSelectedOption] = useState(0);
   const [mode, setMode] = useState<Mode>("browse");
   const [textValue, setTextValue] = useState("");
@@ -41,24 +33,20 @@ export function DecisionModal({
   const decisions = agent.decisions;
   const pending = decisions.filter((d) => d.answer === null);
   const allDone = pending.length === 0 && decisions.length > 0;
-  const current = decisions[cursorIdx] || null;
+  const currentIdx = agent.pendingIndex >= 0
+    ? agent.pendingIndex
+    : pending.length > 0
+      ? decisions.indexOf(pending[0])
+      : 0;
+  const current = decisions[currentIdx] || null;
   const isPending = current?.answer === null;
-
-  const firstPendingIdx = decisions.findIndex((d) => d.answer === null);
-
-  useEffect(() => {
-    if (firstPendingIdx >= 0) setCursorIdx(firstPendingIdx);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (agent.pendingIndex >= 0 && mode === "browse") {
-      setCursorIdx(agent.pendingIndex);
-    }
-  }, [agent.pendingIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  const answeredCount = decisions.filter((d) => d.answer !== null).length;
 
   useEffect(() => {
     setSelectedOption(0);
-  }, [cursorIdx]);
+    setMode("browse");
+    setTextValue("");
+  }, [agent.pendingIndex]);
 
   useEffect(() => {
     if (allDone) {
@@ -144,15 +132,9 @@ export function DecisionModal({
     }
 
     // Browse mode
-    if (key.escape) {
+    if (key.escape || key.tab) {
       onDone();
       return;
-    }
-    if (input === "j" || key.downArrow) {
-      setCursorIdx((i) => Math.min(i + 1, decisions.length - 1));
-    }
-    if (input === "k" || key.upArrow) {
-      setCursorIdx((i) => Math.max(i - 1, 0));
     }
     if (key.return && current) {
       if (isPending && current.options.length > 0) {
@@ -173,15 +155,18 @@ export function DecisionModal({
     }
   });
 
-  // All done
+  // All done summary
   if (allDone) {
     return (
-      <Box flexDirection="column" height={rows} paddingX={2} paddingY={1}>
-        <Header model="" mood="done" />
-        <Box marginTop={1} flexDirection="column">
+      <Box flexDirection="column" height={rows} paddingX={3} paddingY={1}>
+        <Box>
+          <MiniMascot mood="done" />
           <Text color="green" bold>
-            All {decisions.length} decisions answered.
+            {" "}
+            All {decisions.length} decisions answered
           </Text>
+        </Box>
+        <Box marginTop={1} flexDirection="column">
           {decisions.map((d) => (
             <Box key={d.id}>
               <Text color={d.delegated ? "magenta" : "green"}>
@@ -204,204 +189,150 @@ export function DecisionModal({
 
   if (!current) {
     return (
-      <Box flexDirection="column" height={rows} padding={2}>
+      <Box flexDirection="column" height={rows} padding={3}>
         <Text color="gray">Waiting for decisions...</Text>
       </Box>
     );
   }
 
-  // Group categories
-  const categories = new Map<
-    string,
-    { d: (typeof decisions)[0]; idx: number }[]
-  >();
-  decisions.forEach((d, i) => {
-    const cat = d.category || "General";
-    if (!categories.has(cat)) categories.set(cat, []);
-    categories.get(cat)!.push({ d, idx: i });
-  });
-
-  const answeredCount = decisions.filter((d) => d.answer !== null).length;
-  const treeWidth = Math.floor(cols * 0.45);
-  const maxQuestion = treeWidth - 12; // icon(3) + id(~8) + padding
-
   return (
-    <Box flexDirection="column" height={rows}>
-      {/* Header */}
-      <Box paddingX={2} paddingTop={1}>
+    <Box flexDirection="column" height={rows} paddingX={3} paddingY={1}>
+      {/* Progress bar */}
+      <Box marginBottom={1}>
+        <MiniMascot mood={isPending ? "asking" : "answering"} />
         <Text color="cyan" bold>
-          Decisions
+          {"  "}
+          {answeredCount + (isPending ? 0 : 1)}/{decisions.length}
         </Text>
         <Text color="gray" dimColor>
           {"  "}
-          {answeredCount}/{decisions.length} answered
-          {pending.length > 0 ? `, ${pending.length} pending` : ""}
+          {current.category}
+        </Text>
+        <Text color="gray" dimColor>
+          {"  "}
+          {current.id}
         </Text>
       </Box>
 
-      {/* Main: tree + detail */}
-      <Box flexGrow={1} paddingX={1}>
-        {/* Left: compact decision tree */}
-        <Box flexDirection="column" width={treeWidth} overflow="hidden">
-          {Array.from(categories.entries()).map(([cat, items]) => (
-            <Box key={cat} flexDirection="column">
-              <Box paddingLeft={1}>
-                <Text color="cyan" dimColor>
-                  {cat}
-                </Text>
-              </Box>
-              {items.map(({ d, idx }) => {
-                const isCursor = idx === cursorIdx;
-                const isAnswered = d.answer !== null;
-                const icon = isAnswered
-                  ? d.delegated
-                    ? "◆"
-                    : "✓"
-                  : "○";
-                const iconColor = isAnswered
-                  ? d.delegated
-                    ? "magenta"
-                    : "green"
-                  : "yellow";
-
-                return (
-                  <Box key={d.id} paddingLeft={2}>
-                    <Text color={isCursor ? "cyan" : "gray"}>
-                      {isCursor ? ">" : " "}
-                    </Text>
-                    <Text color={iconColor}>{icon}</Text>
-                    <Text color="gray" dimColor>
-                      {" "}
-                      {d.id}
-                    </Text>
-                    <Text color={isCursor ? "white" : "gray"}>
-                      {" "}
-                      {truncate(d.question, maxQuestion)}
-                    </Text>
-                  </Box>
-                );
-              })}
-            </Box>
-          ))}
-        </Box>
-
-        {/* Right: detail panel */}
-        <Box
-          flexDirection="column"
-          flexGrow={1}
-          paddingLeft={1}
-          borderStyle="single"
-          borderColor="gray"
-          borderLeft
-          borderRight={false}
-          borderTop={false}
-          borderBottom={false}
-          paddingX={1}
-        >
-          <Text color="cyan" dimColor>
-            {current.id}
-          </Text>
-          <Box marginTop={1}>
-            <Text bold wrap="wrap">
-              {current.question}
-            </Text>
-          </Box>
-
-          {current.context ? (
-            <Box marginTop={1}>
-              <Text color="gray" italic wrap="wrap">
-                {current.context}
-              </Text>
-            </Box>
-          ) : null}
-
-          {/* Answer status */}
-          <Box marginTop={1}>
-            {isPending ? (
-              <Text color="yellow">○ pending</Text>
-            ) : (
-              <Text color={current.delegated ? "magenta" : "green"}>
-                {current.delegated ? "◆ delegated: " : "✓ "}
-                {current.answer}
-              </Text>
-            )}
-          </Box>
-
-          {/* Answer mode: options */}
-          {mode === "answer" && current.options.length > 0 ? (
-            <Box flexDirection="column" marginTop={1}>
-              {current.options.map((opt, i) => {
-                const isSel = i === selectedOption;
-                const isCfm = opt.label
-                  .toLowerCase()
-                  .includes("choose for me");
-                return (
-                  <Box key={opt.key}>
-                    <Text color={isSel ? "cyan" : "gray"}>
-                      {isSel ? " > " : "   "}
-                    </Text>
-                    <Text
-                      color={
-                        isSel ? "cyan" : isCfm ? "magenta" : "white"
-                      }
-                      bold={isSel}
-                    >
-                      {opt.key}) {opt.label}
-                    </Text>
-                  </Box>
-                );
-              })}
-            </Box>
-          ) : null}
-
-          {/* Browse mode: show options as reference */}
-          {mode === "browse" && current.options.length > 0 ? (
-            <Box flexDirection="column" marginTop={1}>
-              {current.options.map((o) => (
-                <Text key={o.key} color="gray" dimColor>
-                  {"  "}
-                  {o.key}) {o.label}
-                </Text>
-              ))}
-            </Box>
-          ) : null}
-
-          {/* Text input */}
-          {(mode === "text" || mode === "change" || mode === "ask") ? (
-            <Box marginTop={1} flexDirection="column">
-              <Text color="gray" dimColor>
-                {mode === "ask"
-                  ? "Ask about this decision:"
-                  : mode === "change"
-                    ? "New answer:"
-                    : "Custom answer:"}
-              </Text>
-              <Box>
-                <Text color="yellow">{">"} </Text>
-                <Text>{textValue}</Text>
-                <Text color="gray">|</Text>
-              </Box>
-            </Box>
-          ) : null}
-
-          {/* AI response */}
-          {mode === "ask" && aiResponse ? (
-            <Box marginTop={1} flexDirection="column">
-              <Text wrap="wrap" color="gray">
-                {aiResponse.length > 400
-                  ? aiResponse.slice(-400)
-                  : aiResponse}
-              </Text>
-            </Box>
-          ) : null}
-        </Box>
+      {/* Question - full width */}
+      <Box marginBottom={1}>
+        <Text bold wrap="wrap">
+          {current.question}
+        </Text>
       </Box>
 
+      {/* Context */}
+      {current.context ? (
+        <Box marginBottom={1}>
+          <Text color="gray" italic wrap="wrap">
+            {current.context}
+          </Text>
+        </Box>
+      ) : null}
+
+      {/* Current answer (if already answered) */}
+      {!isPending ? (
+        <Box marginBottom={1}>
+          <Text color={current.delegated ? "magenta" : "green"}>
+            {current.delegated ? "◆ delegated: " : "✓ "}
+            {current.answer}
+          </Text>
+        </Box>
+      ) : null}
+
+      {/* Options (browse or answer mode) */}
+      {(mode === "browse" || mode === "answer") &&
+      current.options.length > 0 ? (
+        <Box flexDirection="column" marginBottom={1}>
+          {current.options.map((opt, i) => {
+            const isSel = mode === "answer" && i === selectedOption;
+            const isCfm = opt.label.toLowerCase().includes("choose for me");
+            return (
+              <Box key={opt.key} paddingLeft={1}>
+                <Text color={isSel ? "cyan" : "gray"}>
+                  {isSel ? " >" : "  "}{" "}
+                </Text>
+                <Text
+                  color={
+                    isSel
+                      ? "cyan"
+                      : mode === "answer"
+                        ? isCfm
+                          ? "magenta"
+                          : "white"
+                        : "gray"
+                  }
+                  bold={isSel}
+                  dimColor={mode === "browse"}
+                >
+                  {opt.key}) {opt.label}
+                </Text>
+              </Box>
+            );
+          })}
+        </Box>
+      ) : null}
+
+      {/* Text input */}
+      {(mode === "text" || mode === "change" || mode === "ask") ? (
+        <Box marginBottom={1} flexDirection="column">
+          <Text color="gray" dimColor>
+            {mode === "ask"
+              ? "Ask about this decision:"
+              : mode === "change"
+                ? "New answer:"
+                : "Custom answer:"}
+          </Text>
+          <Box>
+            <Text color="yellow">{">"} </Text>
+            <Text>{textValue}</Text>
+            <Text color="gray">|</Text>
+          </Box>
+        </Box>
+      ) : null}
+
+      {/* AI response from ask */}
+      {mode === "ask" && aiResponse ? (
+        <Box marginBottom={1}>
+          <Text wrap="wrap" color="gray">
+            {aiResponse.length > 500
+              ? aiResponse.slice(-500)
+              : aiResponse}
+          </Text>
+        </Box>
+      ) : null}
+
+      {/* Recently answered (compact) */}
+      {answeredCount > 0 && isPending ? (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="gray" dimColor>
+            Recent:
+          </Text>
+          {decisions
+            .filter((d) => d.answer !== null)
+            .slice(-3)
+            .map((d) => (
+              <Box key={d.id} paddingLeft={1}>
+                <Text color={d.delegated ? "magenta" : "green"}>
+                  {d.delegated ? "◆" : "✓"}
+                </Text>
+                <Text color="gray" dimColor>
+                  {" "}
+                  {d.id} {d.question} → {d.answer}
+                </Text>
+              </Box>
+            ))}
+        </Box>
+      ) : null}
+
       {/* Footer */}
-      <Box paddingX={2}>
+      <Box flexGrow={1} />
+      <Box>
         <Text color="gray" dimColor>
           {mode === "browse"
-            ? `↑↓:navigate${isPending ? "  enter:answer" : "  c:change"}  a:ask  esc:back`
+            ? isPending
+              ? "enter:answer  a:ask about  t:type custom  tab:back"
+              : "c:change  a:ask about  tab:back"
             : mode === "answer"
               ? "↑↓:pick  enter:confirm  t:custom  esc:back"
               : "enter:submit  esc:cancel"}

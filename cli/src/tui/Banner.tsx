@@ -1,24 +1,36 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { Mascot, type MascotMood } from "./Mascot.js";
+import { Mascot, MiniMascot, type MascotMood } from "./Mascot.js";
 
 const VERSION = "0.1.0";
 
-export function Banner({ model, cwd, mood }: { model: string; cwd: string; mood: MascotMood }) {
+export function Banner({
+  model,
+  cwd,
+  mood,
+}: {
+  model: string;
+  cwd: string;
+  mood: MascotMood;
+}) {
   const dir = cwd.replace(process.env.HOME || "", "~");
 
   return (
     <Box flexDirection="column" paddingX={1} paddingTop={1}>
       <Box flexDirection="row">
-        <Box marginRight={2}>
+        <Box marginRight={3}>
           <Mascot mood={mood} />
         </Box>
-        <Box flexDirection="column" paddingTop={1}>
+        <Box flexDirection="column" paddingTop={2}>
           <Text bold>
             <Text color="cyan">defer</Text>
             <Text color="gray" dimColor>
-              {" "}v{VERSION}
+              {" "}
+              v{VERSION}
             </Text>
+          </Text>
+          <Text color="gray" dimColor>
+            Zero-autonomy AI
           </Text>
           <Box marginTop={1}>
             <Text color="gray" dimColor>
@@ -42,26 +54,23 @@ export function Banner({ model, cwd, mood }: { model: string; cwd: string; mood:
   );
 }
 
-/** Compact header with mini mascot face, always visible */
-export function Header({ model, mood }: { model: string; mood: MascotMood }) {
-  const face = {
-    idle: "( - - )",
-    thinking: "( ◠ ◠ )",
-    asking: "( ◉ ◉ )",
-    answering: "( ◠‿◠ )",
-    executing: "( ▪ ▪ )",
-    done: "( ^ ^ )",
-    error: "( x x )",
-  }[mood];
-
+export function Header({
+  model,
+  mood,
+}: {
+  model: string;
+  mood: MascotMood;
+}) {
   return (
     <Box paddingX={1}>
-      <Text color="cyan">{face}</Text>
+      <MiniMascot mood={mood} />
       <Text color="cyan" bold>
-        {" "}defer
+        {" "}
+        defer
       </Text>
       <Text color="gray" dimColor>
-        {" "}v{VERSION} | {model}
+        {" "}
+        v{VERSION} | {model}
       </Text>
     </Box>
   );

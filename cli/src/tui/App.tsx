@@ -308,32 +308,7 @@ export function App({ task, provider }: AppProps) {
               ? "green"
               : "red";
 
-  // Decision modal (full screen takeover)
-  if (view === "decisions" && current) {
-    return (
-      <DecisionModal
-        agent={current}
-        onAnswer={handleDecisionAnswer}
-        onAsk={handleDecisionAsk}
-        onRevise={handleDecisionRevise}
-        onDone={() => setView("stream")}
-        rows={rows}
-      />
-    );
-  }
-
-  // Dashboard overlay
-  if (view === "dashboard") {
-    return (
-      <DashboardOverlay
-        agents={agents}
-        selectedId={selectedAgent}
-        onSelect={setSelectedAgent}
-        onClose={() => setView("stream")}
-        rows={rows}
-      />
-    );
-  }
+  // All views now render inside the same side-panel layout below
 
   const mood: MascotMood = current
     ? statusToMood(current.status, current.phase)
@@ -375,71 +350,90 @@ export function App({ task, provider }: AppProps) {
 
       {/* Main content area */}
       <Box flexDirection="column" flexGrow={1}>
-        {/* Content */}
-        <Box flexDirection="column" flexGrow={1} paddingX={1}>
-          {view === "banner" && !current ? (
-            <Banner model={model} cwd={process.cwd()} mood={mood} />
+        {/* View content */}
+        <Box flexDirection="column" flexGrow={1}>
+          {view === "decisions" && current ? (
+            <DecisionModal
+              agent={current}
+              onAnswer={handleDecisionAnswer}
+              onAsk={handleDecisionAsk}
+              onRevise={handleDecisionRevise}
+              onDone={() => setView("stream")}
+              rows={rows - 2}
+            />
           ) : (
-            <Header model={model} mood={mood} />
-          )}
-
-          {current?.status === "thinking" && outputLines.length === 0 && (
-            <Box marginTop={1} paddingX={1}>
-              <Text color="cyan">Decomposing task...</Text>
-            </Box>
-          )}
-
-          {view === "git" ? (
-            <GitView />
-          ) : (
-            visible.map((line, i) => (
-              <Text key={i} wrap="wrap">
-                {line}
-              </Text>
-            ))
-          )}
-        </Box>
-
-        {/* Status bar */}
-        <Box paddingX={1}>
-          {current ? (
             <>
-              <Text color={statusColor} dimColor>
-                {current.status}
-              </Text>
-              {current.decisions.length > 0 && (
-                <>
-                  <Text color="gray" dimColor>
-                    {" | "}
-                    {current.decisions.length - pendingCount}/
-                    {current.decisions.length} decisions
-                  </Text>
-                </>
-              )}
-              {pendingCount > 0 && (
-                <Text color="yellow" dimColor>
-                  {" "}({pendingCount} pending)
-                </Text>
-              )}
-            </>
-          ) : (
-            <Text color="gray" dimColor>
-              {model}
-            </Text>
-          )}
-          <Box flexGrow={1} />
-          <Text color="gray" dimColor>
-            tab:switch  /help
-          </Text>
-        </Box>
+              {/* Header / Banner */}
+              <Box paddingX={1}>
+                {view === "banner" && !current ? (
+                  <Banner model={model} cwd={process.cwd()} mood={mood} />
+                ) : (
+                  <Header model={model} mood={mood} />
+                )}
+              </Box>
 
-        {/* Input prompt */}
-        <Box paddingX={1}>
-          <Text color="cyan" bold>
-            {"defer > "}
-          </Text>
-          <Text>{inputValue}</Text>
-          <Text color="gray">|</Text>
+              {/* Stream or Git content */}
+              <Box flexDirection="column" flexGrow={1} paddingX={1}>
+                {view === "git" ? (
+                  <GitView />
+                ) : (
+                  <>
+                    {current?.status === "thinking" &&
+                      outputLines.length === 0 && (
+                        <Box marginTop={1}>
+                          <Text color="cyan">Decomposing task...</Text>
+                        </Box>
+                      )}
+                    {visible.map((line, i) => (
+                      <Text key={i} wrap="wrap">
+                        {line}
+                      </Text>
+                    ))}
+                  </>
+                )}
+              </Box>
+
+              {/* Status bar */}
+              <Box paddingX={1}>
+                {current ? (
+                  <>
+                    <Text color={statusColor} dimColor>
+                      {current.status}
+                    </Text>
+                    {current.decisions.length > 0 && (
+                      <Text color="gray" dimColor>
+                        {" | "}
+                        {current.decisions.length - pendingCount}/
+                        {current.decisions.length} decisions
+                      </Text>
+                    )}
+                    {pendingCount > 0 && (
+                      <Text color="yellow" dimColor>
+                        {" "}({pendingCount} pending)
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <Text color="gray" dimColor>
+                    {model}
+                  </Text>
+                )}
+                <Box flexGrow={1} />
+                <Text color="gray" dimColor>
+                  tab:switch  /help
+                </Text>
+              </Box>
+
+              {/* Input prompt */}
+              <Box paddingX={1}>
+                <Text color="cyan" bold>
+                  {"defer > "}
+                </Text>
+                <Text>{inputValue}</Text>
+                <Text color="gray">|</Text>
+              </Box>
+            </>
+          )}
         </Box>
       </Box>
     </Box>

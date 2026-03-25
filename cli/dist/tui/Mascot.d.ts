@@ -2,5 +2,7 @@ export type MascotMood = "idle" | "thinking" | "asking" | "answering" | "executi
 export declare function Mascot({ mood }: {
     mood: MascotMood;
 }): import("react/jsx-runtime").JSX.Element;
-/** Map agent status to mascot mood */
-export declare function statusToMood(status: string, phase?: string): MascotMood;
+export declare function MiniMascot({ mood }: {
+    mood: MascotMood;
+}): import("react/jsx-runtime").JSX.Element;
+export declare function statusToMood(status: string, _phase?: string): MascotMood;

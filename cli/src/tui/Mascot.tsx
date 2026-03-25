@@ -10,27 +10,79 @@ export type MascotMood =
   | "done"
   | "error";
 
-interface Face {
-  eyes: string;
-  mouth: string;
-  blush?: boolean;
-}
-
-const FACES: Record<MascotMood, Face> = {
-  idle: { eyes: "-   -", mouth: "  ~  " },
-  thinking: { eyes: "◠   ◠", mouth: "  o  " },
-  asking: { eyes: "◉   ◉", mouth: "  ?  " },
-  answering: { eyes: "◠   ◠", mouth: "  ◡  ", blush: true },
-  executing: { eyes: "▪   ▪", mouth: " ─── " },
-  done: { eyes: "^   ^", mouth: "  ◡  ", blush: true },
-  error: { eyes: "x   x", mouth: "  _  " },
+// Pixel-art faces using block characters
+// Each face is 16 chars wide, 7 lines tall
+const FACES: Record<MascotMood, string[]> = {
+  idle: [
+    "  ▄████████████▄  ",
+    " █              █ ",
+    " █  ▄▄▄  ▄▄▄   █ ",
+    " █              █ ",
+    " █    ══════    █ ",
+    " █              █ ",
+    "  ▀████████████▀  ",
+  ],
+  thinking: [
+    "  ▄████████████▄  ",
+    " █              █ ",
+    " █  ████  ████  █ ",
+    " █              █ ",
+    " █      ██      █ ",
+    " █              █ ",
+    "  ▀████████████▀  ",
+  ],
+  asking: [
+    "  ▄████████████▄  ",
+    " █              █ ",
+    " █  ████  ████  █ ",
+    " █  ████  ████  █ ",
+    " █     ▄▄▄▄    █ ",
+    " █     ▀▀      █ ",
+    "  ▀████████████▀  ",
+  ],
+  answering: [
+    "  ▄████████████▄  ",
+    " █              █ ",
+    " █  ▀▀▀  ▀▀▀   █ ",
+    " █              █ ",
+    " █   ▄██████▄   █ ",
+    " █              █ ",
+    "  ▀████████████▀  ",
+  ],
+  executing: [
+    "  ▄████████████▄  ",
+    " █              █ ",
+    " █  ▀██▀ ▀██▀  █ ",
+    " █              █ ",
+    " █   ████████   █ ",
+    " █              █ ",
+    "  ▀████████████▀  ",
+  ],
+  done: [
+    "  ▄████████████▄  ",
+    " █              █ ",
+    " █  ▀▀▀  ▀▀▀   █ ",
+    " █              █ ",
+    " █  ▄████████▄  █ ",
+    " █  ▀▀▀▀▀▀▀▀▀▀  █ ",
+    "  ▀████████████▀  ",
+  ],
+  error: [
+    "  ▄████████████▄  ",
+    " █              █ ",
+    " █  ▀██▄ ▄██▀  █ ",
+    " █   ▄██▄██▄   █ ",
+    " █              █ ",
+    " █   ▄▀▀▀▀▄    █ ",
+    "  ▀████████████▀  ",
+  ],
 };
 
 const LABELS: Record<MascotMood, string> = {
   idle: "",
   thinking: "thinking...",
   asking: "your turn",
-  answering: "got it!",
+  answering: "got it",
   executing: "working...",
   done: "all done",
   error: "uh oh",
@@ -42,31 +94,40 @@ export function Mascot({ mood }: { mood: MascotMood }) {
 
   return (
     <Box flexDirection="column">
-      <Text color="cyan">{"┌───────┐"}</Text>
-      <Text>
-        <Text color="cyan">{"│ "}</Text>
-        <Text color="white">{face.eyes}</Text>
-        <Text color="cyan">{" │"}</Text>
-      </Text>
-      <Text>
-        <Text color="cyan">{"│ "}</Text>
-        <Text color={face.blush ? "magenta" : "white"}>{face.mouth}</Text>
-        <Text color="cyan">{" │"}</Text>
-      </Text>
-      <Text color="cyan">{"└───────┘"}</Text>
-      {label ? (
-        <Text color="gray" dimColor>
-          {"  "}{label}
+      {face.map((line, i) => (
+        <Text key={i} color="cyan">
+          {line}
         </Text>
+      ))}
+      {label ? (
+        <Box justifyContent="center">
+          <Text color="gray" dimColor>
+            {label}
+          </Text>
+        </Box>
       ) : null}
     </Box>
   );
 }
 
-/** Map agent status to mascot mood */
+// Inline mini face for the header (single line)
+export function MiniMascot({ mood }: { mood: MascotMood }) {
+  const mini: Record<MascotMood, string> = {
+    idle: "[· ·]",
+    thinking: "[◠ ◠]",
+    asking: "[◉ ◉]",
+    answering: "[◠‿◠]",
+    executing: "[▪ ▪]",
+    done: "[^ ^]",
+    error: "[x x]",
+  };
+
+  return <Text color="cyan">{mini[mood]}</Text>;
+}
+
 export function statusToMood(
   status: string,
-  phase?: string
+  _phase?: string
 ): MascotMood {
   switch (status) {
     case "thinking":

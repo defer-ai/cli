@@ -1,9 +1,8 @@
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+import { jsxs as _jsxs, jsx as _jsx, Fragment as _Fragment } from "react/jsx-runtime";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { Banner, Header } from "./Banner.js";
 import { DecisionModal } from "./DecisionModal.js";
-import { DashboardOverlay } from "./DashboardOverlay.js";
 import { AgentManager } from "../agents/manager.js";
 import { Agent } from "../agents/agent.js";
 import { statusToMood } from "./Mascot.js";
@@ -260,14 +259,7 @@ export function App({ task, provider }) {
                     : current.status === "done"
                         ? "green"
                         : "red";
-    // Decision modal (full screen takeover)
-    if (view === "decisions" && current) {
-        return (_jsx(DecisionModal, { agent: current, onAnswer: handleDecisionAnswer, onAsk: handleDecisionAsk, onRevise: handleDecisionRevise, onDone: () => setView("stream"), rows: rows }));
-    }
-    // Dashboard overlay
-    if (view === "dashboard") {
-        return (_jsx(DashboardOverlay, { agents: agents, selectedId: selectedAgent, onSelect: setSelectedAgent, onClose: () => setView("stream"), rows: rows }));
-    }
+    // All views now render inside the same side-panel layout below
     const mood = current
         ? statusToMood(current.status, current.phase)
         : "idle";
@@ -281,7 +273,8 @@ export function App({ task, provider }) {
     return (_jsxs(Box, { flexDirection: "row", height: rows, children: [_jsx(Box, { flexDirection: "column", width: 6, paddingTop: 1, children: tabs.map((tab) => {
                     const isActive = activeTabKey === tab.key;
                     return (_jsx(Box, { paddingX: 1, children: _jsxs(Text, { color: isActive ? "cyan" : "gray", bold: isActive, dimColor: !isActive, children: [isActive ? "▸" : " ", " ", tab.icon] }) }, tab.key));
-                }) }), _jsxs(Box, { flexDirection: "column", flexGrow: 1, children: [_jsxs(Box, { flexDirection: "column", flexGrow: 1, paddingX: 1, children: [view === "banner" && !current ? (_jsx(Banner, { model: model, cwd: process.cwd(), mood: mood })) : (_jsx(Header, { model: model, mood: mood })), current?.status === "thinking" && outputLines.length === 0 && (_jsx(Box, { marginTop: 1, paddingX: 1, children: _jsx(Text, { color: "cyan", children: "Decomposing task..." }) })), view === "git" ? (_jsx(GitView, {})) : (visible.map((line, i) => (_jsx(Text, { wrap: "wrap", children: line }, i))))] }), _jsxs(Box, { paddingX: 1, children: [current ? (_jsxs(_Fragment, { children: [_jsx(Text, { color: statusColor, dimColor: true, children: current.status }), current.decisions.length > 0 && (_jsx(_Fragment, { children: _jsxs(Text, { color: "gray", dimColor: true, children: [" | ", current.decisions.length - pendingCount, "/", current.decisions.length, " decisions"] }) })), pendingCount > 0 && (_jsxs(Text, { color: "yellow", dimColor: true, children: [" ", "(", pendingCount, " pending)"] }))] })) : (_jsx(Text, { color: "gray", dimColor: true, children: model })), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "tab:switch  /help" })] }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: "cyan", bold: true, children: "defer > " }), _jsx(Text, { children: inputValue }), _jsx(Text, { color: "gray", children: "|" })] })] })] }));
+                }) }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: _jsx(Box, { flexDirection: "column", flexGrow: 1, children: view === "decisions" && current ? (_jsx(DecisionModal, { agent: current, onAnswer: handleDecisionAnswer, onAsk: handleDecisionAsk, onRevise: handleDecisionRevise, onDone: () => setView("stream"), rows: rows - 2 })) : (_jsxs(_Fragment, { children: [_jsx(Box, { paddingX: 1, children: view === "banner" && !current ? (_jsx(Banner, { model: model, cwd: process.cwd(), mood: mood })) : (_jsx(Header, { model: model, mood: mood })) }), _jsx(Box, { flexDirection: "column", flexGrow: 1, paddingX: 1, children: view === "git" ? (_jsx(GitView, {})) : (_jsxs(_Fragment, { children: [current?.status === "thinking" &&
+                                            outputLines.length === 0 && (_jsx(Box, { marginTop: 1, children: _jsx(Text, { color: "cyan", children: "Decomposing task..." }) })), visible.map((line, i) => (_jsx(Text, { wrap: "wrap", children: line }, i)))] })) }), _jsxs(Box, { paddingX: 1, children: [current ? (_jsxs(_Fragment, { children: [_jsx(Text, { color: statusColor, dimColor: true, children: current.status }), current.decisions.length > 0 && (_jsxs(Text, { color: "gray", dimColor: true, children: [" | ", current.decisions.length - pendingCount, "/", current.decisions.length, " decisions"] })), pendingCount > 0 && (_jsxs(Text, { color: "yellow", dimColor: true, children: [" ", "(", pendingCount, " pending)"] }))] })) : (_jsx(Text, { color: "gray", dimColor: true, children: model })), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "tab:switch  /help" })] }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: "cyan", bold: true, children: "defer > " }), _jsx(Text, { children: inputValue }), _jsx(Text, { color: "gray", children: "|" })] })] })) }) })] }));
 }
 /** Inline git info view */
 function GitView() {
