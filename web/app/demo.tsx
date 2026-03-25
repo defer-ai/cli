@@ -76,23 +76,15 @@ export function Demo() {
 
   if (phase === "idle") {
     return (
-      <div className="border border-border rounded-xl bg-surface overflow-hidden">
-        <div className="p-8 flex flex-col items-center justify-center gap-4">
-          <p className="text-sm text-muted">
-            Watch a full Defer session: decomposition, domain priorities,
-            decision picking, and assumption tracking.
-          </p>
-          <button
-            onClick={() => setPhase("boot")}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-background font-medium rounded-lg hover:bg-accent/90 transition-colors text-sm cursor-pointer"
-          >
-            Run demo
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          </button>
-        </div>
-      </div>
+      <button
+        onClick={() => setPhase("boot")}
+        className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-background font-medium rounded-lg hover:bg-accent/90 transition-colors text-sm cursor-pointer"
+      >
+        Run demo
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </button>
     );
   }
 

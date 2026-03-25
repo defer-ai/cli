@@ -11,15 +11,19 @@ type Mood = "idle" | "thinking" | "asking" | "done";
 // Each frame is a 2D grid representing the full mascot
 type Frame = number[][];
 
+// Fixed height: all frames are exactly MAX_EYE_H + 4 rows (top border, eye rows, bottom border, gap, mouth)
+const MAX_EYE_H = 2;
+const FRAME_ROWS = MAX_EYE_H + 4; // top + 2 eye rows + bottom + gap + mouth
+
 function makeFrame(
   eyeHeight: number,
   leftPupil: number[][],
   rightPupil: number[][],
   mouthWidth: number
 ): Frame {
-  const W = 21; // total width
+  const W = 21;
   const eyeW = 6;
-  const gap = 3; // gap between eyes
+  const gap = 3;
   const eyeStartL = 1;
   const eyeStartR = eyeStartL + eyeW + gap;
   const mouthStart = Math.floor((W - mouthWidth) / 2);
@@ -32,20 +36,20 @@ function makeFrame(
   for (let x = eyeStartR + 1; x < eyeStartR + eyeW - 1; x++) topRow[x] = 1;
   rows.push([...topRow]);
 
-  // Eye body rows
-  for (let y = 0; y < eyeHeight; y++) {
+  // Eye body rows (always MAX_EYE_H, pad with white if fewer)
+  for (let y = 0; y < MAX_EYE_H; y++) {
     const row = new Array(W).fill(0);
     // Left eye
     row[eyeStartL] = 1;
     row[eyeStartL + eyeW - 1] = 1;
     for (let x = 1; x < eyeW - 1; x++) {
-      row[eyeStartL + x] = leftPupil[y]?.[x - 1] ?? 2;
+      row[eyeStartL + x] = y < eyeHeight ? (leftPupil[y]?.[x - 1] ?? 2) : 2;
     }
     // Right eye
     row[eyeStartR] = 1;
     row[eyeStartR + eyeW - 1] = 1;
     for (let x = 1; x < eyeW - 1; x++) {
-      row[eyeStartR + x] = rightPupil[y]?.[x - 1] ?? 2;
+      row[eyeStartR + x] = y < eyeHeight ? (rightPupil[y]?.[x - 1] ?? 2) : 2;
     }
     rows.push(row);
   }
