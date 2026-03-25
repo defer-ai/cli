@@ -3,7 +3,8 @@ import { Command } from "commander";
 import { initCommand } from "./commands/init.js";
 import { statusCommand } from "./commands/status.js";
 import { revisitCommand } from "./commands/revisit.js";
-import { askCommand } from "./commands/ask.js";
+import { logCommand } from "./commands/log.js";
+import { diffCommand } from "./commands/diff.js";
 const program = new Command();
 program
     .name("defer")
@@ -24,8 +25,15 @@ program
     .argument("[id]", "Decision ID to revisit (e.g. D001)")
     .action(revisitCommand);
 program
-    .command("ask")
-    .description("Queue a topic for the AI to decompose into decisions")
-    .argument("<topic>", "Topic to generate questions about")
-    .action(askCommand);
+    .command("log")
+    .description("Add a decision to the record")
+    .option("-c, --category <category>", "Decision category")
+    .option("-q, --question <question>", "The question that was decided")
+    .option("-a, --answer <answer>", "The answer/choice made")
+    .option("-d, --delegated", "Mark as delegated to AI")
+    .action(logCommand);
+program
+    .command("diff")
+    .description("Show git changes since last decision review")
+    .action(diffCommand);
 program.parse();

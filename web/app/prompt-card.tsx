@@ -20,8 +20,14 @@ const targetColors: Record<string, string> = {
   system: "text-yellow-400",
 };
 
-export function PromptCard({ prompt }: { prompt: DeferPrompt }) {
-  const [expanded, setExpanded] = useState(false);
+export function PromptCard({
+  prompt,
+  defaultExpanded = false,
+}: {
+  prompt: DeferPrompt;
+  defaultExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   return (
     <div className="group border border-border rounded-xl bg-surface hover:bg-surface-hover hover:border-border transition-all">

@@ -35,14 +35,12 @@ export async function initCommand(targetArg) {
             return;
         }
     }
-    // Create parent directories if needed (e.g. .cursor/rules/)
     const dir = dirname(filepath);
     if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
     }
     writeFileSync(filepath, template.content);
     console.log(chalk.green(`Created ${template.filename}`));
-    // Create DECISIONS.md if it doesn't exist
     if (!decisionsExist(cwd)) {
         createDecisionsFile(cwd);
         console.log(chalk.green("Created DECISIONS.md"));
@@ -50,9 +48,4 @@ export async function initCommand(targetArg) {
     console.log();
     console.log(chalk.cyan("Defer mode is active."));
     console.log(`Your AI will now ask before every decision.`);
-    console.log();
-    console.log(chalk.dim("Commands:"));
-    console.log(chalk.dim("  defer status     View your decision record"));
-    console.log(chalk.dim("  defer revisit    Change a previous decision"));
-    console.log(chalk.dim('  defer ask        Queue a topic for decomposition'));
 }
