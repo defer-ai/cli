@@ -36,8 +36,32 @@ export function App({ task, provider }: AppProps) {
 
   const current = agents.find((a) => a.id === selectedAgent) || agents[0];
 
-  // Start task if provided as argument
+  // On mount: try to resume existing session, or start new task
   useEffect(() => {
+    const resumed = Agent.loadSession(provider, (state) => {
+      setAgents((prev) => {
+        const idx = prev.findIndex((a) => a.id === state.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = { ...state };
+          return next;
+        }
+        return [...prev, { ...state }];
+      });
+    });
+
+    if (resumed) {
+      setSelectedAgent(resumed.state.id);
+      setAgents([{ ...resumed.state }]);
+      if (
+        resumed.state.status !== "asking" &&
+        resumed.state.status !== "done"
+      ) {
+        resumed.start();
+      }
+      return;
+    }
+
     if (task) {
       startTask(task);
     }
@@ -182,6 +206,30 @@ export function App({ task, provider }: AppProps) {
     [current, manager]
   );
 
+  const handleDecisionAsk = useCallback(
+    (decisionId: string, question: string) => {
+      if (!current) return;
+      const agent = manager.get(current.id);
+      if (!agent) return;
+      const d = agent.state.decisions.find((d) => d.id === decisionId);
+      if (!d) return;
+      agent.sendUserMessage(
+        `Question about ${decisionId} ("${d.question}"): ${question}`
+      );
+    },
+    [current, manager]
+  );
+
+  const handleDecisionRevise = useCallback(
+    (decisionId: string, newAnswer: string) => {
+      if (!current) return;
+      const agent = manager.get(current.id);
+      if (!agent) return;
+      agent.revisitDecision(decisionId, newAnswer);
+    },
+    [current, manager]
+  );
+
   useInput((input, key) => {
     // Decision modal handles its own input
     if (view === "decisions") return;
@@ -213,9 +261,15 @@ export function App({ task, provider }: AppProps) {
       return;
     }
 
-    // Ctrl+D for dashboard
-    if (input === "d" && key.ctrl) {
-      setView(view === "dashboard" ? "stream" : "dashboard");
+    // Tab: cycle between views
+    if (key.tab) {
+      if (view === "stream" || view === "banner") {
+        if (current && current.decisions.length > 0) {
+          setView("decisions");
+        }
+      } else {
+        setView("stream");
+      }
       return;
     }
 
@@ -252,6 +306,8 @@ export function App({ task, provider }: AppProps) {
       <DecisionModal
         agent={current}
         onAnswer={handleDecisionAnswer}
+        onAsk={handleDecisionAsk}
+        onRevise={handleDecisionRevise}
         onDone={() => setView("stream")}
         rows={rows}
       />
@@ -271,67 +327,104 @@ export function App({ task, provider }: AppProps) {
     );
   }
 
-  // Main view: banner/stream + input prompt
+  const tabs = [
+    { key: "stream", label: "Chat", icon: ">" },
+    { key: "decisions", label: "Decisions", icon: "◇", count: current?.decisions.length || 0 },
+  ];
+
+  // Main layout: side panel + content
   return (
-    <Box flexDirection="column" height={rows}>
-      {/* Content area */}
-      <Box flexDirection="column" flexGrow={1} paddingX={1}>
-        {view === "banner" && !current && (
-          <Banner model={model} cwd={process.cwd()} />
-        )}
-
-        {current?.status === "thinking" && outputLines.length === 0 && (
-          <Box marginTop={1} paddingX={1}>
-            <Text color="cyan">Decomposing task...</Text>
-          </Box>
-        )}
-
-        {visible.map((line, i) => (
-          <Text key={i} wrap="wrap">
-            {line}
-          </Text>
-        ))}
-      </Box>
-
-      {/* Status bar */}
-      <Box paddingX={1}>
-        {current ? (
-          <>
-            <Text color={statusColor} bold>
-              {current.status}
-            </Text>
-            {current.decisions.length > 0 && (
-              <>
-                <Text color="gray"> | </Text>
-                <Text color="gray">
-                  {current.decisions.length - pendingCount}/
-                  {current.decisions.length} decisions
-                </Text>
-              </>
-            )}
-            {pendingCount > 0 && (
-              <Text color="yellow">
-                {" "}
-                ({pendingCount} pending)
+    <Box flexDirection="row" height={rows}>
+      {/* Side panel */}
+      <Box
+        flexDirection="column"
+        width={4}
+        borderStyle="single"
+        borderColor="gray"
+        borderRight
+        borderLeft={false}
+        borderTop={false}
+        borderBottom={false}
+        paddingTop={1}
+      >
+        {tabs.map((tab) => {
+          const isActive = view === tab.key || (view === "banner" && tab.key === "stream");
+          return (
+            <Box key={tab.key} paddingX={1} marginBottom={1}>
+              <Text
+                color={isActive ? "cyan" : "gray"}
+                bold={isActive}
+                dimColor={!isActive}
+              >
+                {tab.icon}
               </Text>
-            )}
-          </>
-        ) : (
-          <Text color="gray">{model}</Text>
-        )}
-        <Box flexGrow={1} />
-        <Text color="gray" dimColor>
-          /help  ctrl+d:dashboard
-        </Text>
+            </Box>
+          );
+        })}
       </Box>
 
-      {/* Input prompt */}
-      <Box paddingX={1}>
-        <Text color="cyan" bold>
-          {"defer > "}
-        </Text>
-        <Text>{inputValue}</Text>
-        <Text color="gray">|</Text>
+      {/* Main content area */}
+      <Box flexDirection="column" flexGrow={1}>
+        {/* Content */}
+        <Box flexDirection="column" flexGrow={1} paddingX={1}>
+          {view === "banner" && !current && (
+            <Banner model={model} cwd={process.cwd()} />
+          )}
+
+          {current?.status === "thinking" && outputLines.length === 0 && (
+            <Box marginTop={1} paddingX={1}>
+              <Text color="cyan">Decomposing task...</Text>
+            </Box>
+          )}
+
+          {visible.map((line, i) => (
+            <Text key={i} wrap="wrap">
+              {line}
+            </Text>
+          ))}
+        </Box>
+
+        {/* Status bar */}
+        <Box paddingX={1}>
+          {current ? (
+            <>
+              <Text color={statusColor} dimColor>
+                {current.status}
+              </Text>
+              {current.decisions.length > 0 && (
+                <>
+                  <Text color="gray" dimColor>
+                    {" | "}
+                    {current.decisions.length - pendingCount}/
+                    {current.decisions.length} decisions
+                  </Text>
+                </>
+              )}
+              {pendingCount > 0 && (
+                <Text color="yellow" dimColor>
+                  {" "}({pendingCount} pending)
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text color="gray" dimColor>
+              {model}
+            </Text>
+          )}
+          <Box flexGrow={1} />
+          <Text color="gray" dimColor>
+            tab:switch  /help
+          </Text>
+        </Box>
+
+        {/* Input prompt */}
+        <Box paddingX={1}>
+          <Text color="cyan" bold>
+            {"defer > "}
+          </Text>
+          <Text>{inputValue}</Text>
+          <Text color="gray">|</Text>
+        </Box>
       </Box>
     </Box>
   );

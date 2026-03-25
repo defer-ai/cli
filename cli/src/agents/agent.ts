@@ -171,7 +171,7 @@ export class Agent {
 
       this.state.messages.push({
         role: "user",
-        content: `Here are my answers:\n${summary}\n\nPlease confirm the decision record then proceed with implementation.`,
+        content: `Task: ${this.state.task}\n\nDecision record:\n${summary}\n\nAll decisions are answered. Proceed with implementation based on these decisions.`,
       });
       this.update({
         status: "thinking",

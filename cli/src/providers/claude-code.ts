@@ -109,6 +109,12 @@ export class ClaudeCodeProvider implements LLMProvider {
       try {
         const event = JSON.parse(line);
 
+        // System init event - capture session ID
+        if (event.type === "system" && event.session_id) {
+          this.sessionId = event.session_id;
+          continue;
+        }
+
         // Content block deltas (streaming text chunks)
         if (event.type === "content_block_delta") {
           if (event.delta?.type === "text_delta" && event.delta.text) {
