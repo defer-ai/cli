@@ -7,6 +7,8 @@ import type { ClaudeCodeProvider } from "../providers/claude-code.js";
 import { Mascot, MiniMascot, statusToMood, type MascotMood } from "./Mascot.js";
 import { DecisionModal } from "./DecisionModal.js";
 import { DomainPriority, type CareLevel } from "./DomainPriority.js";
+import { saveProfile, listProfiles, applyProfile } from "../profiles.js";
+import { saveToHistory, listHistory, loadHistoryEntry } from "../history.js";
 
 type View = "stream" | "domains" | "decisions";
 
@@ -141,6 +143,7 @@ export function App({ task, provider }: AppProps) {
     (cmd: string) => {
       const parts = cmd.slice(1).split(/\s+/);
       const command = parts[0].toLowerCase();
+      const arg = parts.slice(1).join(" ");
 
       switch (command) {
         case "help":
@@ -148,25 +151,33 @@ export function App({ task, provider }: AppProps) {
             ...prev,
             "",
             "  Commands:",
-            "  /help                Show this help",
-            "  /model <name>        Switch model (sonnet, opus, haiku)",
-            "  /decisions           View all decisions inline",
-            "  /revisit <id>        Revisit a specific decision",
-            "  /clear               Clear output",
-            "  /quit                Exit",
+            "  /help                  Show this help",
+            "  /model <name>          Switch model (sonnet, opus, haiku)",
+            "  /decisions             View all decisions inline",
+            "  /revisit <id>          Revisit a specific decision",
+            "  /profile save <name>   Save current decisions as a reusable profile",
+            "  /profile use <name>    Apply a saved profile to current decisions",
+            "  /profile list          List saved profiles",
+            "  /history               Show previous sessions",
+            "  /export                Copy decision record to clipboard format",
+            "  /cost                  Show session cost and token usage",
+            "  /clear                 Clear output",
+            "  /quit                  Exit",
+            "",
+            "  In decision view:",
+            "  ↑↓  navigate options    u  undo last answer",
+            "  t   type custom         w  explain tradeoffs",
+            "  a   ask about           c  change answered",
             "",
           ]);
           break;
 
         case "model":
-          if (parts[1]) {
-            const m = parts[1].toLowerCase();
+          if (arg) {
+            const m = arg.toLowerCase();
             (provider as ClaudeCodeProvider).setModel(m);
             setModel(m);
-            setOutputLines((prev) => [
-              ...prev,
-              `  Model switched to ${m}`,
-            ]);
+            setOutputLines((prev) => [...prev, `  Model switched to ${m}`]);
           } else {
             setOutputLines((prev) => [
               ...prev,
@@ -177,12 +188,11 @@ export function App({ task, provider }: AppProps) {
           break;
 
         case "decisions":
-        case "status":
+        case "status": {
           if (!current || current.decisions.length === 0) {
             setOutputLines((prev) => [...prev, "  No decisions yet."]);
             break;
           }
-          // Print decisions inline
           const lines: string[] = [""];
           let lastCat = "";
           for (const d of current.decisions) {
@@ -191,7 +201,6 @@ export function App({ task, provider }: AppProps) {
               lastCat = d.category;
             }
             const icon = d.answer === null ? "○" : d.delegated ? "◆" : "✓";
-            const color = d.answer === null ? "" : "";
             const answer =
               d.answer === null
                 ? "pending"
@@ -205,9 +214,10 @@ export function App({ task, provider }: AppProps) {
           lines.push("");
           setOutputLines((prev) => [...prev, ...lines]);
           break;
+        }
 
-        case "revisit":
-          if (!parts[1]) {
+        case "revisit": {
+          if (!arg) {
             setOutputLines((prev) => [
               ...prev,
               "  Usage: /revisit <id>  (e.g. /revisit STACK-001)",
@@ -218,7 +228,7 @@ export function App({ task, provider }: AppProps) {
             setOutputLines((prev) => [...prev, "  No active session."]);
             break;
           }
-          const id = parts[1].toUpperCase();
+          const id = arg.toUpperCase();
           const decision = current.decisions.find((d) => d.id === id);
           if (!decision) {
             setOutputLines((prev) => [
@@ -230,6 +240,136 @@ export function App({ task, provider }: AppProps) {
           setRevisitId(id);
           setView("decisions");
           break;
+        }
+
+        case "profile": {
+          const subCmd = parts[1]?.toLowerCase();
+          const profileName = parts[2];
+
+          if (subCmd === "save" && profileName && current) {
+            const profile: Record<string, string> = {};
+            for (const d of current.decisions) {
+              if (d.answer !== null) {
+                profile[`${d.category}::${d.question}`] = d.answer;
+              }
+            }
+            saveProfile(profileName, profile);
+            setOutputLines((prev) => [
+              ...prev,
+              `  Profile "${profileName}" saved with ${Object.keys(profile).length} decisions.`,
+            ]);
+          } else if (subCmd === "use" && profileName && current) {
+            const agent = manager.get(current.id);
+            if (agent) {
+              const updated = applyProfile(profileName, agent.state.decisions);
+              const applied = updated.filter(
+                (d, i) => d.answer !== agent.state.decisions[i].answer
+              ).length;
+              agent.state.decisions = updated;
+              agent["persist"]();
+              setOutputLines((prev) => [
+                ...prev,
+                `  Applied profile "${profileName}": ${applied} decisions pre-filled.`,
+              ]);
+            }
+          } else if (subCmd === "list") {
+            const profiles = listProfiles();
+            if (profiles.length === 0) {
+              setOutputLines((prev) => [
+                ...prev,
+                "  No profiles saved yet. Use /profile save <name>",
+              ]);
+            } else {
+              setOutputLines((prev) => [
+                ...prev,
+                "",
+                "  Saved profiles:",
+                ...profiles.map((p) => `    ${p}`),
+                "",
+              ]);
+            }
+          } else {
+            setOutputLines((prev) => [
+              ...prev,
+              "  Usage: /profile save <name> | /profile use <name> | /profile list",
+            ]);
+          }
+          break;
+        }
+
+        case "history": {
+          const entries = listHistory(10);
+          if (entries.length === 0) {
+            setOutputLines((prev) => [...prev, "  No history yet."]);
+          } else {
+            const lines: string[] = ["", "  Recent sessions:"];
+            for (const filename of entries) {
+              const entry = loadHistoryEntry(filename);
+              if (entry) {
+                const cost = entry.cost > 0 ? ` $${entry.cost.toFixed(2)}` : "";
+                lines.push(
+                  `    ${entry.completedAt.split("T")[0]}  ${entry.task.slice(0, 50)}  ${entry.decisions.length}d${cost}`
+                );
+              }
+            }
+            lines.push("");
+            setOutputLines((prev) => [...prev, ...lines]);
+          }
+          break;
+        }
+
+        case "export": {
+          if (!current || current.decisions.length === 0) {
+            setOutputLines((prev) => [...prev, "  No decisions to export."]);
+            break;
+          }
+          const exportLines: string[] = [
+            "",
+            "  ## Decision Record",
+            "",
+            `  **Task:** ${current.task}`,
+            "",
+            "  | ID | Category | Question | Answer |",
+            "  |----|----------|----------|--------|",
+          ];
+          for (const d of current.decisions) {
+            const answer =
+              d.answer === null
+                ? "(pending)"
+                : d.delegated
+                  ? `_delegated: ${d.answer}_`
+                  : d.answer;
+            exportLines.push(
+              `  | ${d.id} | ${d.category} | ${d.question} | ${answer} |`
+            );
+          }
+          exportLines.push("");
+          exportLines.push("  (Copy the above into a PR description or README)");
+          exportLines.push("");
+          setOutputLines((prev) => [...prev, ...exportLines]);
+          break;
+        }
+
+        case "cost": {
+          if (!current) {
+            setOutputLines((prev) => [...prev, "  No active session."]);
+            break;
+          }
+          const elapsed = Math.round(
+            (Date.now() - current.startedAt) / 1000
+          );
+          const min = Math.floor(elapsed / 60);
+          const sec = elapsed % 60;
+          setOutputLines((prev) => [
+            ...prev,
+            "",
+            `  Cost:     $${current.totalCost.toFixed(4)}`,
+            `  Tokens:   ${current.totalTokens.toLocaleString()}`,
+            `  Duration: ${min}m ${sec}s`,
+            "",
+          ]);
+          break;
+        }
 
         case "clear":
           setOutputLines([]);
@@ -237,6 +377,15 @@ export function App({ task, provider }: AppProps) {
 
         case "quit":
         case "exit":
+          if (current) {
+            const elapsed = Date.now() - current.startedAt;
+            saveToHistory(
+              current.task,
+              current.decisions,
+              current.totalCost,
+              elapsed
+            );
+          }
           exit();
           break;
 
@@ -247,7 +396,7 @@ export function App({ task, provider }: AppProps) {
           ]);
       }
     },
-    [provider, model, current, exit]
+    [provider, model, current, exit, manager]
   );
 
   const handleSubmit = useCallback(() => {
@@ -398,6 +547,41 @@ export function App({ task, provider }: AppProps) {
     [current, manager]
   );
 
+  const handleUndo = useCallback(
+    (decisionIdx: number) => {
+      if (!current) return;
+      const agent = manager.get(current.id);
+      if (!agent) return;
+      const d = agent.state.decisions[decisionIdx];
+      if (d) {
+        d.answer = null;
+        d.delegated = false;
+        agent["persist"]();
+        // Move pending index back to the undone decision
+        agent["update"]({
+          decisions: [...agent.state.decisions],
+          pendingIndex: decisionIdx,
+          status: "asking",
+        });
+      }
+    },
+    [current, manager]
+  );
+
+  const handleWhy = useCallback(
+    (decisionId: string, optionLabel: string) => {
+      if (!current) return;
+      const agent = manager.get(current.id);
+      if (!agent) return;
+      const d = agent.state.decisions.find((d) => d.id === decisionId);
+      if (!d) return;
+      agent.sendUserMessage(
+        `For ${decisionId} ("${d.question}"), briefly explain the tradeoffs of choosing "${optionLabel}" vs the other options. One paragraph, focus on practical implications.`
+      );
+    },
+    [current, manager]
+  );
+
   useInput((input, key) => {
     // Decision modal handles its own input
     if (view === "decisions") return;
@@ -438,6 +622,8 @@ export function App({ task, provider }: AppProps) {
         onAnswer={handleDecisionAnswer}
         onAsk={handleDecisionAsk}
         onRevise={handleDecisionRevise}
+        onUndo={handleUndo}
+        onWhy={handleWhy}
         onDone={() => {
           setView("stream");
           setRevisitId(null);
@@ -530,8 +716,12 @@ export function App({ task, provider }: AppProps) {
             )}
             {pendingCount > 0 && (
               <Text color="yellow" dimColor>
-                {" "}
-                ({pendingCount} pending)
+                {" "}({pendingCount} pending)
+              </Text>
+            )}
+            {current.totalCost > 0 && (
+              <Text color="gray" dimColor>
+                {" | $"}{current.totalCost.toFixed(2)}
               </Text>
             )}
           </>

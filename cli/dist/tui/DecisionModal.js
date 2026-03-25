@@ -7,13 +7,15 @@ function truncate(text, maxLen) {
         return text;
     return text.slice(0, maxLen - 1) + "…";
 }
-export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, focusId, rows, }) {
+export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, onUndo, onWhy, focusId, rows, }) {
     const { stdout } = useStdout();
     const cols = stdout?.columns || 80;
     const [selectedOption, setSelectedOption] = useState(0);
     const [mode, setMode] = useState("pick");
     const [textValue, setTextValue] = useState("");
     const [aiResponse, setAiResponse] = useState("");
+    const [answerHistory, setAnswerHistory] = useState([]);
+    const [whyText, setWhyText] = useState("");
     const decisions = agent.decisions;
     const pending = decisions.filter((d) => d.answer === null);
     const allDone = pending.length === 0 && decisions.length > 0;
@@ -57,10 +59,15 @@ export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, focusI
     }, [allDone, focusId, onDone]);
     // AI response tracking
     useEffect(() => {
-        if (agent.currentOutput && mode === "ask") {
-            setAiResponse(agent.currentOutput);
+        if (agent.currentOutput) {
+            if (mode === "ask") {
+                setAiResponse(agent.currentOutput);
+            }
+            if (whyText === "Thinking...") {
+                setWhyText(agent.currentOutput);
+            }
         }
-    }, [agent.currentOutput, mode]);
+    }, [agent.currentOutput, mode, whyText]);
     useInput((input, key) => {
         // All done - any key closes
         if (allDone && !focusId) {
@@ -120,6 +127,11 @@ export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, focusI
             return;
         }
         if (key.return && current?.options[selectedOption]) {
+            // Track for undo
+            setAnswerHistory((h) => [
+                ...h,
+                { decisionIdx: focusIdx, prevAnswer: current.answer },
+            ]);
             onAnswer(current.options[selectedOption].key);
             setSelectedOption(0);
             return;
@@ -140,6 +152,20 @@ export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, focusI
             setTextValue("");
             return;
         }
+        // Undo last answer
+        if (input === "u" && answerHistory.length > 0) {
+            const last = answerHistory[answerHistory.length - 1];
+            setAnswerHistory((h) => h.slice(0, -1));
+            onUndo(last.decisionIdx);
+            return;
+        }
+        // Why: explain tradeoffs of highlighted option
+        if (input === "w" && current && current.options[selectedOption]) {
+            const opt = current.options[selectedOption];
+            onWhy(current.id, opt.label);
+            setWhyText("Thinking...");
+            return;
+        }
     });
     // All done summary
     if (allDone && !focusId) {
@@ -154,7 +180,7 @@ export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, focusI
                     const isSel = i === selectedOption;
                     const isCfm = opt.label.toLowerCase().includes("choose for me");
                     return (_jsxs(Box, { paddingLeft: 1, children: [_jsxs(Text, { color: isSel ? "cyan" : "gray", children: [isSel ? ">" : " ", " "] }), _jsxs(Text, { color: isSel ? "cyan" : isCfm ? "magenta" : "white", bold: isSel, children: [opt.key, ") ", opt.label] })] }, opt.key));
-                }) })) : null, (mode === "text" || mode === "change" || mode === "ask") ? (_jsxs(Box, { marginBottom: 1, flexDirection: "column", children: [_jsx(Text, { color: "gray", dimColor: true, children: mode === "ask"
+                }) })) : null, whyText && whyText !== "Thinking..." ? (_jsx(Box, { marginBottom: 1, paddingLeft: 2, children: _jsx(Text, { color: "gray", italic: true, wrap: "wrap", children: whyText.length > 300 ? whyText.slice(0, 300) + "..." : whyText }) })) : whyText === "Thinking..." ? (_jsx(Box, { marginBottom: 1, paddingLeft: 2, children: _jsx(Text, { color: "cyan", dimColor: true, children: "Thinking..." }) })) : null, (mode === "text" || mode === "change" || mode === "ask") ? (_jsxs(Box, { marginBottom: 1, flexDirection: "column", children: [_jsx(Text, { color: "gray", dimColor: true, children: mode === "ask"
                             ? "Ask about this decision:"
                             : mode === "change"
                                 ? "New answer:"
@@ -165,7 +191,7 @@ export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, focusI
                         .slice(-3)
                         .map((d) => (_jsxs(Box, { paddingLeft: 1, children: [_jsx(Text, { color: d.delegated ? "magenta" : "green", children: d.delegated ? "◆" : "✓" }), _jsxs(Text, { color: "gray", dimColor: true, children: [" ", d.id, " ", truncate(d.question, 30), " \u2192 ", truncate(d.answer || "", 20)] })] }, d.id)))] })) : null, _jsx(Box, { flexGrow: 1 }), _jsx(Box, { children: _jsx(Text, { color: "gray", dimColor: true, children: mode === "pick"
                         ? isPending
-                            ? "↑↓:pick  enter:confirm  t:custom  a:ask  esc:back"
-                            : "c:change  a:ask  esc:back"
+                            ? `↑↓:pick  enter:confirm  t:custom  w:why  a:ask${answerHistory.length > 0 ? "  u:undo" : ""}  esc:back`
+                            : "c:change  a:ask  w:why  esc:back"
                         : "enter:submit  esc:cancel" }) })] }));
 }

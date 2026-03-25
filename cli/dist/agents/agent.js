@@ -61,6 +61,9 @@ export class Agent {
             currentOutput: "",
             parsedOptions: [],
             pendingIndex: -1,
+            totalCost: 0,
+            totalTokens: 0,
+            startedAt: Date.now(),
         };
     }
     update(partial) {
@@ -231,6 +234,14 @@ export class Agent {
                 if (event.type === "text") {
                     fullResponse += event.content;
                     this.update({ currentOutput: fullResponse });
+                }
+                else if (event.type === "cost" && event.cost) {
+                    this.update({
+                        totalCost: this.state.totalCost + event.cost.totalCost,
+                        totalTokens: this.state.totalTokens +
+                            event.cost.inputTokens +
+                            event.cost.outputTokens,
+                    });
                 }
                 else if (event.type === "error") {
                     this.update({ status: "error", error: event.content });

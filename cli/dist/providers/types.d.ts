@@ -3,8 +3,13 @@ export interface Message {
     content: string;
 }
 export interface StreamEvent {
-    type: "text" | "done" | "error";
+    type: "text" | "done" | "error" | "cost";
     content: string;
+    cost?: {
+        totalCost: number;
+        inputTokens: number;
+        outputTokens: number;
+    };
 }
 export interface LLMProvider {
     name: string;

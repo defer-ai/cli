@@ -15,8 +15,10 @@ export interface AgentState {
     messages: Message[];
     currentOutput: string;
     parsedOptions: ParsedOption[];
-    /** Index of the currently active pending decision */
     pendingIndex: number;
+    totalCost: number;
+    totalTokens: number;
+    startedAt: number;
     error?: string;
 }
 export declare class Agent {

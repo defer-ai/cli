@@ -135,6 +135,18 @@ export class ClaudeCodeProvider {
                             yield { type: "text", content: text };
                         }
                     }
+                    // Emit cost info
+                    if (event.total_cost_usd || event.usage) {
+                        yield {
+                            type: "cost",
+                            content: "",
+                            cost: {
+                                totalCost: event.total_cost_usd || 0,
+                                inputTokens: event.usage?.input_tokens || 0,
+                                outputTokens: event.usage?.output_tokens || 0,
+                            },
+                        };
+                    }
                     continue;
                 }
                 if (event.type === "error") {

@@ -11,6 +11,8 @@ interface Props {
   onDone: () => void;
   onAsk: (decisionId: string, question: string) => void;
   onRevise: (decisionId: string, newAnswer: string) => void;
+  onUndo: (decisionIdx: number) => void;
+  onWhy: (decisionId: string, optionLabel: string) => void;
   focusId?: string | null;
   rows: number;
 }
@@ -26,6 +28,8 @@ export function DecisionModal({
   onDone,
   onAsk,
   onRevise,
+  onUndo,
+  onWhy,
   focusId,
   rows,
 }: Props) {
@@ -36,6 +40,10 @@ export function DecisionModal({
   const [mode, setMode] = useState<Mode>("pick");
   const [textValue, setTextValue] = useState("");
   const [aiResponse, setAiResponse] = useState("");
+  const [answerHistory, setAnswerHistory] = useState<
+    { decisionIdx: number; prevAnswer: string | null }[]
+  >([]);
+  const [whyText, setWhyText] = useState("");
 
   const decisions = agent.decisions;
   const pending = decisions.filter((d) => d.answer === null);
@@ -83,10 +91,15 @@ export function DecisionModal({
 
   // AI response tracking
   useEffect(() => {
-    if (agent.currentOutput && mode === "ask") {
-      setAiResponse(agent.currentOutput);
+    if (agent.currentOutput) {
+      if (mode === "ask") {
+        setAiResponse(agent.currentOutput);
+      }
+      if (whyText === "Thinking...") {
+        setWhyText(agent.currentOutput);
+      }
     }
-  }, [agent.currentOutput, mode]);
+  }, [agent.currentOutput, mode, whyText]);
 
   useInput((input, key) => {
     // All done - any key closes
@@ -149,6 +162,11 @@ export function DecisionModal({
       return;
     }
     if (key.return && current?.options[selectedOption]) {
+      // Track for undo
+      setAnswerHistory((h) => [
+        ...h,
+        { decisionIdx: focusIdx, prevAnswer: current.answer },
+      ]);
       onAnswer(current.options[selectedOption].key);
       setSelectedOption(0);
       return;
@@ -167,6 +185,20 @@ export function DecisionModal({
     if (input === "c" && current && !isPending) {
       setMode("change");
       setTextValue("");
+      return;
+    }
+    // Undo last answer
+    if (input === "u" && answerHistory.length > 0) {
+      const last = answerHistory[answerHistory.length - 1];
+      setAnswerHistory((h) => h.slice(0, -1));
+      onUndo(last.decisionIdx);
+      return;
+    }
+    // Why: explain tradeoffs of highlighted option
+    if (input === "w" && current && current.options[selectedOption]) {
+      const opt = current.options[selectedOption];
+      onWhy(current.id, opt.label);
+      setWhyText("Thinking...");
       return;
     }
   });
@@ -282,6 +314,19 @@ export function DecisionModal({
         </Box>
       ) : null}
 
+      {/* Why explanation */}
+      {whyText && whyText !== "Thinking..." ? (
+        <Box marginBottom={1} paddingLeft={2}>
+          <Text color="gray" italic wrap="wrap">
+            {whyText.length > 300 ? whyText.slice(0, 300) + "..." : whyText}
+          </Text>
+        </Box>
+      ) : whyText === "Thinking..." ? (
+        <Box marginBottom={1} paddingLeft={2}>
+          <Text color="cyan" dimColor>Thinking...</Text>
+        </Box>
+      ) : null}
+
       {/* Text input */}
       {(mode === "text" || mode === "change" || mode === "ask") ? (
         <Box marginBottom={1} flexDirection="column">
@@ -340,8 +385,8 @@ export function DecisionModal({
         <Text color="gray" dimColor>
           {mode === "pick"
             ? isPending
-              ? "↑↓:pick  enter:confirm  t:custom  a:ask  esc:back"
-              : "c:change  a:ask  esc:back"
+              ? `↑↓:pick  enter:confirm  t:custom  w:why  a:ask${answerHistory.length > 0 ? "  u:undo" : ""}  esc:back`
+              : "c:change  a:ask  w:why  esc:back"
             : "enter:submit  esc:cancel"}
         </Text>
       </Box>
