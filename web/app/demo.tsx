@@ -74,20 +74,6 @@ export function Demo() {
     }
   }, [phase]);
 
-  if (phase === "idle") {
-    return (
-      <button
-        onClick={() => setPhase("boot")}
-        className="w-full flex items-center justify-center gap-3 py-4 bg-accent/10 text-accent border border-accent/20 text-sm font-medium rounded-xl hover:bg-accent/20 hover:border-accent/40 transition-all cursor-pointer"
-      >
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M8 5v14l11-7z" />
-        </svg>
-        Run demo
-      </button>
-    );
-  }
-
   const mood = phaseToMood(phase);
 
   return (
@@ -97,11 +83,29 @@ export function Demo() {
         <div className="w-2.5 h-2.5 rounded-full bg-red-500/50" />
         <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/50" />
         <div className="w-2.5 h-2.5 rounded-full bg-green-500/50" />
-        <span className="text-xs text-muted ml-2 font-mono">
+        <span className="text-xs text-muted ml-2 font-mono flex-1">
           defer &quot;build a todo app&quot;
         </span>
+        {phase === "idle" ? (
+          <button
+            onClick={() => setPhase("boot")}
+            className="w-6 h-6 flex items-center justify-center rounded-full bg-accent/20 hover:bg-accent/40 transition-colors cursor-pointer"
+          >
+            <svg className="w-3 h-3 text-accent ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </button>
+        ) : phase === "done" ? (
+          <button
+            onClick={() => setPhase("idle")}
+            className="text-[10px] text-muted hover:text-foreground transition-colors cursor-pointer"
+          >
+            replay
+          </button>
+        ) : null}
       </div>
 
+      {phase === "idle" ? null : (
       <div ref={containerRef} className="font-mono text-xs max-h-[500px] overflow-y-auto">
         {/* Mascot + content */}
         <div className="flex p-4 gap-6">
@@ -303,6 +307,7 @@ export function Demo() {
           <span className="text-gray-600 animate-pulse">|</span>
         </div>
       </div>
+      )}
     </div>
   );
 }
