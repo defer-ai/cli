@@ -1,10 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-
-const TYPING_SPEED = 20;
-const LINE_DELAY = 300;
-const PHASE_DELAY = 1200;
+import { WebMascot } from "./mascot";
 
 type Phase =
   | "idle"
@@ -20,38 +17,20 @@ type Phase =
   | "assumption"
   | "done";
 
-const MASCOT_THINKING = [
-  "   ▄██████▄         ▄██████▄",
-  "   ██ ▀▄ ██         ██ ▀▄ ██",
-  "   ██ ▄▀ ██         ██ ▄▀ ██",
-  "   ▀██████▀         ▀██████▀",
-  "",
-  "            ████████",
-];
+type Mood = "idle" | "thinking" | "asking" | "done";
 
-const MASCOT_ASKING = [
-  "   ▄██████▄         ▄██████▄",
-  "   ██ ▀▀ ██         ██ ▀▀ ██",
-  "   ██ ▀  ██         ██ ▀  ██",
-  "   ▀██████▀         ▀██████▀",
-  "",
-  "            ████████",
-];
-
-const MASCOT_DONE = [
-  "   ▄██████▄         ▄██████▄",
-  "   ██ ◆  ██         ██ ◆  ██",
-  "   ▀██████▀         ▀██████▀",
-  "",
-  "            ████████",
-];
+function phaseToMood(phase: Phase): Mood {
+  if (phase === "boot" || phase === "decomposing" || phase === "executing" || phase === "assumption")
+    return "thinking";
+  if (phase === "done") return "done";
+  if (phase === "idle") return "idle";
+  return "asking";
+}
 
 export function Demo() {
   const [phase, setPhase] = useState<Phase>("idle");
-  const [frame, setFrame] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-advance phases
   useEffect(() => {
     if (phase === "idle") return;
 
@@ -89,12 +68,6 @@ export function Demo() {
     }
   }, [phase]);
 
-  // Mascot animation
-  useEffect(() => {
-    const interval = setInterval(() => setFrame((f) => f + 1), 200);
-    return () => clearInterval(interval);
-  }, []);
-
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
@@ -123,15 +96,11 @@ export function Demo() {
     );
   }
 
-  const mascot =
-    phase === "decomposing" || phase === "executing"
-      ? MASCOT_THINKING
-      : phase === "done"
-        ? MASCOT_DONE
-        : MASCOT_ASKING;
+  const mood = phaseToMood(phase);
 
   return (
     <div className="border border-border rounded-xl bg-surface overflow-hidden">
+      {/* Title bar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-black/20">
         <div className="w-2.5 h-2.5 rounded-full bg-red-500/50" />
         <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/50" />
@@ -140,17 +109,13 @@ export function Demo() {
           defer &quot;build a todo app&quot;
         </span>
       </div>
-      <div
-        ref={containerRef}
-        className="font-mono text-xs max-h-[500px] overflow-y-auto"
-      >
-        {/* Mascot + content side by side */}
-        <div className="flex p-4 gap-4">
+
+      <div ref={containerRef} className="font-mono text-xs max-h-[500px] overflow-y-auto">
+        {/* Mascot + content */}
+        <div className="flex p-4 gap-6">
           {/* Mascot */}
-          <div className="text-cyan-400 whitespace-pre leading-tight shrink-0 hidden sm:block">
-            {mascot.map((line, i) => (
-              <div key={i}>{line}</div>
-            ))}
+          <div className="shrink-0 hidden sm:flex items-start pt-2">
+            <WebMascot mood={mood} pixelSize={5} speed={mood === "thinking" ? 200 : 600} />
           </div>
 
           {/* Content */}
@@ -160,13 +125,8 @@ export function Demo() {
               <span className="text-gray-500"> v0.1.0 | sonnet</span>
             </div>
 
-            {/* Boot */}
-            {phase === "boot" && (
-              <div className="text-cyan-400">Decomposing task...</div>
-            )}
-
-            {/* Decomposing */}
-            {phase === "decomposing" && (
+            {/* Boot / Decomposing */}
+            {(phase === "boot" || phase === "decomposing") && (
               <div className="text-cyan-400 animate-pulse">
                 Decomposing task...
               </div>
@@ -178,45 +138,35 @@ export function Demo() {
                 <div className="text-cyan-400 font-bold">
                   How much do you care about each area?
                 </div>
-                <div className="text-gray-500 text-[10px]">
-                  ←→ adjust, ↑↓ navigate, enter confirm
+                <div className="text-gray-600 text-[10px]">
+                  Use arrows to adjust, enter to confirm
                 </div>
                 <div className="mt-2 space-y-0.5">
                   <div>
                     <span className="text-cyan-400">{"> "}</span>
-                    <span className="text-white">
-                      {"Stack             "}
-                    </span>
-                    <span className="text-yellow-400">{"██░░░  medium"}</span>
-                    <span className="text-gray-500">{"    3 decisions"}</span>
+                    <span className="text-white">{"Stack            "}</span>
+                    <span className="text-yellow-400">{"██░░░ medium"}</span>
+                    <span className="text-gray-600">{"   3 decisions"}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">{"  "}</span>
-                    <span className="text-gray-400">
-                      {"Data              "}
-                    </span>
+                    <span className="text-gray-600">{"  "}</span>
+                    <span className="text-gray-400">{"Data             "}</span>
                     <span className={phase === "domain-adjust" ? "text-red-400" : "text-yellow-400"}>
-                      {phase === "domain-adjust"
-                        ? "█████  paranoid"
-                        : "██░░░  medium"}
+                      {phase === "domain-adjust" ? "█████ paranoid" : "██░░░ medium"}
                     </span>
-                    <span className="text-gray-500">{"  2 decisions"}</span>
+                    <span className="text-gray-600">{" 2 decisions"}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">{"  "}</span>
-                    <span className="text-gray-400">
-                      {"API               "}
-                    </span>
-                    <span className="text-gray-500">{"░░░░░  skip"}</span>
-                    <span className="text-gray-500">{"      2 decisions"}</span>
+                    <span className="text-gray-600">{"  "}</span>
+                    <span className="text-gray-400">{"API              "}</span>
+                    <span className="text-gray-600">{"░░░░░ skip"}</span>
+                    <span className="text-gray-600">{"     2 decisions"}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">{"  "}</span>
-                    <span className="text-gray-400">
-                      {"UI                "}
-                    </span>
-                    <span className="text-yellow-400">{"██░░░  medium"}</span>
-                    <span className="text-gray-500">{"    2 decisions"}</span>
+                    <span className="text-gray-600">{"  "}</span>
+                    <span className="text-gray-400">{"UI               "}</span>
+                    <span className="text-yellow-400">{"██░░░ medium"}</span>
+                    <span className="text-gray-600">{"   2 decisions"}</span>
                   </div>
                 </div>
               </div>
@@ -227,14 +177,12 @@ export function Demo() {
               <div className="space-y-2">
                 <div>
                   <span className="text-cyan-400 font-bold">1/6</span>
-                  <span className="text-gray-500">
-                    {"  Stack  STACK-001"}
-                  </span>
+                  <span className="text-gray-500">{"  Stack  STACK-001"}</span>
                 </div>
                 <div className="text-white font-bold">
                   Backend language and framework?
                 </div>
-                <div className="text-gray-500 italic">
+                <div className="text-gray-500 italic text-[10px]">
                   Determines ecosystem and deployment model
                 </div>
                 <div className="space-y-0.5 mt-1">
@@ -256,9 +204,7 @@ export function Demo() {
                   </div>
                   <div>
                     <span className="text-gray-500">{"   "}</span>
-                    <span className="text-purple-400">
-                      D) Choose for me
-                    </span>
+                    <span className="text-purple-400">D) Choose for me</span>
                   </div>
                 </div>
               </div>
@@ -269,13 +215,9 @@ export function Demo() {
               <div className="space-y-2">
                 <div>
                   <span className="text-cyan-400 font-bold">2/6</span>
-                  <span className="text-gray-500">
-                    {"  Stack  STACK-002"}
-                  </span>
+                  <span className="text-gray-500">{"  Stack  STACK-002"}</span>
                 </div>
-                <div className="text-white font-bold">
-                  Frontend framework?
-                </div>
+                <div className="text-white font-bold">Frontend framework?</div>
                 <div className="space-y-0.5 mt-1">
                   <div>
                     <span className="text-gray-500">{"   "}</span>
@@ -291,18 +233,12 @@ export function Demo() {
                   </div>
                   <div>
                     <span className="text-gray-500">{"   "}</span>
-                    <span className="text-purple-400">
-                      C) Choose for me
-                    </span>
+                    <span className="text-purple-400">C) Choose for me</span>
                   </div>
                 </div>
-                <div className="text-gray-500 mt-2 text-[10px]">
-                  Recent:
-                </div>
-                <div className="text-gray-500 text-[10px]">
+                <div className="text-gray-600 mt-2 text-[10px]">
                   {"  "}
-                  <span className="text-green-400">✓</span> STACK-001 Backend
-                  language? → Bun with Hono
+                  <span className="text-green-400">✓</span> STACK-001 Backend → Bun with Hono
                 </div>
               </div>
             )}
@@ -310,26 +246,16 @@ export function Demo() {
             {/* Executing */}
             {phase === "executing" && (
               <div className="space-y-1">
-                <div className="text-green-400">
-                  ✓ All 6 decisions answered
+                <div className="text-green-400 font-bold">
+                  All 6 decisions answered
                 </div>
-                <div className="text-gray-500 text-[10px]">
-                  {"  "}✓ STACK-001 Bun with Hono
-                </div>
-                <div className="text-gray-500 text-[10px]">
-                  {"  "}✓ STACK-002 Svelte with SvelteKit
-                </div>
-                <div className="text-gray-500 text-[10px]">
-                  {"  "}◆ API-001 delegated: REST with /api prefix
-                </div>
-                <div className="text-gray-500 text-[10px]">
-                  {"  "}◆ API-002 delegated: offset pagination
-                </div>
-                <div className="text-gray-500 text-[10px]">
-                  {"  "}✓ DATA-001 SQLite with Drizzle ORM
-                </div>
-                <div className="text-gray-500 text-[10px]">
-                  {"  "}✓ UI-001 Tailwind CSS
+                <div className="text-gray-500 text-[10px] space-y-0.5">
+                  <div>{"  "}✓ STACK-001 Bun with Hono</div>
+                  <div>{"  "}✓ STACK-002 Svelte with SvelteKit</div>
+                  <div>{"  "}◆ API-001 delegated: REST with /api prefix</div>
+                  <div>{"  "}◆ API-002 delegated: offset pagination</div>
+                  <div>{"  "}✓ DATA-001 SQLite with Drizzle ORM</div>
+                  <div>{"  "}✓ UI-001 Tailwind CSS</div>
                 </div>
                 <div className="mt-2 text-cyan-400 animate-pulse">
                   Building...
@@ -344,22 +270,18 @@ export function Demo() {
                   Created src/index.ts, src/routes/, src/db/
                 </div>
                 <div className="mt-2 text-yellow-400 text-[10px]">
-                  Assumptions made during execution:
+                  Assumptions:
                 </div>
-                <div className="text-gray-500 text-[10px]">
-                  {"  "}
-                  <span className="text-yellow-400">⚠</span> NAMI-001
-                  camelCase for routes (framework convention)
-                </div>
-                <div className="text-gray-500 text-[10px]">
-                  {"  "}
-                  <span className="text-yellow-400">⚠</span> STRU-001
-                  src/routes/todos.ts (Hono file-based routing)
-                </div>
-                <div className="text-gray-500 text-[10px]">
-                  {"  "}
-                  <span className="text-yellow-400">⚠</span> ERRO-001
-                  422 for validation errors (semantically correct)
+                <div className="text-gray-500 text-[10px] space-y-0.5">
+                  <div>
+                    {"  "}<span className="text-yellow-400">⚠</span> NAMI-001 camelCase for routes (framework convention)
+                  </div>
+                  <div>
+                    {"  "}<span className="text-yellow-400">⚠</span> STRU-001 src/routes/todos.ts (Hono file-based routing)
+                  </div>
+                  <div>
+                    {"  "}<span className="text-yellow-400">⚠</span> ERRO-001 422 for validation errors (semantically correct)
+                  </div>
                 </div>
                 {phase === "done" && (
                   <div className="mt-2 text-green-400">Done. $0.04</div>
@@ -377,18 +299,15 @@ export function Demo() {
               : phase === "executing" || phase === "assumption"
                 ? "executing"
                 : phase === "done"
-                  ? "done"
+                  ? "done | 6/6 decisions | 3 assumptions | $0.04"
                   : "asking"}
-            {phase === "done" && " | 6/6 decisions | 3 assumptions | $0.04"}
           </span>
           <span className="text-gray-600 text-[10px]">/help</span>
         </div>
 
-        {/* Input prompt */}
+        {/* Input */}
         <div className="px-4 py-2 border-t border-border/50">
-          <span className="text-cyan-400 font-bold text-xs">
-            {"defer > "}
-          </span>
+          <span className="text-cyan-400 font-bold text-xs">{"defer > "}</span>
           <span className="text-gray-600 animate-pulse">|</span>
         </div>
       </div>
