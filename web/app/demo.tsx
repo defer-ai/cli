@@ -78,16 +78,12 @@ export function Demo() {
     return (
       <button
         onClick={() => setPhase("boot")}
-        className="group w-full py-16 border border-border/50 rounded-xl bg-surface/50 hover:bg-surface hover:border-accent/30 transition-all cursor-pointer flex flex-col items-center justify-center gap-3"
+        className="inline-flex items-center gap-3 px-8 py-4 bg-accent text-background text-lg font-bold rounded-xl hover:bg-accent/85 transition-colors cursor-pointer"
       >
-        <div className="w-14 h-14 rounded-full bg-accent/10 group-hover:bg-accent/20 flex items-center justify-center transition-colors">
-          <svg className="w-6 h-6 text-accent ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        </div>
-        <span className="text-sm text-muted group-hover:text-foreground transition-colors">
-          Run demo
-        </span>
+        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+        Run demo
       </button>
     );
   }
