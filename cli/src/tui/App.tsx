@@ -464,27 +464,26 @@ function GitView() {
 
   React.useEffect(() => {
     try {
-      const { execSync } = require("node:child_process");
-      execSync("git rev-parse --is-inside-work-tree", { stdio: "pipe" });
-      const branch = execSync("git branch --show-current", {
-        encoding: "utf-8",
-      }).trim();
+      const cp = require("child_process");
+      const opts = { stdio: "pipe" as const, encoding: "utf-8" as const, cwd: process.cwd() };
+      cp.execSync("git rev-parse --is-inside-work-tree", opts);
+      const branch = cp.execSync("git branch --show-current", opts).trim();
       let commits: string[] = [];
       try {
-        commits = execSync("git log --oneline -10", { encoding: "utf-8" })
+        commits = cp.execSync("git log --oneline -10", opts)
           .trim()
           .split("\n")
           .filter(Boolean);
       } catch {}
       let dirty: string[] = [];
       try {
-        dirty = execSync("git status --short", { encoding: "utf-8" })
+        dirty = cp.execSync("git status --short", opts)
           .trim()
           .split("\n")
           .filter(Boolean);
       } catch {}
       setInfo({ branch, commits, dirty });
-    } catch {
+    } catch (e) {
       setInfo(null);
     }
   }, []);
