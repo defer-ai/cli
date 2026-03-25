@@ -21,12 +21,11 @@ export default function Home() {
           </h1>
 
           <p className="text-lg text-muted leading-relaxed max-w-2xl mb-4">
-            Ship a feature in one prompt. Spend the next hour undoing
-            choices you never made. Defer fixes that.
+            For when you want AI to do the work, not make the calls.
           </p>
           <p className="text-lg leading-relaxed max-w-2xl mb-10">
             <span className="text-foreground">
-              The AI asks every question upfront. You answer. It builds exactly what you meant.
+              Defer asks every question upfront. You answer. It builds exactly what you meant.
             </span>{" "}
             <span className="text-muted">
               Every decision recorded. Every AI choice visible. Nothing hidden.
