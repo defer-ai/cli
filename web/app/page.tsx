@@ -10,7 +10,7 @@ export default function Home() {
       <header className="relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-accent/8 via-transparent to-transparent" />
         <div className="relative max-w-3xl mx-auto px-6 pt-16 pb-10">
-          <div className="mb-10">
+          <div className="mb-10 flex justify-center">
             <MascotLogo />
           </div>
 

@@ -209,17 +209,13 @@ export function MascotLogo() {
     return () => clearInterval(interval);
   }, []);
 
-  const px = 7;
+  const px = 35;
   const eyeW = 6;
   const eyeH = MAX_EYE_H;
 
   const noiseColors = [
-    "bg-gray-100",
-    "bg-gray-300",
-    "bg-gray-200",
+    "bg-black",
     "bg-white",
-    "bg-cyan-100",
-    "bg-cyan-200",
   ];
 
   function NoiseEye() {
@@ -267,14 +263,14 @@ export function MascotLogo() {
   }
 
   return (
-    <div className="inline-flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-4">
       {/* Eyes */}
-      <div className="flex gap-6">
+      <div className="flex gap-10">
         <NoiseEye />
         <NoiseEye />
       </div>
       {/* Mouth = defer.sh */}
-      <span className="font-mono text-sm text-accent tracking-widest">
+      <span className="font-mono text-2xl text-accent tracking-[0.3em]">
         defer.sh
       </span>
     </div>
