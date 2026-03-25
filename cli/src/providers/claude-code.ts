@@ -7,7 +7,6 @@ import type { LLMProvider, Message, StreamEvent } from "./types.js";
 function findClaude(): string | null {
   const home = process.env.HOME || "";
 
-  // Try direct known paths first (fastest)
   const knownPaths = [
     join(home, ".local", "bin", "claude"),
     join(home, ".npm-global", "bin", "claude"),
@@ -19,7 +18,6 @@ function findClaude(): string | null {
     if (existsSync(p)) return p;
   }
 
-  // Fall back to which
   try {
     return execSync("which claude", {
       stdio: "pipe",
@@ -34,10 +32,20 @@ function findClaude(): string | null {
 export class ClaudeCodeProvider implements LLMProvider {
   name = "Claude Code";
   private claudePath: string | null = null;
+  sessionId: string | null = null;
+  model: string = "sonnet";
 
   isConfigured(): boolean {
     this.claudePath = findClaude();
     return this.claudePath !== null;
+  }
+
+  getClaudePath(): string | null {
+    return this.claudePath;
+  }
+
+  setModel(model: string): void {
+    this.model = model;
   }
 
   async *stream(
@@ -56,7 +64,9 @@ export class ClaudeCodeProvider implements LLMProvider {
     }
 
     let prompt = lastUserMessage.content;
-    if (messages.length > 1) {
+
+    // Only include context if this is a new session (no resume)
+    if (!this.sessionId && messages.length > 1) {
       const context = messages
         .slice(0, -1)
         .map((m) => {
@@ -72,10 +82,18 @@ export class ClaudeCodeProvider implements LLMProvider {
       "--verbose",
       "--output-format",
       "stream-json",
-      "--system-prompt",
-      systemPrompt,
-      prompt,
+      "--model",
+      this.model,
     ];
+
+    // Resume session if we have one
+    if (this.sessionId) {
+      args.push("--resume", this.sessionId);
+    } else {
+      args.push("--system-prompt", systemPrompt);
+    }
+
+    args.push(prompt);
 
     const child = spawn(this.claudePath, args, {
       stdio: ["pipe", "pipe", "pipe"],
@@ -91,7 +109,7 @@ export class ClaudeCodeProvider implements LLMProvider {
       try {
         const event = JSON.parse(line);
 
-        // Content block deltas (streaming text chunks) - preferred
+        // Content block deltas (streaming text chunks)
         if (event.type === "content_block_delta") {
           if (event.delta?.type === "text_delta" && event.delta.text) {
             yield { type: "text", content: event.delta.text };
@@ -100,8 +118,12 @@ export class ClaudeCodeProvider implements LLMProvider {
           continue;
         }
 
-        // Assistant message with full content - only if no deltas came
-        if (event.type === "assistant" && !textEmitted && event.message?.content) {
+        // Assistant message - only if no deltas
+        if (
+          event.type === "assistant" &&
+          !textEmitted &&
+          event.message?.content
+        ) {
           for (const block of event.message.content) {
             if (block.type === "text") {
               yield { type: "text", content: block.text };
@@ -111,15 +133,22 @@ export class ClaudeCodeProvider implements LLMProvider {
           continue;
         }
 
-        // Final result - only if nothing else emitted text
+        // Result - capture session ID
         if (event.type === "result") {
-          if (!textEmitted && event.result) {
+          if (event.session_id) {
+            this.sessionId = event.session_id;
+          }
+          if (event.result?.session_id) {
+            this.sessionId = event.result.session_id;
+          }
+
+          if (!textEmitted) {
             const text =
               typeof event.result === "string"
                 ? event.result
-                : typeof event.result.result === "string"
+                : typeof event.result?.result === "string"
                   ? event.result.result
-                  : event.result.content
+                  : event.result?.content
                     ?.filter((b: any) => b.type === "text")
                     .map((b: any) => b.text)
                     .join("") || "";

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import type { AgentState } from "../agents/agent.js";
 
@@ -16,46 +16,40 @@ export function DecisionModal({ agent, onAnswer, onDone, rows }: Props) {
 
   const pending = agent.decisions.filter((d) => d.answer === null);
   const answered = agent.decisions.filter((d) => d.answer !== null);
-  const current = agent.pendingIndex >= 0
-    ? agent.decisions[agent.pendingIndex]
-    : pending[0];
+  const current =
+    agent.pendingIndex >= 0
+      ? agent.decisions[agent.pendingIndex]
+      : pending[0] || null;
 
-  // All done
-  if (!current || pending.length === 0) {
-    return (
-      <Box flexDirection="column" height={rows} paddingX={2} paddingY={1}>
-        <Box flexDirection="column" flexGrow={1}>
-          <Text color="green" bold>
-            All decisions answered.
-          </Text>
-          <Box marginTop={1} flexDirection="column">
-            {agent.decisions.map((d) => (
-              <Box key={d.id}>
-                <Text color={d.delegated ? "magenta" : "green"}>
-                  {d.delegated ? "◆" : "✓"}{" "}
-                </Text>
-                <Text color="gray">{d.id} </Text>
-                <Text>
-                  {d.delegated ? `delegated: ${d.answer}` : d.answer}
-                </Text>
-              </Box>
-            ))}
-          </Box>
-        </Box>
-        <Box>
-          <Text color="gray" dimColor>
-            Proceeding...
-          </Text>
-        </Box>
-      </Box>
-    );
-  }
-
+  const allDone = pending.length === 0;
   const totalCount = agent.decisions.length;
   const answeredCount = answered.length;
   const currentNum = answeredCount + 1;
 
+  // Reset selection when moving to next decision
+  useEffect(() => {
+    setSelectedOption(0);
+    setTextMode(false);
+    setTextValue("");
+  }, [agent.pendingIndex]);
+
+  // Auto-close when all done
+  useEffect(() => {
+    if (allDone && totalCount > 0) {
+      const timer = setTimeout(onDone, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [allDone, totalCount, onDone]);
+
   useInput((input, key) => {
+    // All done state - any key closes
+    if (allDone) {
+      onDone();
+      return;
+    }
+
+    if (!current) return;
+
     if (textMode) {
       if (key.escape) {
         setTextMode(false);
@@ -66,7 +60,6 @@ export function DecisionModal({ agent, onAnswer, onDone, rows }: Props) {
         onAnswer(textValue.trim());
         setTextValue("");
         setTextMode(false);
-        setSelectedOption(0);
         return;
       }
       if (key.backspace || key.delete) {
@@ -82,7 +75,7 @@ export function DecisionModal({ agent, onAnswer, onDone, rows }: Props) {
     // Option navigation
     if (input === "j" || key.downArrow) {
       setSelectedOption((i) =>
-        Math.min(i + 1, current.options.length - 1)
+        Math.min(i + 1, (current.options.length || 1) - 1)
       );
     }
     if (input === "k" || key.upArrow) {
@@ -90,24 +83,66 @@ export function DecisionModal({ agent, onAnswer, onDone, rows }: Props) {
     }
     if (key.return && current.options[selectedOption]) {
       onAnswer(current.options[selectedOption].key);
-      setSelectedOption(0);
     }
     if (input === "t") {
       setTextMode(true);
     }
+    if (key.escape) {
+      onDone();
+    }
   });
+
+  // All done view
+  if (allDone) {
+    return (
+      <Box flexDirection="column" height={rows} paddingX={2} paddingY={1}>
+        <Text color="green" bold>
+          All {totalCount} decisions answered.
+        </Text>
+        <Box marginTop={1} flexDirection="column">
+          {agent.decisions.map((d) => (
+            <Box key={d.id}>
+              <Text color={d.delegated ? "magenta" : "green"}>
+                {d.delegated ? "◆" : "✓"}{" "}
+              </Text>
+              <Text color="gray">{d.id} </Text>
+              <Text>{d.question} </Text>
+              <Text color="gray">
+                → {d.delegated ? `delegated: ${d.answer}` : d.answer}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+        <Box flexGrow={1} />
+        <Text color="gray" dimColor>
+          Proceeding with execution...
+        </Text>
+      </Box>
+    );
+  }
+
+  // No current decision (shouldn't happen, but safe)
+  if (!current) {
+    return (
+      <Box flexDirection="column" height={rows} padding={2}>
+        <Text color="gray">Waiting for decisions...</Text>
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" height={rows} paddingX={2} paddingY={1}>
-      {/* Header */}
+      {/* Header bar */}
       <Box marginBottom={1}>
         <Text color="cyan" bold>
           {currentNum}/{totalCount}
         </Text>
-        <Text color="gray"> | </Text>
+        <Text color="gray">  </Text>
         <Text color="gray">{current.category}</Text>
-        <Text color="gray"> | </Text>
-        <Text color="cyan">{current.id}</Text>
+        <Text color="gray">  </Text>
+        <Text color="cyan" dimColor>
+          {current.id}
+        </Text>
       </Box>
 
       {/* Question */}
@@ -118,16 +153,16 @@ export function DecisionModal({ agent, onAnswer, onDone, rows }: Props) {
       </Box>
 
       {/* Context */}
-      {current.context && (
+      {current.context ? (
         <Box marginBottom={1}>
           <Text color="gray" italic wrap="wrap">
             {current.context}
           </Text>
         </Box>
-      )}
+      ) : null}
 
       {/* Options */}
-      {!textMode && current.options.length > 0 && (
+      {!textMode && current.options.length > 0 ? (
         <Box flexDirection="column" marginBottom={1}>
           {current.options.map((opt, i) => {
             const isSelected = i === selectedOption;
@@ -135,9 +170,9 @@ export function DecisionModal({ agent, onAnswer, onDone, rows }: Props) {
               .toLowerCase()
               .includes("choose for me");
             return (
-              <Box key={opt.key}>
+              <Box key={opt.key} paddingLeft={1}>
                 <Text color={isSelected ? "cyan" : "gray"}>
-                  {isSelected ? "  > " : "    "}
+                  {isSelected ? " >" : "  "}{" "}
                 </Text>
                 <Text
                   color={
@@ -155,51 +190,50 @@ export function DecisionModal({ agent, onAnswer, onDone, rows }: Props) {
             );
           })}
         </Box>
-      )}
+      ) : null}
 
-      {/* Text input mode */}
-      {textMode && (
-        <Box marginBottom={1}>
-          <Text color="yellow">{"> "}</Text>
+      {/* Text input */}
+      {textMode ? (
+        <Box marginBottom={1} paddingLeft={2}>
+          <Text color="yellow">{">"} </Text>
           <Text>{textValue}</Text>
           <Text color="gray">|</Text>
         </Box>
-      )}
+      ) : null}
 
       {/* Previously answered (compact) */}
-      {answered.length > 0 && (
+      {answered.length > 0 ? (
         <Box flexDirection="column" marginTop={1}>
           <Text color="gray" dimColor>
             Answered:
           </Text>
-          {answered.slice(-5).map((d) => (
+          {answered.slice(-4).map((d) => (
             <Box key={d.id} paddingLeft={2}>
               <Text color={d.delegated ? "magenta" : "green"}>
                 {d.delegated ? "◆" : "✓"}{" "}
               </Text>
               <Text color="gray">
-                {d.id} {d.question}{" "}
+                {d.question} → {d.answer}
               </Text>
-              <Text color="green">{d.answer}</Text>
             </Box>
           ))}
-          {answered.length > 5 && (
+          {answered.length > 4 ? (
             <Box paddingLeft={2}>
               <Text color="gray" dimColor>
-                ...and {answered.length - 5} more
+                ...and {answered.length - 4} more
               </Text>
             </Box>
-          )}
+          ) : null}
         </Box>
-      )}
+      ) : null}
 
       {/* Footer */}
       <Box flexGrow={1} />
       <Box>
         <Text color="gray" dimColor>
           {textMode
-            ? "enter:submit  esc:back to options"
-            : "↑/↓:navigate  enter:select  t:type custom"}
+            ? "enter:submit  esc:back"
+            : "↑/↓:navigate  enter:select  t:type custom  esc:close"}
         </Text>
       </Box>
     </Box>

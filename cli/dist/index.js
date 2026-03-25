@@ -10,15 +10,10 @@ program
     .name("defer")
     .description("Zero-Autonomy AI. Every decision is yours.")
     .version("0.1.0");
-// Main command: `defer "build auth"` launches the TUI
+// Main command: `defer` or `defer "build auth"`
 program
-    .argument("[task]", "Task to run with Defer mode (launches TUI dashboard)")
+    .argument("[task]", "Task to run (or omit to start interactive mode)")
     .action(async (task) => {
-    if (!task) {
-        program.help();
-        return;
-    }
-    // Dynamic import to avoid loading ink for subcommands
     const { render } = await import("ink");
     const React = await import("react");
     const { App } = await import("./tui/App.js");
@@ -30,42 +25,38 @@ program
         console.error("Then run: claude login");
         process.exit(1);
     }
-    // Enter alternate screen buffer to prevent line duplication
-    process.stdout.write("\x1b[?1049h");
-    process.stdout.write("\x1b[2J\x1b[H");
-    const instance = render(React.createElement(App, { task, provider }), {
-        exitOnCtrlC: true,
-    });
+    // Alternate screen buffer
+    process.stdout.write("\x1b[?1049h\x1b[2J\x1b[H");
+    const instance = render(React.createElement(App, { task, provider }), { exitOnCtrlC: true });
     instance.waitUntilExit().then(() => {
-        // Restore main screen buffer
         process.stdout.write("\x1b[?1049l");
     });
 });
-// Subcommands for non-TUI operations
+// Subcommands
 program
     .command("init")
-    .description("Scaffold Defer mode config files into your project")
-    .argument("[target]", "Target tool: claude-code, cursor, chatgpt, universal, api")
+    .description("Scaffold Defer config files")
+    .argument("[target]", "claude-code, cursor, chatgpt, universal, api")
     .action(initCommand);
 program
     .command("status")
-    .description("View and navigate your decision record")
+    .description("View decision record")
     .action(statusCommand);
 program
     .command("revisit")
-    .description("Revisit and change a previous decision")
-    .argument("[id]", "Decision ID to revisit (e.g. D001)")
+    .description("Revisit a decision")
+    .argument("[id]", "Decision ID (e.g. STACK-001)")
     .action(revisitCommand);
 program
     .command("log")
-    .description("Add a decision to the record")
-    .option("-c, --category <category>", "Decision category")
-    .option("-q, --question <question>", "The question that was decided")
-    .option("-a, --answer <answer>", "The answer/choice made")
-    .option("-d, --delegated", "Mark as delegated to AI")
+    .description("Add a decision manually")
+    .option("-c, --category <category>", "Category")
+    .option("-q, --question <question>", "Question")
+    .option("-a, --answer <answer>", "Answer")
+    .option("-d, --delegated", "Mark as delegated")
     .action(logCommand);
 program
     .command("diff")
-    .description("Show git changes since last decision review")
+    .description("Git changes since last decision")
     .action(diffCommand);
 program.parse();

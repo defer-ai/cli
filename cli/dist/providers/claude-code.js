@@ -4,7 +4,6 @@ import { createInterface } from "node:readline";
 import { join } from "node:path";
 function findClaude() {
     const home = process.env.HOME || "";
-    // Try direct known paths first (fastest)
     const knownPaths = [
         join(home, ".local", "bin", "claude"),
         join(home, ".npm-global", "bin", "claude"),
@@ -15,7 +14,6 @@ function findClaude() {
         if (existsSync(p))
             return p;
     }
-    // Fall back to which
     try {
         return execSync("which claude", {
             stdio: "pipe",
@@ -30,9 +28,17 @@ function findClaude() {
 export class ClaudeCodeProvider {
     name = "Claude Code";
     claudePath = null;
+    sessionId = null;
+    model = "sonnet";
     isConfigured() {
         this.claudePath = findClaude();
         return this.claudePath !== null;
+    }
+    getClaudePath() {
+        return this.claudePath;
+    }
+    setModel(model) {
+        this.model = model;
     }
     async *stream(systemPrompt, messages) {
         if (!this.claudePath) {
@@ -45,7 +51,8 @@ export class ClaudeCodeProvider {
             return;
         }
         let prompt = lastUserMessage.content;
-        if (messages.length > 1) {
+        // Only include context if this is a new session (no resume)
+        if (!this.sessionId && messages.length > 1) {
             const context = messages
                 .slice(0, -1)
                 .map((m) => {
@@ -60,10 +67,17 @@ export class ClaudeCodeProvider {
             "--verbose",
             "--output-format",
             "stream-json",
-            "--system-prompt",
-            systemPrompt,
-            prompt,
+            "--model",
+            this.model,
         ];
+        // Resume session if we have one
+        if (this.sessionId) {
+            args.push("--resume", this.sessionId);
+        }
+        else {
+            args.push("--system-prompt", systemPrompt);
+        }
+        args.push(prompt);
         const child = spawn(this.claudePath, args, {
             stdio: ["pipe", "pipe", "pipe"],
             env: { ...process.env },
@@ -75,7 +89,7 @@ export class ClaudeCodeProvider {
                 continue;
             try {
                 const event = JSON.parse(line);
-                // Content block deltas (streaming text chunks) - preferred
+                // Content block deltas (streaming text chunks)
                 if (event.type === "content_block_delta") {
                     if (event.delta?.type === "text_delta" && event.delta.text) {
                         yield { type: "text", content: event.delta.text };
@@ -83,8 +97,10 @@ export class ClaudeCodeProvider {
                     }
                     continue;
                 }
-                // Assistant message with full content - only if no deltas came
-                if (event.type === "assistant" && !textEmitted && event.message?.content) {
+                // Assistant message - only if no deltas
+                if (event.type === "assistant" &&
+                    !textEmitted &&
+                    event.message?.content) {
                     for (const block of event.message.content) {
                         if (block.type === "text") {
                             yield { type: "text", content: block.text };
@@ -93,14 +109,20 @@ export class ClaudeCodeProvider {
                     }
                     continue;
                 }
-                // Final result - only if nothing else emitted text
+                // Result - capture session ID
                 if (event.type === "result") {
-                    if (!textEmitted && event.result) {
+                    if (event.session_id) {
+                        this.sessionId = event.session_id;
+                    }
+                    if (event.result?.session_id) {
+                        this.sessionId = event.result.session_id;
+                    }
+                    if (!textEmitted) {
                         const text = typeof event.result === "string"
                             ? event.result
-                            : typeof event.result.result === "string"
+                            : typeof event.result?.result === "string"
                                 ? event.result.result
-                                : event.result.content
+                                : event.result?.content
                                     ?.filter((b) => b.type === "text")
                                     .map((b) => b.text)
                                     .join("") || "";
