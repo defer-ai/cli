@@ -4,159 +4,177 @@ import { useState, useEffect } from "react";
 
 type Mood = "idle" | "thinking" | "asking" | "done";
 
-// CSS pixel grid mascot - each eye is a 4x3 grid, mouth is a row
-// 1 = filled (eye border), 0 = empty (white of eye), 2 = pupil
-type Grid = number[][];
+// Faithful recreation of the CLI mascot as a pixel grid
+// The mascot is: two rectangular eyes (6w x 3-4h) with a gap, and a centered mouth bar
+// 0 = transparent, 1 = cyan (border), 2 = white (eye interior), 3 = dark (pupil), 4 = sparkle
 
-interface Face {
-  leftEye: Grid;
-  rightEye: Grid;
-  mouth: Grid;
+// Each frame is a 2D grid representing the full mascot
+type Frame = number[][];
+
+function makeFrame(
+  eyeHeight: number,
+  leftPupil: number[][],
+  rightPupil: number[][],
+  mouthWidth: number
+): Frame {
+  const W = 21; // total width
+  const eyeW = 6;
+  const gap = 3; // gap between eyes
+  const eyeStartL = 1;
+  const eyeStartR = eyeStartL + eyeW + gap;
+  const mouthStart = Math.floor((W - mouthWidth) / 2);
+
+  const rows: Frame = [];
+
+  // Eye top border
+  const topRow = new Array(W).fill(0);
+  for (let x = eyeStartL + 1; x < eyeStartL + eyeW - 1; x++) topRow[x] = 1;
+  for (let x = eyeStartR + 1; x < eyeStartR + eyeW - 1; x++) topRow[x] = 1;
+  rows.push([...topRow]);
+
+  // Eye body rows
+  for (let y = 0; y < eyeHeight; y++) {
+    const row = new Array(W).fill(0);
+    // Left eye
+    row[eyeStartL] = 1;
+    row[eyeStartL + eyeW - 1] = 1;
+    for (let x = 1; x < eyeW - 1; x++) {
+      row[eyeStartL + x] = leftPupil[y]?.[x - 1] ?? 2;
+    }
+    // Right eye
+    row[eyeStartR] = 1;
+    row[eyeStartR + eyeW - 1] = 1;
+    for (let x = 1; x < eyeW - 1; x++) {
+      row[eyeStartR + x] = rightPupil[y]?.[x - 1] ?? 2;
+    }
+    rows.push(row);
+  }
+
+  // Eye bottom border
+  const botRow = new Array(W).fill(0);
+  for (let x = eyeStartL + 1; x < eyeStartL + eyeW - 1; x++) botRow[x] = 1;
+  for (let x = eyeStartR + 1; x < eyeStartR + eyeW - 1; x++) botRow[x] = 1;
+  rows.push([...botRow]);
+
+  // Gap between eyes and mouth
+  rows.push(new Array(W).fill(0));
+
+  // Mouth
+  const mouthRow = new Array(W).fill(0);
+  for (let x = mouthStart; x < mouthStart + mouthWidth; x++) mouthRow[x] = 1;
+  rows.push(mouthRow);
+
+  return rows;
 }
 
-const FACES: Record<Mood, Face[]> = {
+// Pupil patterns (4 wide for the interior of each eye)
+// 2 = white, 3 = dark pupil, 4 = sparkle
+
+const PUPIL_EMPTY: number[][] = [
+  [2, 2, 2, 2],
+  [2, 2, 2, 2],
+];
+const PUPIL_HALF: number[][] = [
+  [2, 3, 3, 2],
+  [2, 2, 2, 2],
+];
+const PUPIL_CLOSED: number[][] = [
+  [3, 3, 3, 3],
+];
+const PUPIL_SNAKE_1: number[][] = [
+  [2, 2, 3, 2],
+  [2, 3, 2, 2],
+];
+const PUPIL_SNAKE_2: number[][] = [
+  [2, 3, 2, 2],
+  [2, 2, 3, 2],
+];
+const PUPIL_BIG: number[][] = [
+  [2, 3, 3, 2],
+  [2, 3, 3, 2],
+];
+const PUPIL_QUESTION_1: number[][] = [
+  [2, 3, 3, 2],
+  [2, 2, 3, 2],
+];
+const PUPIL_QUESTION_2: number[][] = [
+  [2, 2, 2, 2],
+  [2, 2, 3, 2],
+];
+const PUPIL_SPARKLE_1: number[][] = [
+  [2, 4, 2, 2],
+  [2, 2, 2, 2],
+];
+const PUPIL_SPARKLE_2: number[][] = [
+  [2, 2, 2, 4],
+  [2, 2, 2, 2],
+];
+const PUPIL_SQUINT: number[][] = [
+  [2, 3, 3, 2],
+];
+
+const FRAMES: Record<Mood, Frame[]> = {
   idle: [
-    {
-      leftEye: [
-        [1, 1, 1, 1],
-        [1, 0, 0, 1],
-        [1, 1, 1, 1],
-      ],
-      rightEye: [
-        [1, 1, 1, 1],
-        [1, 0, 0, 1],
-        [1, 1, 1, 1],
-      ],
-      mouth: [[0, 1, 1, 1, 1, 0]],
-    },
-    {
-      leftEye: [
-        [1, 1, 1, 1],
-        [1, 1, 1, 1],
-        [1, 1, 1, 1],
-      ],
-      rightEye: [
-        [1, 1, 1, 1],
-        [1, 1, 1, 1],
-        [1, 1, 1, 1],
-      ],
-      mouth: [[0, 1, 1, 1, 1, 0]],
-    },
+    makeFrame(2, PUPIL_EMPTY, PUPIL_EMPTY, 8),
+    makeFrame(2, PUPIL_HALF, PUPIL_HALF, 8),
+    makeFrame(1, PUPIL_CLOSED, PUPIL_CLOSED, 8),
+    makeFrame(2, PUPIL_HALF, PUPIL_HALF, 8),
   ],
   thinking: [
-    {
-      leftEye: [
-        [1, 1, 1, 1],
-        [1, 0, 2, 1],
-        [1, 2, 0, 1],
-        [1, 1, 1, 1],
-      ],
-      rightEye: [
-        [1, 1, 1, 1],
-        [1, 0, 2, 1],
-        [1, 2, 0, 1],
-        [1, 1, 1, 1],
-      ],
-      mouth: [[0, 0, 1, 1, 0, 0]],
-    },
-    {
-      leftEye: [
-        [1, 1, 1, 1],
-        [1, 2, 0, 1],
-        [1, 0, 2, 1],
-        [1, 1, 1, 1],
-      ],
-      rightEye: [
-        [1, 1, 1, 1],
-        [1, 2, 0, 1],
-        [1, 0, 2, 1],
-        [1, 1, 1, 1],
-      ],
-      mouth: [[0, 0, 1, 1, 0, 0]],
-    },
+    makeFrame(2, PUPIL_SNAKE_1, PUPIL_SNAKE_1, 8),
+    makeFrame(2, PUPIL_SNAKE_2, PUPIL_SNAKE_2, 8),
   ],
   asking: [
-    {
-      leftEye: [
-        [1, 1, 1, 1],
-        [1, 2, 2, 1],
-        [1, 2, 2, 1],
-        [1, 1, 1, 1],
-      ],
-      rightEye: [
-        [1, 1, 1, 1],
-        [1, 2, 2, 1],
-        [1, 2, 2, 1],
-        [1, 1, 1, 1],
-      ],
-      mouth: [[0, 1, 1, 1, 1, 0]],
-    },
-    {
-      leftEye: [
-        [1, 1, 1, 1],
-        [1, 0, 0, 1],
-        [1, 0, 2, 1],
-        [1, 1, 1, 1],
-      ],
-      rightEye: [
-        [1, 1, 1, 1],
-        [1, 0, 0, 1],
-        [1, 0, 2, 1],
-        [1, 1, 1, 1],
-      ],
-      mouth: [[0, 1, 1, 1, 1, 0]],
-    },
+    makeFrame(2, PUPIL_BIG, PUPIL_BIG, 8),
+    makeFrame(2, PUPIL_QUESTION_1, PUPIL_QUESTION_1, 8),
+    makeFrame(2, PUPIL_QUESTION_2, PUPIL_QUESTION_2, 8),
   ],
   done: [
-    {
-      leftEye: [
-        [1, 1, 1, 1],
-        [1, 0, 0, 1],
-        [1, 1, 1, 1],
-      ],
-      rightEye: [
-        [1, 1, 1, 1],
-        [1, 0, 0, 1],
-        [1, 1, 1, 1],
-      ],
-      mouth: [
-        [0, 1, 1, 1, 1, 0],
-        [0, 0, 1, 1, 0, 0],
-      ],
-    },
-    {
-      leftEye: [
-        [1, 1, 1, 1],
-        [1, 3, 0, 1],
-        [1, 1, 1, 1],
-      ],
-      rightEye: [
-        [1, 1, 1, 1],
-        [1, 0, 3, 1],
-        [1, 1, 1, 1],
-      ],
-      mouth: [
-        [0, 1, 1, 1, 1, 0],
-        [0, 0, 1, 1, 0, 0],
-      ],
-    },
+    makeFrame(1, PUPIL_SQUINT, PUPIL_SQUINT, 8),
+    makeFrame(2, PUPIL_SPARKLE_1, PUPIL_SPARKLE_2, 8),
+    makeFrame(2, PUPIL_SPARKLE_2, PUPIL_SPARKLE_1, 8),
   ],
 };
 
-const COLORS: Record<number, string> = {
-  0: "bg-white",        // white of eye
-  1: "bg-cyan-400",     // border/fill
-  2: "bg-cyan-900",     // pupil
-  3: "bg-yellow-300",   // sparkle
+const SPEEDS: Record<Mood, number> = {
+  idle: 600,
+  thinking: 200,
+  asking: 500,
+  done: 500,
 };
 
-function PixelGrid({
-  grid,
+const PIXEL_COLORS: Record<number, string> = {
+  0: "",                             // transparent
+  1: "bg-cyan-400",                  // border / mouth
+  2: "bg-gray-100 dark:bg-gray-200", // eye white
+  3: "bg-cyan-800 dark:bg-cyan-900", // pupil
+  4: "bg-yellow-300",                // sparkle
+};
+
+export function WebMascot({
+  mood,
   pixelSize = 4,
+  speed,
 }: {
-  grid: Grid;
+  mood: Mood;
   pixelSize?: number;
+  speed?: number;
 }) {
+  const [frame, setFrame] = useState(0);
+  const frames = FRAMES[mood];
+  const animSpeed = speed ?? SPEEDS[mood];
+
+  useEffect(() => {
+    setFrame(0);
+    const interval = setInterval(() => {
+      setFrame((f) => (f + 1) % frames.length);
+    }, animSpeed);
+    return () => clearInterval(interval);
+  }, [mood, frames.length, animSpeed]);
+
+  const grid = frames[frame % frames.length];
+  const px = pixelSize;
+
   return (
     <div className="inline-flex flex-col">
       {grid.map((row, y) => (
@@ -164,8 +182,12 @@ function PixelGrid({
           {row.map((cell, x) => (
             <div
               key={x}
-              className={`${COLORS[cell] || "bg-transparent"}`}
-              style={{ width: pixelSize, height: pixelSize }}
+              className={PIXEL_COLORS[cell] || ""}
+              style={{
+                width: px,
+                height: px,
+                ...(cell === 0 ? { background: "transparent" } : {}),
+              }}
             />
           ))}
         </div>
@@ -174,47 +196,9 @@ function PixelGrid({
   );
 }
 
-export function WebMascot({
-  mood,
-  pixelSize = 4,
-  speed = 600,
-}: {
-  mood: Mood;
-  pixelSize?: number;
-  speed?: number;
-}) {
-  const [frame, setFrame] = useState(0);
-  const frames = FACES[mood];
-
-  useEffect(() => {
-    setFrame(0);
-    const interval = setInterval(() => {
-      setFrame((f) => (f + 1) % frames.length);
-    }, speed);
-    return () => clearInterval(interval);
-  }, [mood, frames.length, speed]);
-
-  const face = frames[frame % frames.length];
-  const gap = pixelSize * 3;
-
-  return (
-    <div className="inline-flex flex-col items-center" style={{ gap: pixelSize * 2 }}>
-      {/* Eyes */}
-      <div className="flex items-end" style={{ gap }}>
-        <PixelGrid grid={face.leftEye} pixelSize={pixelSize} />
-        <PixelGrid grid={face.rightEye} pixelSize={pixelSize} />
-      </div>
-      {/* Mouth */}
-      <PixelGrid grid={face.mouth} pixelSize={pixelSize} />
-    </div>
-  );
-}
-
-/** Hero mascot - larger version */
 export function HeroMascot() {
   const [mood, setMood] = useState<Mood>("idle");
 
-  // Cycle through moods
   useEffect(() => {
     const moods: Mood[] = ["idle", "thinking", "asking", "done"];
     let idx = 0;
@@ -225,5 +209,5 @@ export function HeroMascot() {
     return () => clearInterval(interval);
   }, []);
 
-  return <WebMascot mood={mood} pixelSize={6} speed={400} />;
+  return <WebMascot mood={mood} pixelSize={5} />;
 }
