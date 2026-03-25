@@ -11,16 +11,29 @@
     "dev": "tsx src/index.ts",
     "test": "echo \"No tests yet\" && exit 0"
   },
-  "keywords": ["ai", "defer", "decisions", "prompt", "claude", "cursor", "chatgpt"],
+  "keywords": [
+    "ai",
+    "defer",
+    "decisions",
+    "prompt",
+    "claude",
+    "cursor",
+    "chatgpt"
+  ],
   "author": "gabrielmanhaes",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "@inquirer/prompts": "^8.3.2",
     "chalk": "^5.6.2",
-    "commander": "^14.0.3"
+    "commander": "^14.0.3",
+    "ink": "^6.8.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.4"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   }

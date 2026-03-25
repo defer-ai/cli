@@ -14,6 +14,46 @@ program
   .description("Zero-Autonomy AI. Every decision is yours.")
   .version("0.1.0");
 
+// Main command: `defer "build auth"` launches the TUI
+program
+  .argument("[task]", "Task to run with Defer mode (launches TUI dashboard)")
+  .option(
+    "-p, --provider <provider>",
+    "LLM provider: anthropic (default)",
+    "anthropic"
+  )
+  .option("-m, --model <model>", "Model to use")
+  .action(async (task: string | undefined, options: { provider: string; model?: string }) => {
+    if (!task) {
+      program.help();
+      return;
+    }
+
+    // Dynamic import to avoid loading ink for subcommands
+    const { render } = await import("ink");
+    const React = await import("react");
+    const { App } = await import("./tui/App.js");
+    const { AnthropicProvider } = await import("./providers/anthropic.js");
+
+    let provider;
+    switch (options.provider) {
+      case "anthropic":
+      default:
+        provider = new AnthropicProvider(options.model);
+        break;
+    }
+
+    if (!provider.isConfigured()) {
+      console.error(
+        `Error: ${provider.name} is not configured. Set ANTHROPIC_API_KEY.`
+      );
+      process.exit(1);
+    }
+
+    render(React.createElement(App, { task, provider }));
+  });
+
+// Subcommands for non-TUI operations
 program
   .command("init")
   .description("Scaffold Defer mode config files into your project")
