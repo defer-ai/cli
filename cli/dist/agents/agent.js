@@ -1,4 +1,6 @@
-import { parseDecisionsFromString, nextDecisionId } from "../decisions.js";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { parseDecisions, parseDecisionsFromString, nextDecisionId, createDecisionsFile, decisionsExist, } from "../decisions.js";
 const DEFER_SYSTEM_PROMPT = `You are in DEFER MODE, a zero-autonomy protocol.
 
 Before acting on any task:
@@ -23,15 +25,21 @@ export class Agent {
     state;
     provider;
     onUpdate;
-    constructor(id, task, provider, onUpdate) {
+    cwd;
+    constructor(id, task, provider, onUpdate, cwd) {
         this.provider = provider;
         this.onUpdate = onUpdate;
+        this.cwd = cwd || process.cwd();
+        // Load existing decisions from DECISIONS.md
+        const existing = decisionsExist(this.cwd)
+            ? parseDecisions(this.cwd)
+            : [];
         this.state = {
             id,
             task,
             status: "idle",
             phase: "decomposing",
-            decisions: [],
+            decisions: existing,
             messages: [],
             currentOutput: "",
         };
@@ -40,8 +48,62 @@ export class Agent {
         Object.assign(this.state, partial);
         this.onUpdate(this.state);
     }
+    /** Persist current decisions to DECISIONS.md */
+    persistDecisions() {
+        if (!decisionsExist(this.cwd)) {
+            createDecisionsFile(this.cwd);
+        }
+        const header = `# DECISIONS.md\n\n| ID | Category | Question | Answer | Date |\n|----|----------|----------|--------|------|`;
+        const rows = this.state.decisions
+            .map((d) => `| ${d.id} | ${d.category} | ${d.question} | ${d.answer} | ${d.date} |`)
+            .join("\n");
+        writeFileSync(join(this.cwd, "DECISIONS.md"), header + "\n" + rows + "\n");
+    }
+    /** Save session state so it can be resumed later */
+    saveSession() {
+        const sessionFile = join(this.cwd, ".defer-session.json");
+        const session = {
+            agentId: this.state.id,
+            task: this.state.task,
+            status: this.state.status,
+            phase: this.state.phase,
+            messages: this.state.messages,
+            currentOutput: this.state.currentOutput,
+            savedAt: new Date().toISOString(),
+        };
+        writeFileSync(sessionFile, JSON.stringify(session, null, 2));
+    }
+    /** Try to load a previous session */
+    static loadSession(provider, onUpdate, cwd) {
+        const dir = cwd || process.cwd();
+        const sessionFile = join(dir, ".defer-session.json");
+        if (!existsSync(sessionFile))
+            return null;
+        try {
+            const raw = readFileSync(sessionFile, "utf-8");
+            const session = JSON.parse(raw);
+            const agent = new Agent(session.agentId, session.task, provider, onUpdate, dir);
+            // Restore conversation history
+            agent.state.messages = session.messages || [];
+            agent.state.phase = session.phase || "decomposing";
+            agent.state.currentOutput = session.currentOutput || "";
+            // Check if there are pending decisions
+            const hasPending = agent.state.decisions.some((d) => d.answer === "(pending)");
+            agent.state.status = hasPending ? "asking" : "done";
+            return agent;
+        }
+        catch {
+            return null;
+        }
+    }
     async start() {
         this.update({ status: "thinking" });
+        // If resuming with pending decisions, don't re-ask the AI
+        const hasPending = this.state.decisions.some((d) => d.answer === "(pending)");
+        if (hasPending) {
+            this.update({ status: "asking", phase: "decomposing" });
+            return;
+        }
         this.state.messages.push({
             role: "user",
             content: this.state.task,
@@ -60,6 +122,8 @@ export class Agent {
         const msg = `I'm changing ${decisionId} ("${decision.question}") from "${decision.answer}" to "${newAnswer}". Update everything that depends on this.`;
         decision.answer = newAnswer;
         decision.date = new Date().toISOString().split("T")[0];
+        this.persistDecisions();
+        this.saveSession();
         this.update({ decisions: this.state.decisions });
         await this.sendUserMessage(msg);
     }
@@ -73,14 +137,19 @@ export class Agent {
                 }
                 else if (event.type === "error") {
                     this.update({ status: "error", error: event.content });
+                    this.saveSession();
                     return;
                 }
             }
-            this.state.messages.push({ role: "assistant", content: fullResponse });
+            this.state.messages.push({
+                role: "assistant",
+                content: fullResponse,
+            });
             // Parse any decisions from the response
             const newDecisions = this.parseDecisionsFromOutput(fullResponse);
             if (newDecisions.length > 0) {
                 this.state.decisions.push(...newDecisions);
+                this.persistDecisions();
             }
             // Determine phase based on content
             const hasQuestions = /\*\*Q\d+:/.test(fullResponse);
@@ -94,12 +163,14 @@ export class Agent {
             else {
                 this.update({ status: "done" });
             }
+            this.saveSession();
         }
         catch (err) {
             this.update({
                 status: "error",
                 error: err instanceof Error ? err.message : String(err),
             });
+            this.saveSession();
         }
     }
     parseDecisionsFromOutput(output) {
@@ -107,12 +178,9 @@ export class Agent {
         const tableDecisions = parseDecisionsFromString(output);
         if (tableDecisions.length > 0)
             return tableDecisions;
-        // Also try to extract from Q&A format and create provisional decisions
+        // Extract from Q&A format as provisional decisions
         const questions = [];
-        const questionRegex = /\*\*Q(\d+):\s*(.+?)\*\*/g;
-        let match;
         const today = new Date().toISOString().split("T")[0];
-        // Find current category context
         let currentCategory = "General";
         const lines = output.split("\n");
         for (const line of lines) {
@@ -122,10 +190,6 @@ export class Agent {
             }
             const qMatch = line.match(/\*\*Q(\d+):\s*(.+?)\*\*/);
             if (qMatch) {
-                const existingIds = [
-                    ...this.state.decisions.map((d) => d.id),
-                    ...questions.map((d) => d.id),
-                ];
                 const id = nextDecisionId([
                     ...this.state.decisions,
                     ...questions,

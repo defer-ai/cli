@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { DecisionsTab } from "./DecisionsTab.js";
 import { AgentsTab } from "./AgentsTab.js";
 import { GitTab } from "./GitTab.js";
 import { InputBar } from "./InputBar.js";
 import { AgentManager } from "../agents/manager.js";
-import type { AgentState } from "../agents/agent.js";
+import { Agent, type AgentState } from "../agents/agent.js";
 import type { LLMProvider } from "../providers/types.js";
 
 const TABS = ["Decisions", "Agents", "Git"] as const;
@@ -18,6 +18,9 @@ interface AppProps {
 
 export function App({ task, provider }: AppProps) {
   const { exit } = useApp();
+  const { stdout } = useStdout();
+  const rows = stdout?.rows || 24;
+
   const [activeTab, setActiveTab] = useState<Tab>("Decisions");
   const [agents, setAgents] = useState<AgentState[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -26,14 +29,41 @@ export function App({ task, provider }: AppProps) {
     () => new AgentManager(provider, (states) => setAgents([...states]))
   );
 
-  // Start the first agent with the task
+  // Clear screen on mount
   useEffect(() => {
-    const agent = manager.spawn(task);
-    setSelectedAgent(agent.state.id);
-    agent.start();
+    process.stdout.write("\x1b[2J\x1b[H");
+  }, []);
+
+  // Try to resume a previous session, or start fresh
+  useEffect(() => {
+    const resumed = Agent.loadSession(provider, (state) => {
+      setAgents((prev) => {
+        const idx = prev.findIndex((a) => a.id === state.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = { ...state };
+          return next;
+        }
+        return [...prev, { ...state }];
+      });
+    });
+
+    if (resumed) {
+      setSelectedAgent(resumed.state.id);
+      setAgents([{ ...resumed.state }]);
+      // If there are pending decisions, just show them (don't re-run AI)
+      if (resumed.state.status !== "asking") {
+        resumed.start();
+      }
+    } else {
+      const agent = manager.spawn(task);
+      setSelectedAgent(agent.state.id);
+      agent.start();
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const currentAgent = agents.find((a) => a.id === selectedAgent) || agents[0];
+  const currentAgent =
+    agents.find((a) => a.id === selectedAgent) || agents[0];
 
   useInput((input, key) => {
     if (inputMode) return;
@@ -43,14 +73,12 @@ export function App({ task, provider }: AppProps) {
       return;
     }
 
-    // Tab switching
     if (input === "1") setActiveTab("Decisions");
     if (input === "2") setActiveTab("Agents");
     if (input === "3") setActiveTab("Git");
 
-    // Enter input mode to respond to AI
     if (input === "i" || key.return) {
-      if (currentAgent?.status === "asking") {
+      if (currentAgent?.status === "asking" || currentAgent?.status === "done") {
         setInputMode(true);
       }
     }
@@ -64,7 +92,6 @@ export function App({ task, provider }: AppProps) {
       const agent = manager.get(currentAgent.id);
       if (!agent) return;
 
-      // Check for revisit command
       const revisitMatch = value.match(/^revisit\s+(D\d+)\s+(.+)/i);
       if (revisitMatch) {
         agent.revisitDecision(revisitMatch[1], revisitMatch[2]);
@@ -76,19 +103,36 @@ export function App({ task, provider }: AppProps) {
     [currentAgent, manager]
   );
 
+  // Calculate content height
+  const contentHeight = Math.max(rows - 4, 10); // tabs(1) + border(2) + status(1)
+
+  const statusColor = currentAgent
+    ? currentAgent.status === "asking"
+      ? "yellow"
+      : currentAgent.status === "thinking"
+        ? "cyan"
+        : currentAgent.status === "error"
+          ? "red"
+          : currentAgent.status === "done"
+            ? "green"
+            : "white"
+    : "gray";
+
   return (
-    <Box flexDirection="column" width="100%" height="100%">
+    <Box flexDirection="column">
       {/* Tab bar */}
-      <Box paddingX={1}>
+      <Box>
+        <Text> </Text>
         {TABS.map((tab, i) => (
-          <Box key={tab} marginRight={2}>
+          <React.Fragment key={tab}>
             <Text
               color={activeTab === tab ? "cyan" : "gray"}
               bold={activeTab === tab}
             >
               [{i + 1}:{tab}]
             </Text>
-          </Box>
+            <Text> </Text>
+          </React.Fragment>
         ))}
         <Box flexGrow={1} />
         <Text color="gray" dimColor>
@@ -96,7 +140,14 @@ export function App({ task, provider }: AppProps) {
         </Text>
       </Box>
 
-      <Box borderStyle="single" borderColor="gray" flexDirection="column" flexGrow={1}>
+      {/* Content */}
+      <Box
+        borderStyle="single"
+        borderColor="gray"
+        flexDirection="column"
+        height={contentHeight}
+        overflow="hidden"
+      >
         {activeTab === "Decisions" && (
           <DecisionsTab agent={currentAgent} />
         )}
@@ -111,42 +162,30 @@ export function App({ task, provider }: AppProps) {
       </Box>
 
       {/* Status bar */}
-      <Box paddingX={1}>
-        <Text color="gray">
-          {currentAgent ? (
-            <>
-              <Text color="cyan">{currentAgent.id}</Text>
-              {" | "}
-              <Text
-                color={
-                  currentAgent.status === "asking"
-                    ? "yellow"
-                    : currentAgent.status === "thinking"
-                      ? "cyan"
-                      : currentAgent.status === "error"
-                        ? "red"
-                        : currentAgent.status === "done"
-                          ? "green"
-                          : "white"
-                }
-              >
-                {currentAgent.status}
-              </Text>
-              {" | "}
-              {currentAgent.decisions.length} decisions
-              {currentAgent.status === "asking" && (
-                <Text color="yellow"> | press i to respond</Text>
-              )}
-            </>
-          ) : (
-            "No agents"
-          )}
-        </Text>
+      <Box>
+        <Text> </Text>
+        {currentAgent ? (
+          <>
+            <Text color="cyan">{currentAgent.id}</Text>
+            <Text color="gray"> | </Text>
+            <Text color={statusColor}>{currentAgent.status}</Text>
+            <Text color="gray"> | </Text>
+            <Text color="gray">{currentAgent.decisions.length} decisions</Text>
+            {currentAgent.status === "asking" && (
+              <Text color="yellow"> | press i to respond</Text>
+            )}
+          </>
+        ) : (
+          <Text color="gray">No agents</Text>
+        )}
       </Box>
 
       {/* Input bar */}
       {inputMode && (
-        <InputBar onSubmit={handleInput} onCancel={() => setInputMode(false)} />
+        <InputBar
+          onSubmit={handleInput}
+          onCancel={() => setInputMode(false)}
+        />
       )}
     </Box>
   );

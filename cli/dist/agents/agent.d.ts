@@ -16,8 +16,15 @@ export declare class Agent {
     state: AgentState;
     private provider;
     private onUpdate;
-    constructor(id: string, task: string, provider: LLMProvider, onUpdate: (state: AgentState) => void);
+    private cwd;
+    constructor(id: string, task: string, provider: LLMProvider, onUpdate: (state: AgentState) => void, cwd?: string);
     private update;
+    /** Persist current decisions to DECISIONS.md */
+    private persistDecisions;
+    /** Save session state so it can be resumed later */
+    private saveSession;
+    /** Try to load a previous session */
+    static loadSession(provider: LLMProvider, onUpdate: (state: AgentState) => void, cwd?: string): Agent | null;
     start(): Promise<void>;
     sendUserMessage(content: string): Promise<void>;
     revisitDecision(decisionId: string, newAnswer: string): Promise<void>;

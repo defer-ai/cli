@@ -30,7 +30,9 @@ program
         console.error("Then run: claude login");
         process.exit(1);
     }
-    render(React.createElement(App, { task, provider }));
+    render(React.createElement(App, { task, provider }), {
+        exitOnCtrlC: true,
+    });
 });
 // Subcommands for non-TUI operations
 program
