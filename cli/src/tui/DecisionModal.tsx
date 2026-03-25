@@ -3,7 +3,7 @@ import { Box, Text, useInput, useStdout } from "ink";
 import type { AgentState } from "../agents/agent.js";
 import { MiniMascot } from "./Mascot.js";
 
-type Mode = "browse" | "answer" | "change" | "ask" | "text";
+type Mode = "pick" | "text" | "ask" | "change";
 
 interface Props {
   agent: AgentState;
@@ -11,7 +11,13 @@ interface Props {
   onDone: () => void;
   onAsk: (decisionId: string, question: string) => void;
   onRevise: (decisionId: string, newAnswer: string) => void;
+  focusId?: string | null;
   rows: number;
+}
+
+function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen - 1) + "…";
 }
 
 export function DecisionModal({
@@ -20,41 +26,62 @@ export function DecisionModal({
   onDone,
   onAsk,
   onRevise,
+  focusId,
   rows,
 }: Props) {
   const { stdout } = useStdout();
   const cols = stdout?.columns || 80;
 
   const [selectedOption, setSelectedOption] = useState(0);
-  const [mode, setMode] = useState<Mode>("browse");
+  const [mode, setMode] = useState<Mode>("pick");
   const [textValue, setTextValue] = useState("");
   const [aiResponse, setAiResponse] = useState("");
 
   const decisions = agent.decisions;
   const pending = decisions.filter((d) => d.answer === null);
   const allDone = pending.length === 0 && decisions.length > 0;
-  const currentIdx = agent.pendingIndex >= 0
-    ? agent.pendingIndex
-    : pending.length > 0
-      ? decisions.indexOf(pending[0])
-      : 0;
-  const current = decisions[currentIdx] || null;
+
+  // Which decision are we looking at?
+  // If focusId is set (from /revisit), focus that one
+  // Otherwise focus the current pending
+  const focusIdx = focusId
+    ? decisions.findIndex((d) => d.id === focusId)
+    : agent.pendingIndex >= 0
+      ? agent.pendingIndex
+      : pending.length > 0
+        ? decisions.indexOf(pending[0])
+        : 0;
+
+  const current = decisions[focusIdx >= 0 ? focusIdx : 0] || null;
   const isPending = current?.answer === null;
   const answeredCount = decisions.filter((d) => d.answer !== null).length;
 
+  // Determine initial mode: pick if pending with options, change if revisiting answered
   useEffect(() => {
+    if (focusId) {
+      const d = decisions.find((d) => d.id === focusId);
+      if (d && d.answer !== null) {
+        setMode("change");
+        setTextValue("");
+      } else {
+        setMode("pick");
+      }
+    } else {
+      setMode("pick");
+    }
     setSelectedOption(0);
-    setMode("browse");
-    setTextValue("");
-  }, [agent.pendingIndex]);
+    setAiResponse("");
+  }, [agent.pendingIndex, focusId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-close when all done (only if not revisiting)
   useEffect(() => {
-    if (allDone) {
-      const timer = setTimeout(onDone, 2500);
+    if (allDone && !focusId) {
+      const timer = setTimeout(onDone, 2000);
       return () => clearTimeout(timer);
     }
-  }, [allDone, onDone]);
+  }, [allDone, focusId, onDone]);
 
+  // AI response tracking
   useEffect(() => {
     if (agent.currentOutput && mode === "ask") {
       setAiResponse(agent.currentOutput);
@@ -62,15 +89,20 @@ export function DecisionModal({
   }, [agent.currentOutput, mode]);
 
   useInput((input, key) => {
-    if (allDone) {
+    // All done - any key closes
+    if (allDone && !focusId) {
       onDone();
       return;
     }
 
-    // Text modes
+    // Text input modes (text, ask, change)
     if (mode === "text" || mode === "ask" || mode === "change") {
       if (key.escape) {
-        setMode("browse");
+        if (focusId && mode === "change") {
+          onDone(); // exit revisit
+          return;
+        }
+        setMode("pick");
         setTextValue("");
         setAiResponse("");
         return;
@@ -82,12 +114,11 @@ export function DecisionModal({
           setTextValue("");
         } else if (mode === "change" && current) {
           onRevise(current.id, textValue.trim());
-          setMode("browse");
           setTextValue("");
-          setAiResponse("");
+          onDone();
         } else if (mode === "text") {
           onAnswer(textValue.trim());
-          setMode("browse");
+          setMode("pick");
           setTextValue("");
         }
         return;
@@ -102,61 +133,46 @@ export function DecisionModal({
       return;
     }
 
-    // Answer mode
-    if (mode === "answer" && current) {
-      if (key.escape) {
-        setMode("browse");
-        return;
-      }
-      if (input === "j" || key.downArrow) {
-        setSelectedOption((i) =>
-          Math.min(i + 1, (current.options.length || 1) - 1)
-        );
-        return;
-      }
-      if (input === "k" || key.upArrow) {
-        setSelectedOption((i) => Math.max(i - 1, 0));
-        return;
-      }
-      if (key.return && current.options[selectedOption]) {
-        onAnswer(current.options[selectedOption].key);
-        setMode("browse");
-        setSelectedOption(0);
-        return;
-      }
-      if (input === "t") {
-        setMode("text");
-        return;
-      }
-      return;
-    }
-
-    // Browse mode
-    if (key.escape || key.tab) {
+    // Pick mode - immediately navigable
+    if (key.escape) {
       onDone();
       return;
     }
-    if (key.return && current) {
-      if (isPending && current.options.length > 0) {
-        setMode("answer");
-        setSelectedOption(0);
-      } else if (isPending) {
-        setMode("text");
-      }
+    if (input === "j" || key.downArrow) {
+      setSelectedOption((i) =>
+        Math.min(i + 1, (current?.options.length || 1) - 1)
+      );
+      return;
     }
-    if (input === "c" && current && !isPending) {
-      setMode("change");
+    if (input === "k" || key.upArrow) {
+      setSelectedOption((i) => Math.max(i - 1, 0));
+      return;
+    }
+    if (key.return && current?.options[selectedOption]) {
+      onAnswer(current.options[selectedOption].key);
+      setSelectedOption(0);
+      return;
+    }
+    if (input === "t") {
+      setMode("text");
       setTextValue("");
+      return;
     }
     if (input === "a" && current) {
       setMode("ask");
       setTextValue("");
       setAiResponse("");
+      return;
+    }
+    if (input === "c" && current && !isPending) {
+      setMode("change");
+      setTextValue("");
+      return;
     }
   });
 
   // All done summary
-  if (allDone) {
+  if (allDone && !focusId) {
     return (
       <Box flexDirection="column" height={rows} paddingX={3} paddingY={1}>
         <Box>
@@ -172,9 +188,8 @@ export function DecisionModal({
               <Text color={d.delegated ? "magenta" : "green"}>
                 {d.delegated ? "◆" : "✓"}{" "}
               </Text>
-              <Text color="gray">{d.id} </Text>
               <Text color="gray">
-                {d.question} → {d.answer}
+                {d.id} {d.question} → {d.answer}
               </Text>
             </Box>
           ))}
@@ -197,24 +212,28 @@ export function DecisionModal({
 
   return (
     <Box flexDirection="column" height={rows} paddingX={3} paddingY={1}>
-      {/* Progress bar */}
+      {/* Progress */}
       <Box marginBottom={1}>
         <MiniMascot mood={isPending ? "asking" : "answering"} />
         <Text color="cyan" bold>
           {"  "}
-          {answeredCount + (isPending ? 0 : 1)}/{decisions.length}
+          {focusId
+            ? current.id
+            : `${answeredCount + (isPending ? 0 : 1)}/${decisions.length}`}
         </Text>
         <Text color="gray" dimColor>
           {"  "}
           {current.category}
         </Text>
-        <Text color="gray" dimColor>
-          {"  "}
-          {current.id}
-        </Text>
+        {!focusId && (
+          <Text color="gray" dimColor>
+            {"  "}
+            {current.id}
+          </Text>
+        )}
       </Box>
 
-      {/* Question - full width */}
+      {/* Question */}
       <Box marginBottom={1}>
         <Text bold wrap="wrap">
           {current.question}
@@ -230,8 +249,8 @@ export function DecisionModal({
         </Box>
       ) : null}
 
-      {/* Current answer (if already answered) */}
-      {!isPending ? (
+      {/* Existing answer (if revisiting) */}
+      {!isPending && mode !== "change" ? (
         <Box marginBottom={1}>
           <Text color={current.delegated ? "magenta" : "green"}>
             {current.delegated ? "◆ delegated: " : "✓ "}
@@ -240,30 +259,20 @@ export function DecisionModal({
         </Box>
       ) : null}
 
-      {/* Options (browse or answer mode) */}
-      {(mode === "browse" || mode === "answer") &&
-      current.options.length > 0 ? (
+      {/* Options - immediately active in pick mode */}
+      {mode === "pick" && current.options.length > 0 ? (
         <Box flexDirection="column" marginBottom={1}>
           {current.options.map((opt, i) => {
-            const isSel = mode === "answer" && i === selectedOption;
+            const isSel = i === selectedOption;
             const isCfm = opt.label.toLowerCase().includes("choose for me");
             return (
               <Box key={opt.key} paddingLeft={1}>
                 <Text color={isSel ? "cyan" : "gray"}>
-                  {isSel ? " >" : "  "}{" "}
+                  {isSel ? ">" : " "}{" "}
                 </Text>
                 <Text
-                  color={
-                    isSel
-                      ? "cyan"
-                      : mode === "answer"
-                        ? isCfm
-                          ? "magenta"
-                          : "white"
-                        : "gray"
-                  }
+                  color={isSel ? "cyan" : isCfm ? "magenta" : "white"}
                   bold={isSel}
-                  dimColor={mode === "browse"}
                 >
                   {opt.key}) {opt.label}
                 </Text>
@@ -291,7 +300,7 @@ export function DecisionModal({
         </Box>
       ) : null}
 
-      {/* AI response from ask */}
+      {/* AI response */}
       {mode === "ask" && aiResponse ? (
         <Box marginBottom={1}>
           <Text wrap="wrap" color="gray">
@@ -302,8 +311,8 @@ export function DecisionModal({
         </Box>
       ) : null}
 
-      {/* Recently answered (compact) */}
-      {answeredCount > 0 && isPending ? (
+      {/* Recently answered */}
+      {!focusId && answeredCount > 0 && isPending ? (
         <Box flexDirection="column" marginTop={1}>
           <Text color="gray" dimColor>
             Recent:
@@ -318,7 +327,7 @@ export function DecisionModal({
                 </Text>
                 <Text color="gray" dimColor>
                   {" "}
-                  {d.id} {d.question} → {d.answer}
+                  {d.id} {truncate(d.question, 30)} → {truncate(d.answer || "", 20)}
                 </Text>
               </Box>
             ))}
@@ -329,13 +338,11 @@ export function DecisionModal({
       <Box flexGrow={1} />
       <Box>
         <Text color="gray" dimColor>
-          {mode === "browse"
+          {mode === "pick"
             ? isPending
-              ? "enter:answer  a:ask about  t:type custom  tab:back"
-              : "c:change  a:ask about  tab:back"
-            : mode === "answer"
-              ? "↑↓:pick  enter:confirm  t:custom  esc:back"
-              : "enter:submit  esc:cancel"}
+              ? "↑↓:pick  enter:confirm  t:custom  a:ask  esc:back"
+              : "c:change  a:ask  esc:back"
+            : "enter:submit  esc:cancel"}
         </Text>
       </Box>
     </Box>

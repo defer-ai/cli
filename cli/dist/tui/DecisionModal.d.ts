@@ -5,7 +5,8 @@ interface Props {
     onDone: () => void;
     onAsk: (decisionId: string, question: string) => void;
     onRevise: (decisionId: string, newAnswer: string) => void;
+    focusId?: string | null;
     rows: number;
 }
-export declare function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, rows, }: Props): import("react/jsx-runtime").JSX.Element;
+export declare function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, focusId, rows, }: Props): import("react/jsx-runtime").JSX.Element;
 export {};

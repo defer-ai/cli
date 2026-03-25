@@ -1,32 +1,33 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
-import { Banner, Header } from "./Banner.js";
-import { DecisionModal } from "./DecisionModal.js";
-import { DecisionSummary } from "./DecisionSummary.js";
-import { DashboardOverlay } from "./DashboardOverlay.js";
 import { AgentManager } from "../agents/manager.js";
 import { Agent, type AgentState } from "../agents/agent.js";
 import type { LLMProvider } from "../providers/types.js";
 import type { ClaudeCodeProvider } from "../providers/claude-code.js";
-import { Mascot, statusToMood, type MascotMood } from "./Mascot.js";
+import { Mascot, MiniMascot, statusToMood, type MascotMood } from "./Mascot.js";
+import { DecisionModal } from "./DecisionModal.js";
 
-type View = string; // "banner" | "stream" | "decisions" | "dashboard"
+type View = "stream" | "decisions";
 
 interface AppProps {
   task?: string;
   provider: LLMProvider;
 }
 
+const VERSION = "0.1.0";
+
 export function App({ task, provider }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const rows = stdout?.rows || 24;
 
-  const [view, setView] = useState<View>(task ? "stream" : "banner");
+  const [view, setView] = useState<View>("stream");
   const [agents, setAgents] = useState<AgentState[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [outputLines, setOutputLines] = useState<string[]>([]);
+  const [showBanner, setShowBanner] = useState(!task);
+  const [revisitId, setRevisitId] = useState<string | null>(null);
   const [model, setModel] = useState(
     (provider as ClaudeCodeProvider).model || "sonnet"
   );
@@ -36,8 +37,14 @@ export function App({ task, provider }: AppProps) {
   const prevStatus = useRef<string>("");
 
   const current = agents.find((a) => a.id === selectedAgent) || agents[0];
+  const mood: MascotMood = current
+    ? statusToMood(current.status, current.phase)
+    : "idle";
+  const pendingCount = current
+    ? current.decisions.filter((d) => d.answer === null).length
+    : 0;
 
-  // On mount: try to resume existing session, or start new task
+  // On mount: resume or start
   useEffect(() => {
     const resumed = Agent.loadSession(provider, (state) => {
       setAgents((prev) => {
@@ -54,6 +61,7 @@ export function App({ task, provider }: AppProps) {
     if (resumed) {
       setSelectedAgent(resumed.state.id);
       setAgents([{ ...resumed.state }]);
+      setShowBanner(false);
       if (
         resumed.state.status !== "asking" &&
         resumed.state.status !== "done"
@@ -68,11 +76,12 @@ export function App({ task, provider }: AppProps) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-switch to decision modal when agent starts asking
+  // Auto-open decision modal when agent starts asking
   useEffect(() => {
     if (!current) return;
     if (current.status === "asking" && prevStatus.current !== "asking") {
       setView("decisions");
+      setRevisitId(null);
     }
     if (
       current.status !== "asking" &&
@@ -84,12 +93,11 @@ export function App({ task, provider }: AppProps) {
     prevStatus.current = current.status;
   }, [current?.status, view]);
 
-  // Track output lines, but suppress raw decision decomposition output
+  // Suppress raw decomposition output
   useEffect(() => {
     if (!current?.currentOutput) return;
-    // Don't show raw output while decomposing (it contains the JSON block)
-    if (current.phase === "decomposing" && current.status === "thinking") return;
-    // Don't show output that contains the defer-decisions JSON block
+    if (current.phase === "decomposing" && current.status === "thinking")
+      return;
     const output = current.currentOutput;
     if (output.includes("```defer-decisions")) return;
     setOutputLines(output.split("\n"));
@@ -100,6 +108,7 @@ export function App({ task, provider }: AppProps) {
       const agent = manager.spawn(taskText);
       setSelectedAgent(agent.state.id);
       setOutputLines([]);
+      setShowBanner(false);
       setView("stream");
       agent.start();
     },
@@ -117,16 +126,16 @@ export function App({ task, provider }: AppProps) {
             ...prev,
             "",
             "  Commands:",
-            "  /help              Show this help",
-            "  /model <name>      Switch model (sonnet, opus, haiku)",
-            "  /status            Show decision record",
-            "  /decisions         Open decision view",
-            "  /dashboard         Open dashboard overlay",
-            "  /clear             Clear output",
-            "  /quit              Exit",
+            "  /help                Show this help",
+            "  /model <name>        Switch model (sonnet, opus, haiku)",
+            "  /decisions           View all decisions inline",
+            "  /revisit <id>        Revisit a specific decision",
+            "  /clear               Clear output",
+            "  /quit                Exit",
             "",
           ]);
           break;
+
         case "model":
           if (parts[1]) {
             const m = parts[1].toLowerCase();
@@ -144,27 +153,71 @@ export function App({ task, provider }: AppProps) {
             ]);
           }
           break;
-        case "status":
+
         case "decisions":
-          if (current && current.decisions.length > 0) {
-            setView("decisions");
-          } else {
+        case "status":
+          if (!current || current.decisions.length === 0) {
+            setOutputLines((prev) => [...prev, "  No decisions yet."]);
+            break;
+          }
+          // Print decisions inline
+          const lines: string[] = [""];
+          let lastCat = "";
+          for (const d of current.decisions) {
+            if (d.category !== lastCat) {
+              lines.push(`  ${d.category}`);
+              lastCat = d.category;
+            }
+            const icon = d.answer === null ? "○" : d.delegated ? "◆" : "✓";
+            const color = d.answer === null ? "" : "";
+            const answer =
+              d.answer === null
+                ? "pending"
+                : d.delegated
+                  ? `delegated: ${d.answer}`
+                  : d.answer;
+            lines.push(`    ${icon} ${d.id}  ${d.question}  →  ${answer}`);
+          }
+          lines.push("");
+          lines.push("  Use /revisit <id> to change a decision.");
+          lines.push("");
+          setOutputLines((prev) => [...prev, ...lines]);
+          break;
+
+        case "revisit":
+          if (!parts[1]) {
             setOutputLines((prev) => [
               ...prev,
-              "  No decisions yet.",
+              "  Usage: /revisit <id>  (e.g. /revisit STACK-001)",
             ]);
+            break;
           }
+          if (!current) {
+            setOutputLines((prev) => [...prev, "  No active session."]);
+            break;
+          }
+          const id = parts[1].toUpperCase();
+          const decision = current.decisions.find((d) => d.id === id);
+          if (!decision) {
+            setOutputLines((prev) => [
+              ...prev,
+              `  Decision ${id} not found. Use /decisions to see all.`,
+            ]);
+            break;
+          }
+          setRevisitId(id);
+          setView("decisions");
           break;
-        case "dashboard":
-          setView("dashboard");
-          break;
+
         case "clear":
           setOutputLines([]);
           break;
+
         case "quit":
         case "exit":
           exit();
           break;
+
         default:
           setOutputLines((prev) => [
             ...prev,
@@ -178,7 +231,6 @@ export function App({ task, provider }: AppProps) {
   const handleSubmit = useCallback(() => {
     const value = inputValue.trim();
     setInputValue("");
-
     if (!value) return;
 
     if (value.startsWith("/")) {
@@ -186,7 +238,6 @@ export function App({ task, provider }: AppProps) {
       return;
     }
 
-    // If there's an active agent in asking/done state, send message
     if (current) {
       const agent = manager.get(current.id);
       if (agent) {
@@ -197,7 +248,6 @@ export function App({ task, provider }: AppProps) {
       }
     }
 
-    // Otherwise start a new task
     startTask(value);
   }, [inputValue, handleSlashCommand, current, manager, startTask]);
 
@@ -238,61 +288,44 @@ export function App({ task, provider }: AppProps) {
   useInput((input, key) => {
     // Decision modal handles its own input
     if (view === "decisions") return;
-    // Dashboard handles its own input
-    if (view === "dashboard") return;
 
-    // Escape: close overlays
-    if (key.escape) {
-      if (view === "dashboard") {
-        setView("stream");
-        return;
-      }
-    }
-
-    // In stream/banner view, all typing goes to input
     if (key.return) {
       handleSubmit();
       return;
     }
-
     if (key.backspace || key.delete) {
       setInputValue((v) => v.slice(0, -1));
       return;
     }
-
-    // Ctrl+C to quit
     if (input === "c" && key.ctrl) {
       exit();
       return;
     }
-
-    // Tab: cycle through views
-    if (key.tab) {
-      const viewCycle = ["stream", "decisions", "git"];
-      const currentView = view === "banner" ? "stream" : view;
-      const idx = viewCycle.indexOf(currentView);
-      const next = viewCycle[(idx + 1) % viewCycle.length];
-      // Skip decisions tab if no decisions exist
-      if (next === "decisions" && (!current || current.decisions.length === 0)) {
-        setView("git");
-      } else {
-        setView(next);
-      }
-      return;
-    }
-
-    // Regular character input
-    if (input && !key.ctrl && !key.meta && !key.tab) {
+    if (input && !key.ctrl && !key.meta && !key.tab && !key.escape) {
       setInputValue((v) => v + input);
     }
   });
 
-  const pendingCount = current
-    ? current.decisions.filter((d) => d.answer === null).length
-    : 0;
+  // Decision modal (full screen)
+  if (view === "decisions" && current) {
+    return (
+      <DecisionModal
+        agent={current}
+        onAnswer={handleDecisionAnswer}
+        onAsk={handleDecisionAsk}
+        onRevise={handleDecisionRevise}
+        onDone={() => {
+          setView("stream");
+          setRevisitId(null);
+        }}
+        focusId={revisitId}
+        rows={rows}
+      />
+    );
+  }
 
-  // Visible output (last N lines)
-  const maxVisible = rows - 5; // banner line + input + status + padding
+  // Stream view
+  const maxVisible = rows - 4;
   const visible = outputLines.slice(-maxVisible);
 
   const statusColor =
@@ -308,225 +341,95 @@ export function App({ task, provider }: AppProps) {
               ? "green"
               : "red";
 
-  // All views now render inside the same side-panel layout below
-
-  const mood: MascotMood = current
-    ? statusToMood(current.status, current.phase)
-    : "idle";
-
-  const tabs = [
-    { key: "stream", label: "Chat", icon: ">" },
-    { key: "decisions", label: "Decide", icon: "◇" },
-    { key: "git", label: "Git", icon: "±" },
-  ];
-
-  const activeTabKey =
-    view === "banner" ? "stream" : view === "dashboard" ? "stream" : view;
-
-  // Main layout: side panel + content
   return (
-    <Box flexDirection="row" height={rows}>
-      {/* Side panel */}
-      <Box
-        flexDirection="column"
-        width={6}
-        paddingTop={1}
-      >
-        {tabs.map((tab) => {
-          const isActive = activeTabKey === tab.key;
-          return (
-            <Box key={tab.key} paddingX={1}>
-              <Text
-                color={isActive ? "cyan" : "gray"}
-                bold={isActive}
-                dimColor={!isActive}
-              >
-                {isActive ? "▸" : " "} {tab.icon}
+    <Box flexDirection="column" height={rows}>
+      {/* Mascot + content */}
+      <Box flexGrow={1}>
+        {/* Mascot */}
+        <Box flexDirection="column" paddingX={1} paddingTop={1}>
+          <Mascot mood={mood} />
+        </Box>
+
+        {/* Content */}
+        <Box flexDirection="column" flexGrow={1} paddingX={1}>
+          <Box paddingTop={1} marginBottom={1}>
+            <Text color="cyan" bold>
+              defer
+            </Text>
+            <Text color="gray" dimColor>
+              {" "}
+              v{VERSION} | {model}
+            </Text>
+          </Box>
+
+          {showBanner && !current ? (
+            <Box flexDirection="column">
+              <Text color="gray" dimColor>
+                cwd{" "}
+                {process.cwd().replace(process.env.HOME || "", "~")}
               </Text>
-            </Box>
-          );
-        })}
-      </Box>
-
-      {/* Main content area */}
-      <Box flexDirection="column" flexGrow={1}>
-        {/* View content */}
-        <Box flexDirection="column" flexGrow={1}>
-          {view === "decisions" && current ? (
-            <DecisionModal
-              agent={current}
-              onAnswer={handleDecisionAnswer}
-              onAsk={handleDecisionAsk}
-              onRevise={handleDecisionRevise}
-              onDone={() => setView("stream")}
-              rows={rows - 2}
-            />
-          ) : (
-            <>
-              {/* Mascot + content side by side */}
-              <Box flexGrow={1}>
-                {/* Mascot column */}
-                <Box flexDirection="column" paddingX={1} paddingTop={1}>
-                  <Mascot mood={mood} />
-                </Box>
-
-                {/* Content column */}
-                <Box flexDirection="column" flexGrow={1} paddingX={1}>
-                  {/* Header info */}
-                  <Box paddingTop={1} marginBottom={1}>
-                    <Text color="cyan" bold>defer</Text>
-                    <Text color="gray" dimColor> v0.1.0 | {model}</Text>
-                  </Box>
-
-                  {view === "banner" && !current ? (
-                    <Box flexDirection="column">
-                      <Text color="gray" dimColor>
-                        cwd {process.cwd().replace(process.env.HOME || "", "~")}
-                      </Text>
-                      <Box marginTop={1}>
-                        <Text color="gray" dimColor>
-                          /help for commands, tab to switch views
-                        </Text>
-                      </Box>
-                    </Box>
-                  ) : view === "git" ? (
-                    <GitView />
-                  ) : (
-                    <Box flexDirection="column" flexGrow={1}>
-                      {current?.status === "thinking" &&
-                        outputLines.length === 0 && (
-                          <Text color="cyan">Decomposing task...</Text>
-                        )}
-                      {visible.map((line, i) => (
-                        <Text key={i} wrap="wrap">
-                          {line}
-                        </Text>
-                      ))}
-                    </Box>
-                  )}
-                </Box>
-              </Box>
-
-              {/* Status bar */}
-              <Box paddingX={1}>
-                {current ? (
-                  <>
-                    <Text color={statusColor} dimColor>
-                      {current.status}
-                    </Text>
-                    {current.decisions.length > 0 && (
-                      <Text color="gray" dimColor>
-                        {" | "}
-                        {current.decisions.length - pendingCount}/
-                        {current.decisions.length} decisions
-                      </Text>
-                    )}
-                    {pendingCount > 0 && (
-                      <Text color="yellow" dimColor>
-                        {" "}({pendingCount} pending)
-                      </Text>
-                    )}
-                  </>
-                ) : (
-                  <Text color="gray" dimColor>
-                    {model}
-                  </Text>
-                )}
-                <Box flexGrow={1} />
+              <Box marginTop={1}>
                 <Text color="gray" dimColor>
-                  tab:switch  /help
+                  Type a task to start. /help for commands.
                 </Text>
               </Box>
-
-              {/* Input prompt */}
-              <Box paddingX={1}>
-                <Text color="cyan" bold>
-                  {"defer > "}
+            </Box>
+          ) : (
+            <Box flexDirection="column" flexGrow={1}>
+              {current?.status === "thinking" &&
+                outputLines.length === 0 && (
+                  <Text color="cyan">Decomposing task...</Text>
+                )}
+              {visible.map((line, i) => (
+                <Text key={i} wrap="wrap">
+                  {line}
                 </Text>
-                <Text>{inputValue}</Text>
-                <Text color="gray">|</Text>
-              </Box>
-            </>
+              ))}
+            </Box>
           )}
         </Box>
       </Box>
-    </Box>
-  );
-}
 
-/** Inline git info view */
-function GitView() {
-  const [info, setInfo] = React.useState<{
-    branch: string;
-    commits: string[];
-    dirty: string[];
-  } | null>(null);
-
-  React.useEffect(() => {
-    try {
-      const cp = require("child_process");
-      const opts = { stdio: "pipe" as const, encoding: "utf-8" as const, cwd: process.cwd() };
-      cp.execSync("git rev-parse --is-inside-work-tree", opts);
-      const branch = cp.execSync("git branch --show-current", opts).trim();
-      let commits: string[] = [];
-      try {
-        commits = cp.execSync("git log --oneline -10", opts)
-          .trim()
-          .split("\n")
-          .filter(Boolean);
-      } catch {}
-      let dirty: string[] = [];
-      try {
-        dirty = cp.execSync("git status --short", opts)
-          .trim()
-          .split("\n")
-          .filter(Boolean);
-      } catch {}
-      setInfo({ branch, commits, dirty });
-    } catch (e) {
-      setInfo(null);
-    }
-  }, []);
-
-  if (!info) {
-    return (
-      <Box paddingX={1} marginTop={1}>
-        <Text color="gray">Not a git repository.</Text>
-      </Box>
-    );
-  }
-
-  return (
-    <Box flexDirection="column" paddingX={1} marginTop={1}>
-      <Box>
-        <Text color="cyan" bold>
-          {info.branch}
+      {/* Status bar */}
+      <Box paddingX={1}>
+        {current ? (
+          <>
+            <Text color={statusColor} dimColor>
+              {current.status}
+            </Text>
+            {current.decisions.length > 0 && (
+              <Text color="gray" dimColor>
+                {" | "}
+                {current.decisions.length - pendingCount}/
+                {current.decisions.length} decisions
+              </Text>
+            )}
+            {pendingCount > 0 && (
+              <Text color="yellow" dimColor>
+                {" "}
+                ({pendingCount} pending)
+              </Text>
+            )}
+          </>
+        ) : (
+          <Text color="gray" dimColor>
+            {model}
+          </Text>
+        )}
+        <Box flexGrow={1} />
+        <Text color="gray" dimColor>
+          /help
         </Text>
       </Box>
-      {info.dirty.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color="yellow" dimColor>
-            {info.dirty.length} uncommitted
-          </Text>
-          {info.dirty.slice(0, 8).map((f, i) => (
-            <Text key={i} color="gray" dimColor>
-              {"  "}{f}
-            </Text>
-          ))}
-        </Box>
-      )}
-      {info.commits.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color="gray" dimColor>
-            Recent commits
-          </Text>
-          {info.commits.map((c, i) => (
-            <Text key={i} color="gray" dimColor>
-              {"  "}{c}
-            </Text>
-          ))}
-        </Box>
-      )}
+
+      {/* Input prompt */}
+      <Box paddingX={1}>
+        <Text color="cyan" bold>
+          {"defer > "}
+        </Text>
+        <Text>{inputValue}</Text>
+        <Text color="gray">|</Text>
+      </Box>
     </Box>
   );
 }
