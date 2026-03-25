@@ -7,7 +7,7 @@ function truncate(text, maxLen) {
         return text;
     return text.slice(0, maxLen - 1) + "…";
 }
-export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, onUndo, onWhy, focusId, rows, }) {
+export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, onUndo, onWhy, onSuggest, focusId, rows, }) {
     const { stdout } = useStdout();
     const cols = stdout?.columns || 80;
     const [selectedOption, setSelectedOption] = useState(0);
@@ -166,6 +166,12 @@ export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, onUndo
             setWhyText("Thinking...");
             return;
         }
+        // Suggest: ask AI for more/different options
+        if (input === "s" && current) {
+            onSuggest(current.id);
+            setWhyText("Generating suggestions...");
+            return;
+        }
     });
     // All done summary
     if (allDone && !focusId) {
@@ -191,7 +197,7 @@ export function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, onUndo
                         .slice(-3)
                         .map((d) => (_jsxs(Box, { paddingLeft: 1, children: [_jsx(Text, { color: d.delegated ? "magenta" : "green", children: d.delegated ? "◆" : "✓" }), _jsxs(Text, { color: "gray", dimColor: true, children: [" ", d.id, " ", truncate(d.question, 30), " \u2192 ", truncate(d.answer || "", 20)] })] }, d.id)))] })) : null, _jsx(Box, { flexGrow: 1 }), _jsx(Box, { children: _jsx(Text, { color: "gray", dimColor: true, children: mode === "pick"
                         ? isPending
-                            ? `↑↓:pick  enter:confirm  t:custom  w:why  a:ask${answerHistory.length > 0 ? "  u:undo" : ""}  esc:back`
-                            : "c:change  a:ask  w:why  esc:back"
+                            ? `↑↓:pick  enter:confirm  t:custom  w:why  s:suggest${answerHistory.length > 0 ? "  u:undo" : ""}  esc:back`
+                            : "c:change  a:ask  w:why  s:suggest  esc:back"
                         : "enter:submit  esc:cancel" }) })] }));
 }

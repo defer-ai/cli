@@ -471,6 +471,18 @@ export function App({ task, provider }) {
             });
         }
     }, [current, manager]);
+    const handleSuggest = useCallback((decisionId) => {
+        if (!current)
+            return;
+        const agent = manager.get(current.id);
+        if (!agent)
+            return;
+        const d = agent.state.decisions.find((d) => d.id === decisionId);
+        if (!d)
+            return;
+        const existingOptions = d.options.map((o) => o.label).join(", ");
+        agent.sendUserMessage(`For ${decisionId} ("${d.question}"), the current options are: ${existingOptions}. Suggest 3-4 alternative or creative options I haven't considered. Be specific and practical. Output them as a \`\`\`defer-decisions block replacing this decision with the new expanded options list.`);
+    }, [current, manager]);
     const handleWhy = useCallback((decisionId, optionLabel) => {
         if (!current)
             return;
@@ -508,7 +520,7 @@ export function App({ task, provider }) {
     }
     // Decision modal (full screen)
     if (view === "decisions" && current) {
-        return (_jsx(DecisionModal, { agent: current, onAnswer: handleDecisionAnswer, onAsk: handleDecisionAsk, onRevise: handleDecisionRevise, onUndo: handleUndo, onWhy: handleWhy, onDone: () => {
+        return (_jsx(DecisionModal, { agent: current, onAnswer: handleDecisionAnswer, onAsk: handleDecisionAsk, onRevise: handleDecisionRevise, onUndo: handleUndo, onWhy: handleWhy, onSuggest: handleSuggest, onDone: () => {
                 setView("stream");
                 setRevisitId(null);
             }, focusId: revisitId, rows: rows }));

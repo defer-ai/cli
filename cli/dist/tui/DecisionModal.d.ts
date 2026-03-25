@@ -7,8 +7,9 @@ interface Props {
     onRevise: (decisionId: string, newAnswer: string) => void;
     onUndo: (decisionIdx: number) => void;
     onWhy: (decisionId: string, optionLabel: string) => void;
+    onSuggest: (decisionId: string) => void;
     focusId?: string | null;
     rows: number;
 }
-export declare function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, onUndo, onWhy, focusId, rows, }: Props): import("react/jsx-runtime").JSX.Element;
+export declare function DecisionModal({ agent, onAnswer, onDone, onAsk, onRevise, onUndo, onWhy, onSuggest, focusId, rows, }: Props): import("react/jsx-runtime").JSX.Element;
 export {};

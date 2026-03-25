@@ -13,6 +13,7 @@ interface Props {
   onRevise: (decisionId: string, newAnswer: string) => void;
   onUndo: (decisionIdx: number) => void;
   onWhy: (decisionId: string, optionLabel: string) => void;
+  onSuggest: (decisionId: string) => void;
   focusId?: string | null;
   rows: number;
 }
@@ -30,6 +31,7 @@ export function DecisionModal({
   onRevise,
   onUndo,
   onWhy,
+  onSuggest,
   focusId,
   rows,
 }: Props) {
@@ -199,6 +201,12 @@ export function DecisionModal({
       const opt = current.options[selectedOption];
       onWhy(current.id, opt.label);
       setWhyText("Thinking...");
+      return;
+    }
+    // Suggest: ask AI for more/different options
+    if (input === "s" && current) {
+      onSuggest(current.id);
+      setWhyText("Generating suggestions...");
       return;
     }
   });
@@ -385,8 +393,8 @@ export function DecisionModal({
         <Text color="gray" dimColor>
           {mode === "pick"
             ? isPending
-              ? `↑↓:pick  enter:confirm  t:custom  w:why  a:ask${answerHistory.length > 0 ? "  u:undo" : ""}  esc:back`
-              : "c:change  a:ask  w:why  esc:back"
+              ? `↑↓:pick  enter:confirm  t:custom  w:why  s:suggest${answerHistory.length > 0 ? "  u:undo" : ""}  esc:back`
+              : "c:change  a:ask  w:why  s:suggest  esc:back"
             : "enter:submit  esc:cancel"}
         </Text>
       </Box>
