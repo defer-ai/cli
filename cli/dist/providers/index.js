@@ -1,1 +1,1 @@
-export { AnthropicProvider } from "./anthropic.js";
+export { ClaudeCodeProvider } from "./claude-code.js";

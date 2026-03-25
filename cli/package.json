@@ -23,7 +23,6 @@
   "author": "gabrielmanhaes",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
     "@inquirer/prompts": "^8.3.2",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",

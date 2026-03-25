@@ -1,2 +1,2 @@
 export type { LLMProvider, Message, StreamEvent } from "./types.js";
-export { AnthropicProvider } from "./anthropic.js";
+export { ClaudeCodeProvider } from "./claude-code.js";

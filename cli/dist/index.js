@@ -13,9 +13,7 @@ program
 // Main command: `defer "build auth"` launches the TUI
 program
     .argument("[task]", "Task to run with Defer mode (launches TUI dashboard)")
-    .option("-p, --provider <provider>", "LLM provider: anthropic (default)", "anthropic")
-    .option("-m, --model <model>", "Model to use")
-    .action(async (task, options) => {
+    .action(async (task) => {
     if (!task) {
         program.help();
         return;
@@ -24,16 +22,12 @@ program
     const { render } = await import("ink");
     const React = await import("react");
     const { App } = await import("./tui/App.js");
-    const { AnthropicProvider } = await import("./providers/anthropic.js");
-    let provider;
-    switch (options.provider) {
-        case "anthropic":
-        default:
-            provider = new AnthropicProvider(options.model);
-            break;
-    }
+    const { ClaudeCodeProvider } = await import("./providers/claude-code.js");
+    const provider = new ClaudeCodeProvider();
     if (!provider.isConfigured()) {
-        console.error(`Error: ${provider.name} is not configured. Set ANTHROPIC_API_KEY.`);
+        console.error("Error: claude is not installed or not in PATH.");
+        console.error("Install it: npm install -g @anthropic-ai/claude-code");
+        console.error("Then run: claude login");
         process.exit(1);
     }
     render(React.createElement(App, { task, provider }));
