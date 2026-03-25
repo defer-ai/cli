@@ -6,8 +6,9 @@ import type { LLMProvider } from "../providers/types.js";
 import type { ClaudeCodeProvider } from "../providers/claude-code.js";
 import { Mascot, MiniMascot, statusToMood, type MascotMood } from "./Mascot.js";
 import { DecisionModal } from "./DecisionModal.js";
+import { DomainPriority, type CareLevel } from "./DomainPriority.js";
 
-type View = "stream" | "decisions";
+type View = "stream" | "domains" | "decisions";
 
 interface AppProps {
   task?: string;
@@ -28,6 +29,7 @@ export function App({ task, provider }: AppProps) {
   const [outputLines, setOutputLines] = useState<string[]>([]);
   const [showBanner, setShowBanner] = useState(!task);
   const [revisitId, setRevisitId] = useState<string | null>(null);
+  const [domainPrioritiesDone, setDomainPrioritiesDone] = useState(false);
   const [model, setModel] = useState(
     (provider as ClaudeCodeProvider).model || "sonnet"
   );
@@ -76,22 +78,26 @@ export function App({ task, provider }: AppProps) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-open decision modal when agent starts asking
+  // Auto-open domain priority or decision modal when agent starts asking
   useEffect(() => {
     if (!current) return;
     if (current.status === "asking" && prevStatus.current !== "asking") {
-      setView("decisions");
+      if (!domainPrioritiesDone) {
+        setView("domains");
+      } else {
+        setView("decisions");
+      }
       setRevisitId(null);
     }
     if (
       current.status !== "asking" &&
       prevStatus.current === "asking" &&
-      view === "decisions"
+      (view === "decisions" || view === "domains")
     ) {
       setView("stream");
     }
     prevStatus.current = current.status;
-  }, [current?.status, view]);
+  }, [current?.status, view, domainPrioritiesDone]);
 
   // Stream output to display, suppress only the defer-decisions JSON block
   useEffect(() => {
@@ -291,6 +297,97 @@ export function App({ task, provider }: AppProps) {
     [current, manager]
   );
 
+  const handleDomainPriorities = useCallback(
+    (priorities: Record<string, CareLevel>) => {
+      setDomainPrioritiesDone(true);
+
+      if (!current) {
+        setView("decisions");
+        return;
+      }
+
+      const agent = manager.get(current.id);
+      if (!agent) {
+        setView("decisions");
+        return;
+      }
+
+      // Auto-delegate "skip" categories
+      let changed = false;
+      for (const d of agent.state.decisions) {
+        if (priorities[d.category] === "skip" && d.answer === null) {
+          d.answer = "Choose for me";
+          d.delegated = true;
+          d.date = new Date().toISOString().split("T")[0];
+          changed = true;
+        }
+      }
+      if (changed) {
+        agent["persist"]();
+      }
+
+      // For new categories the user added (not in existing decisions),
+      // tell the AI to generate decisions for them
+      const existingCats = new Set(
+        agent.state.decisions.map((d) => d.category)
+      );
+      const newCats = Object.keys(priorities).filter(
+        (cat) => !existingCats.has(cat) && priorities[cat] !== "skip"
+      );
+
+      if (newCats.length > 0) {
+        const paranoidCats = Object.entries(priorities)
+          .filter(([_, level]) => level === "paranoid")
+          .map(([cat]) => cat);
+
+        let msg = `Additional domains to cover: ${newCats.join(", ")}.`;
+        if (paranoidCats.length > 0) {
+          msg += ` For these domains, go deep with sub-questions: ${paranoidCats.join(", ")}.`;
+        }
+        msg += ` Output a new \`\`\`defer-decisions block for these.`;
+
+        agent.sendUserMessage(msg);
+        setView("stream");
+        return;
+      }
+
+      // Check if there are still pending decisions
+      const stillPending = agent.state.decisions.some(
+        (d) => d.answer === null
+      );
+      if (stillPending) {
+        // For paranoid categories, tell the AI to expand
+        const paranoidCats = Object.entries(priorities)
+          .filter(
+            ([_, level]) => level === "paranoid"
+          )
+          .map(([cat]) => cat);
+
+        if (paranoidCats.length > 0) {
+          const msg = `For these domains, I want deeper sub-questions: ${paranoidCats.join(", ")}. Generate additional decisions for them in a \`\`\`defer-decisions block.`;
+          agent.sendUserMessage(msg);
+          setView("stream");
+          return;
+        }
+
+        setView("decisions");
+      } else {
+        // All delegated, proceed
+        const summary = agent.state.decisions
+          .map(
+            (d) =>
+              `${d.id}: ${d.question} -> ${d.delegated ? "DELEGATED: " : ""}${d.answer}`
+          )
+          .join("\n");
+        agent.sendUserMessage(
+          `Task: ${agent.state.task}\n\nDecision record:\n${summary}\n\nAll decisions are answered. Proceed with implementation.`
+        );
+        setView("stream");
+      }
+    },
+    [current, manager]
+  );
+
   const handleDecisionRevise = useCallback(
     (decisionId: string, newAnswer: string) => {
       if (!current) return;
@@ -321,6 +418,17 @@ export function App({ task, provider }: AppProps) {
       setInputValue((v) => v + input);
     }
   });
+
+  // Domain priority screen
+  if (view === "domains" && current && current.decisions.length > 0) {
+    return (
+      <DomainPriority
+        decisions={current.decisions}
+        onComplete={handleDomainPriorities}
+        rows={rows}
+      />
+    );
+  }
 
   // Decision modal (full screen)
   if (view === "decisions" && current) {
