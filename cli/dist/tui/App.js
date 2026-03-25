@@ -1,23 +1,20 @@
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import React, { useState, useEffect, useCallback } from "react";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
-import { DecisionsTab } from "./DecisionsTab.js";
-import { AgentsTab } from "./AgentsTab.js";
-import { GitTab } from "./GitTab.js";
-import { InputBar } from "./InputBar.js";
+import { DecisionModal } from "./DecisionModal.js";
+import { DashboardOverlay } from "./DashboardOverlay.js";
 import { AgentManager } from "../agents/manager.js";
 import { Agent } from "../agents/agent.js";
-const TABS = ["Decisions", "Agents", "Git"];
 export function App({ task, provider }) {
     const { exit } = useApp();
     const { stdout } = useStdout();
     const rows = stdout?.rows || 24;
-    const [activeTab, setActiveTab] = useState("Decisions");
+    const [view, setView] = useState("stream");
     const [agents, setAgents] = useState([]);
     const [selectedAgent, setSelectedAgent] = useState(null);
-    const [inputMode, setInputMode] = useState(false);
     const [manager] = useState(() => new AgentManager(provider, (states) => setAgents([...states])));
-    // Try to resume a previous session, or start fresh
+    const prevStatus = useRef("");
+    // Start or resume agent
     useEffect(() => {
         const resumed = Agent.loadSession(provider, (state) => {
             setAgents((prev) => {
@@ -43,57 +40,78 @@ export function App({ task, provider }) {
             agent.start();
         }
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
-    const currentAgent = agents.find((a) => a.id === selectedAgent) || agents[0];
-    useInput((input, key) => {
-        if (inputMode)
+    const current = agents.find((a) => a.id === selectedAgent) || agents[0];
+    // Auto-switch to decision modal when agent starts asking
+    useEffect(() => {
+        if (!current)
             return;
-        if (input === "q") {
+        if (current.status === "asking" && prevStatus.current !== "asking") {
+            setView("decisions");
+        }
+        if (current.status !== "asking" && prevStatus.current === "asking") {
+            setView("stream");
+        }
+        prevStatus.current = current.status;
+    }, [current?.status]);
+    useInput((input, key) => {
+        // Global: quit
+        if (input === "q" && view !== "decisions") {
             exit();
             return;
         }
-        // Tab key cycles through tabs
-        if (key.tab) {
-            setActiveTab((prev) => {
-                const idx = TABS.indexOf(prev);
-                return TABS[(idx + 1) % TABS.length];
-            });
-            return;
-        }
-        // Enter input mode
-        if (input === "i" || key.return) {
-            if (currentAgent?.status === "asking" ||
-                currentAgent?.status === "done") {
-                setInputMode(true);
+        // Escape: close overlays, go back to stream
+        if (key.escape) {
+            if (view === "dashboard") {
+                setView("stream");
+                return;
             }
         }
-    });
-    const handleInput = useCallback((value) => {
-        setInputMode(false);
-        if (!value.trim() || !currentAgent)
-            return;
-        const agent = manager.get(currentAgent.id);
-        if (!agent)
-            return;
-        const revisitMatch = value.match(/^revisit\s+(D\d+)\s+(.+)/i);
-        if (revisitMatch) {
-            agent.revisitDecision(revisitMatch[1], revisitMatch[2]);
+        // d: toggle dashboard
+        if (input === "d" && view !== "decisions") {
+            setView(view === "dashboard" ? "stream" : "dashboard");
             return;
         }
+        // Open decision view manually
+        if (input === "i" && current?.status === "asking") {
+            setView("decisions");
+            return;
+        }
+    });
+    const handleDecisionAnswer = useCallback((value) => {
+        if (!current)
+            return;
+        const agent = manager.get(current.id);
+        if (!agent)
+            return;
         agent.sendUserMessage(value);
-    }, [currentAgent, manager]);
-    const contentHeight = Math.max(rows - 4, 10);
-    const statusColor = currentAgent
-        ? currentAgent.status === "asking"
+    }, [current, manager]);
+    const handleDecisionsDone = useCallback(() => {
+        setView("stream");
+    }, []);
+    const pendingCount = current
+        ? current.decisions.filter((d) => d.answer === null).length
+        : 0;
+    return (_jsxs(Box, { flexDirection: "column", height: rows, children: [view === "stream" && (_jsx(StreamView, { agent: current, pendingCount: pendingCount, rows: rows })), view === "decisions" && current && (_jsx(DecisionModal, { agent: current, onAnswer: handleDecisionAnswer, onDone: handleDecisionsDone, rows: rows })), view === "dashboard" && (_jsx(DashboardOverlay, { agents: agents, selectedId: selectedAgent, onSelect: setSelectedAgent, onClose: () => setView("stream"), rows: rows }))] }));
+}
+/** Default view: streaming output like claude code */
+function StreamView({ agent, pendingCount, rows, }) {
+    if (!agent) {
+        return (_jsx(Box, { flexDirection: "column", padding: 1, children: _jsx(Text, { color: "gray", children: "Starting..." }) }));
+    }
+    // Show last N lines of output that fit the screen
+    const outputLines = (agent.currentOutput || "").split("\n");
+    const maxLines = rows - 4; // status bar + padding
+    const visibleLines = outputLines.slice(-maxLines);
+    const statusColor = agent.status === "thinking"
+        ? "cyan"
+        : agent.status === "asking"
             ? "yellow"
-            : currentAgent.status === "thinking"
-                ? "cyan"
-                : currentAgent.status === "error"
-                    ? "red"
-                    : currentAgent.status === "done"
-                        ? "green"
-                        : "white"
-        : "gray";
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { children: " " }), TABS.map((tab) => (_jsxs(React.Fragment, { children: [_jsxs(Text, { color: activeTab === tab ? "cyan" : "gray", bold: activeTab === tab, children: ["[", tab, "]"] }), _jsx(Text, { children: " " })] }, tab))), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "q:quit i:respond tab:switch" })] }), _jsxs(Box, { borderStyle: "single", borderColor: "gray", flexDirection: "column", height: contentHeight, overflow: "hidden", children: [activeTab === "Decisions" && (_jsx(DecisionsTab, { agent: currentAgent })), activeTab === "Agents" && (_jsx(AgentsTab, { agents: agents, selectedId: selectedAgent, onSelect: setSelectedAgent })), activeTab === "Git" && _jsx(GitTab, {})] }), _jsxs(Box, { children: [_jsx(Text, { children: " " }), currentAgent ? (_jsxs(_Fragment, { children: [_jsx(Text, { color: "cyan", children: currentAgent.id }), _jsx(Text, { color: "gray", children: " | " }), _jsx(Text, { color: statusColor, children: currentAgent.status }), _jsx(Text, { color: "gray", children: " | " }), _jsxs(Text, { color: "gray", children: [currentAgent.decisions.length, " decisions"] }), currentAgent.status === "asking" && (_jsx(Text, { color: "yellow", children: " | press i to respond" }))] })) : (_jsx(Text, { color: "gray", children: "No agents" }))] }), inputMode && (_jsx(InputBar, { options: currentAgent?.parsedOptions && currentAgent.parsedOptions.length > 0
-                    ? currentAgent.parsedOptions
-                    : undefined, onSubmit: handleInput, onCancel: () => setInputMode(false) }))] }));
+            : agent.status === "executing"
+                ? "blue"
+                : agent.status === "done"
+                    ? "green"
+                    : agent.status === "error"
+                        ? "red"
+                        : "gray";
+    return (_jsxs(Box, { flexDirection: "column", height: rows, children: [_jsxs(Box, { flexDirection: "column", flexGrow: 1, paddingX: 1, children: [agent.status === "thinking" && !agent.currentOutput && (_jsx(Text, { color: "cyan", children: "Decomposing task..." })), visibleLines.map((line, i) => (_jsx(Text, { wrap: "wrap", children: line }, i)))] }), _jsxs(Box, { paddingX: 1, borderStyle: "single", borderColor: "gray", borderTop: true, borderBottom: false, borderLeft: false, borderRight: false, children: [_jsx(Text, { color: statusColor, children: agent.status }), _jsx(Text, { color: "gray", children: " | " }), _jsxs(Text, { color: "gray", children: [agent.decisions.length, " decisions", pendingCount > 0 && (_jsxs(Text, { color: "yellow", children: [" (", pendingCount, " pending)"] }))] }), _jsx(Box, { flexGrow: 1 }), _jsxs(Text, { color: "gray", dimColor: true, children: [pendingCount > 0 ? "i:answer " : "", "d:dashboard q:quit"] })] })] }));
 }

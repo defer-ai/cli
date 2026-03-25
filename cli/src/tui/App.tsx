@@ -1,15 +1,13 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
-import { DecisionsTab } from "./DecisionsTab.js";
-import { AgentsTab } from "./AgentsTab.js";
-import { GitTab } from "./GitTab.js";
-import { InputBar } from "./InputBar.js";
+import { DecisionModal } from "./DecisionModal.js";
+import { DecisionSummary } from "./DecisionSummary.js";
+import { DashboardOverlay } from "./DashboardOverlay.js";
 import { AgentManager } from "../agents/manager.js";
 import { Agent, type AgentState } from "../agents/agent.js";
 import type { LLMProvider } from "../providers/types.js";
 
-const TABS = ["Decisions", "Agents", "Git"] as const;
-type Tab = (typeof TABS)[number];
+type View = "stream" | "decisions" | "dashboard";
 
 interface AppProps {
   task: string;
@@ -21,15 +19,15 @@ export function App({ task, provider }: AppProps) {
   const { stdout } = useStdout();
   const rows = stdout?.rows || 24;
 
-  const [activeTab, setActiveTab] = useState<Tab>("Decisions");
+  const [view, setView] = useState<View>("stream");
   const [agents, setAgents] = useState<AgentState[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
-  const [inputMode, setInputMode] = useState(false);
   const [manager] = useState(
     () => new AgentManager(provider, (states) => setAgents([...states]))
   );
+  const prevStatus = useRef<string>("");
 
-  // Try to resume a previous session, or start fresh
+  // Start or resume agent
   useEffect(() => {
     const resumed = Agent.loadSession(provider, (state) => {
       setAgents((prev) => {
@@ -56,146 +54,163 @@ export function App({ task, provider }: AppProps) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const currentAgent =
-    agents.find((a) => a.id === selectedAgent) || agents[0];
+  const current = agents.find((a) => a.id === selectedAgent) || agents[0];
+
+  // Auto-switch to decision modal when agent starts asking
+  useEffect(() => {
+    if (!current) return;
+    if (current.status === "asking" && prevStatus.current !== "asking") {
+      setView("decisions");
+    }
+    if (current.status !== "asking" && prevStatus.current === "asking") {
+      setView("stream");
+    }
+    prevStatus.current = current.status;
+  }, [current?.status]);
 
   useInput((input, key) => {
-    if (inputMode) return;
-
-    if (input === "q") {
+    // Global: quit
+    if (input === "q" && view !== "decisions") {
       exit();
       return;
     }
 
-    // Tab key cycles through tabs
-    if (key.tab) {
-      setActiveTab((prev) => {
-        const idx = TABS.indexOf(prev);
-        return TABS[(idx + 1) % TABS.length];
-      });
+    // Escape: close overlays, go back to stream
+    if (key.escape) {
+      if (view === "dashboard") {
+        setView("stream");
+        return;
+      }
+    }
+
+    // d: toggle dashboard
+    if (input === "d" && view !== "decisions") {
+      setView(view === "dashboard" ? "stream" : "dashboard");
       return;
     }
 
-    // Enter input mode
-    if (input === "i" || key.return) {
-      if (
-        currentAgent?.status === "asking" ||
-        currentAgent?.status === "done"
-      ) {
-        setInputMode(true);
-      }
+    // Open decision view manually
+    if (input === "i" && current?.status === "asking") {
+      setView("decisions");
+      return;
     }
   });
 
-  const handleInput = useCallback(
+  const handleDecisionAnswer = useCallback(
     (value: string) => {
-      setInputMode(false);
-      if (!value.trim() || !currentAgent) return;
-
-      const agent = manager.get(currentAgent.id);
+      if (!current) return;
+      const agent = manager.get(current.id);
       if (!agent) return;
-
-      const revisitMatch = value.match(/^revisit\s+(D\d+)\s+(.+)/i);
-      if (revisitMatch) {
-        agent.revisitDecision(revisitMatch[1], revisitMatch[2]);
-        return;
-      }
-
       agent.sendUserMessage(value);
     },
-    [currentAgent, manager]
+    [current, manager]
   );
 
-  const contentHeight = Math.max(rows - 4, 10);
+  const handleDecisionsDone = useCallback(() => {
+    setView("stream");
+  }, []);
 
-  const statusColor = currentAgent
-    ? currentAgent.status === "asking"
-      ? "yellow"
-      : currentAgent.status === "thinking"
-        ? "cyan"
-        : currentAgent.status === "error"
-          ? "red"
-          : currentAgent.status === "done"
-            ? "green"
-            : "white"
-    : "gray";
+  const pendingCount = current
+    ? current.decisions.filter((d) => d.answer === null).length
+    : 0;
 
   return (
-    <Box flexDirection="column">
-      {/* Tab bar */}
-      <Box>
-        <Text> </Text>
-        {TABS.map((tab) => (
-          <React.Fragment key={tab}>
-            <Text
-              color={activeTab === tab ? "cyan" : "gray"}
-              bold={activeTab === tab}
-            >
-              [{tab}]
-            </Text>
-            <Text> </Text>
-          </React.Fragment>
-        ))}
-        <Box flexGrow={1} />
-        <Text color="gray" dimColor>
-          q:quit i:respond tab:switch
-        </Text>
-      </Box>
+    <Box flexDirection="column" height={rows}>
+      {view === "stream" && (
+        <StreamView
+          agent={current}
+          pendingCount={pendingCount}
+          rows={rows}
+        />
+      )}
 
-      {/* Content */}
-      <Box
-        borderStyle="single"
-        borderColor="gray"
-        flexDirection="column"
-        height={contentHeight}
-        overflow="hidden"
-      >
-        {activeTab === "Decisions" && (
-          <DecisionsTab agent={currentAgent} />
+      {view === "decisions" && current && (
+        <DecisionModal
+          agent={current}
+          onAnswer={handleDecisionAnswer}
+          onDone={handleDecisionsDone}
+          rows={rows}
+        />
+      )}
+
+      {view === "dashboard" && (
+        <DashboardOverlay
+          agents={agents}
+          selectedId={selectedAgent}
+          onSelect={setSelectedAgent}
+          onClose={() => setView("stream")}
+          rows={rows}
+        />
+      )}
+    </Box>
+  );
+}
+
+/** Default view: streaming output like claude code */
+function StreamView({
+  agent,
+  pendingCount,
+  rows,
+}: {
+  agent: AgentState | undefined;
+  pendingCount: number;
+  rows: number;
+}) {
+  if (!agent) {
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text color="gray">Starting...</Text>
+      </Box>
+    );
+  }
+
+  // Show last N lines of output that fit the screen
+  const outputLines = (agent.currentOutput || "").split("\n");
+  const maxLines = rows - 4; // status bar + padding
+  const visibleLines = outputLines.slice(-maxLines);
+
+  const statusColor =
+    agent.status === "thinking"
+      ? "cyan"
+      : agent.status === "asking"
+        ? "yellow"
+        : agent.status === "executing"
+          ? "blue"
+          : agent.status === "done"
+            ? "green"
+            : agent.status === "error"
+              ? "red"
+              : "gray";
+
+  return (
+    <Box flexDirection="column" height={rows}>
+      {/* Output */}
+      <Box flexDirection="column" flexGrow={1} paddingX={1}>
+        {agent.status === "thinking" && !agent.currentOutput && (
+          <Text color="cyan">Decomposing task...</Text>
         )}
-        {activeTab === "Agents" && (
-          <AgentsTab
-            agents={agents}
-            selectedId={selectedAgent}
-            onSelect={setSelectedAgent}
-          />
-        )}
-        {activeTab === "Git" && <GitTab />}
+        {visibleLines.map((line, i) => (
+          <Text key={i} wrap="wrap">
+            {line}
+          </Text>
+        ))}
       </Box>
 
       {/* Status bar */}
-      <Box>
-        <Text> </Text>
-        {currentAgent ? (
-          <>
-            <Text color="cyan">{currentAgent.id}</Text>
-            <Text color="gray"> | </Text>
-            <Text color={statusColor}>{currentAgent.status}</Text>
-            <Text color="gray"> | </Text>
-            <Text color="gray">
-              {currentAgent.decisions.length} decisions
-            </Text>
-            {currentAgent.status === "asking" && (
-              <Text color="yellow"> | press i to respond</Text>
-            )}
-          </>
-        ) : (
-          <Text color="gray">No agents</Text>
-        )}
+      <Box paddingX={1} borderStyle="single" borderColor="gray" borderTop borderBottom={false} borderLeft={false} borderRight={false}>
+        <Text color={statusColor}>{agent.status}</Text>
+        <Text color="gray"> | </Text>
+        <Text color="gray">
+          {agent.decisions.length} decisions
+          {pendingCount > 0 && (
+            <Text color="yellow"> ({pendingCount} pending)</Text>
+          )}
+        </Text>
+        <Box flexGrow={1} />
+        <Text color="gray" dimColor>
+          {pendingCount > 0 ? "i:answer " : ""}d:dashboard q:quit
+        </Text>
       </Box>
-
-      {/* Input bar with selectable options */}
-      {inputMode && (
-        <InputBar
-          options={
-            currentAgent?.parsedOptions && currentAgent.parsedOptions.length > 0
-              ? currentAgent.parsedOptions
-              : undefined
-          }
-          onSubmit={handleInput}
-          onCancel={() => setInputMode(false)}
-        />
-      )}
     </Box>
   );
 }
