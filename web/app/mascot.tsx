@@ -209,9 +209,9 @@ export function MascotLogo() {
     return () => clearInterval(interval);
   }, []);
 
-  const px = 35;
-  const eyeW = 6;
-  const eyeH = MAX_EYE_H;
+  const px = 7;
+  const eyeW = 30;
+  const eyeH = 10;
 
   const noiseColors = [
     "bg-black",
