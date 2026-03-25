@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
-import { Banner } from "./Banner.js";
+import { Banner, Header } from "./Banner.js";
 import { DecisionModal } from "./DecisionModal.js";
 import { DecisionSummary } from "./DecisionSummary.js";
 import { DashboardOverlay } from "./DashboardOverlay.js";
@@ -83,12 +83,16 @@ export function App({ task, provider }: AppProps) {
     prevStatus.current = current.status;
   }, [current?.status, view]);
 
-  // Track output lines
+  // Track output lines, but suppress raw decision decomposition output
   useEffect(() => {
-    if (current?.currentOutput) {
-      setOutputLines(current.currentOutput.split("\n"));
-    }
-  }, [current?.currentOutput]);
+    if (!current?.currentOutput) return;
+    // Don't show raw output while decomposing (it contains the JSON block)
+    if (current.phase === "decomposing" && current.status === "thinking") return;
+    // Don't show output that contains the defer-decisions JSON block
+    const output = current.currentOutput;
+    if (output.includes("```defer-decisions")) return;
+    setOutputLines(output.split("\n"));
+  }, [current?.currentOutput, current?.phase, current?.status]);
 
   const startTask = useCallback(
     (taskText: string) => {
@@ -367,8 +371,10 @@ export function App({ task, provider }: AppProps) {
       <Box flexDirection="column" flexGrow={1}>
         {/* Content */}
         <Box flexDirection="column" flexGrow={1} paddingX={1}>
-          {view === "banner" && !current && (
+          {view === "banner" && !current ? (
             <Banner model={model} cwd={process.cwd()} />
+          ) : (
+            <Header model={model} />
           )}
 
           {current?.status === "thinking" && outputLines.length === 0 && (
