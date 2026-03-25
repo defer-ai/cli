@@ -200,74 +200,122 @@ export function WebMascot({
   );
 }
 
-/** Logo mascot: noise eyes + "defer.sh" as the mouth */
+/** Logo mascot: rounded noise eyes + "defer.sh" as the mouth, blinks */
 export function MascotLogo() {
-  const [frame, setFrame] = useState(0);
+  const [tick, setTick] = useState(0);
+  const [blinking, setBlinking] = useState(false);
 
   useEffect(() => {
-    const interval = setInterval(() => setFrame((f) => f + 1), 80);
+    const interval = setInterval(() => setTick((t) => t + 1), 80);
     return () => clearInterval(interval);
   }, []);
 
-  const px = 7;
-  const eyeW = 30;
+  // Blink every ~4 seconds for 2 frames
+  useEffect(() => {
+    if (tick > 0 && tick % 50 === 0) {
+      setBlinking(true);
+      setTimeout(() => setBlinking(false), 160);
+    }
+  }, [tick]);
+
+  const px = 6;
+  const eyeW = 24;
   const eyeH = 10;
+  const cornerR = 3; // pixels to cut from corners
 
-  const noiseColors = [
-    "bg-black",
-    "bg-white",
-  ];
+  // Rounded rectangle mask: which pixels are inside the eye
+  function isInEye(x: number, y: number): boolean {
+    // Top-left corner
+    if (x < cornerR && y < cornerR) {
+      const dx = cornerR - x - 1;
+      const dy = cornerR - y - 1;
+      return dx + dy < cornerR;
+    }
+    // Top-right corner
+    if (x >= eyeW - cornerR && y < cornerR) {
+      const dx = x - (eyeW - cornerR);
+      const dy = cornerR - y - 1;
+      return dx + dy < cornerR;
+    }
+    // Bottom-left corner
+    if (x < cornerR && y >= eyeH - cornerR) {
+      const dx = cornerR - x - 1;
+      const dy = y - (eyeH - cornerR);
+      return dx + dy < cornerR;
+    }
+    // Bottom-right corner
+    if (x >= eyeW - cornerR && y >= eyeH - cornerR) {
+      const dx = x - (eyeW - cornerR);
+      const dy = y - (eyeH - cornerR);
+      return dx + dy < cornerR;
+    }
+    return true;
+  }
 
-  function NoiseEye() {
-    const rows = [];
-    // Top border
-    rows.push(
-      <div key="top" className="flex">
-        <div style={{ width: px, height: px }} />
-        {Array.from({ length: eyeW - 2 }, (_, i) => (
-          <div key={i} className="bg-cyan-400" style={{ width: px, height: px }} />
-        ))}
-        <div style={{ width: px, height: px }} />
-      </div>
-    );
-    // Body
-    for (let y = 0; y < eyeH; y++) {
-      rows.push(
-        <div key={`body-${y}`} className="flex">
-          <div className="bg-cyan-400" style={{ width: px, height: px }} />
-          {Array.from({ length: eyeW - 2 }, (_, x) => {
-            const colorIdx = (frame + y * 7 + x * 3) % noiseColors.length;
-            return (
-              <div
-                key={x}
-                className={noiseColors[colorIdx]}
-                style={{ width: px, height: px }}
-              />
-            );
-          })}
-          <div className="bg-cyan-400" style={{ width: px, height: px }} />
+  // Is this pixel on the border?
+  function isBorder(x: number, y: number): boolean {
+    if (!isInEye(x, y)) return false;
+    if (y === 0 || y === eyeH - 1 || x === 0 || x === eyeW - 1) return true;
+    // Border around corners
+    if (!isInEye(x - 1, y) || !isInEye(x + 1, y) ||
+        !isInEye(x, y - 1) || !isInEye(x, y + 1)) return true;
+    return false;
+  }
+
+  // Simple hash for pseudo-random noise (changes every tick)
+  function noise(x: number, y: number, seed: number): boolean {
+    const h = ((x * 374761 + y * 668265 + seed * 982451) >>> 0) % 100;
+    return h < 50;
+  }
+
+  function NoiseEye({ seed }: { seed: number }) {
+    if (blinking) {
+      // Blink: just show a thin cyan line
+      return (
+        <div className="inline-flex flex-col items-center justify-center"
+          style={{ width: eyeW * px, height: eyeH * px }}>
+          <div className="bg-cyan-400 rounded-full"
+            style={{ width: eyeW * px * 0.7, height: px * 2 }} />
         </div>
       );
     }
-    // Bottom border
-    rows.push(
-      <div key="bot" className="flex">
-        <div style={{ width: px, height: px }} />
-        {Array.from({ length: eyeW - 2 }, (_, i) => (
-          <div key={i} className="bg-cyan-400" style={{ width: px, height: px }} />
+
+    return (
+      <div className="inline-flex flex-col">
+        {Array.from({ length: eyeH }, (_, y) => (
+          <div key={y} className="flex">
+            {Array.from({ length: eyeW }, (_, x) => {
+              if (!isInEye(x, y)) {
+                return (
+                  <div key={x} style={{ width: px, height: px, background: "transparent" }} />
+                );
+              }
+              if (isBorder(x, y)) {
+                return (
+                  <div key={x} className="bg-cyan-400" style={{ width: px, height: px }} />
+                );
+              }
+              // Noise interior
+              const isWhite = noise(x, y, tick + seed);
+              return (
+                <div
+                  key={x}
+                  style={{ width: px, height: px, background: isWhite ? "white" : "black" }}
+                />
+              );
+            })}
+          </div>
         ))}
-        <div style={{ width: px, height: px }} />
       </div>
     );
-    return <div className="inline-flex flex-col">{rows}</div>;
   }
 
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div className="flex flex-col items-center gap-5">
       {/* Eyes */}
-      <div className="flex gap-10">
-        <NoiseEye />
-        <NoiseEye />
+      <div className="flex gap-8">
+        <NoiseEye seed={0} />
+        <NoiseEye seed={1000} />
       </div>
       {/* Mouth = defer.sh */}
       <span className="font-mono text-2xl text-accent tracking-[0.3em]">
