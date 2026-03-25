@@ -30,8 +30,15 @@ program
         console.error("Then run: claude login");
         process.exit(1);
     }
-    render(React.createElement(App, { task, provider }), {
+    // Enter alternate screen buffer to prevent line duplication
+    process.stdout.write("\x1b[?1049h");
+    process.stdout.write("\x1b[2J\x1b[H");
+    const instance = render(React.createElement(App, { task, provider }), {
         exitOnCtrlC: true,
+    });
+    instance.waitUntilExit().then(() => {
+        // Restore main screen buffer
+        process.stdout.write("\x1b[?1049l");
     });
 });
 // Subcommands for non-TUI operations

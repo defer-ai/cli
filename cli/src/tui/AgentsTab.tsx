@@ -40,43 +40,120 @@ export function AgentsTab({ agents, selectedId, onSelect }: Props) {
     );
   }
 
+  const selected = agents[cursorIdx];
+
   return (
-    <Box padding={1} flexDirection="column">
-      <Box marginBottom={1}>
-        <Text color="gray" dimColor>
-          j/k:navigate enter:select
-        </Text>
+    <Box padding={1} flexDirection="row">
+      {/* Agent list */}
+      <Box flexDirection="column" width="40%">
+        <Box marginBottom={1}>
+          <Text color="gray" dimColor>
+            j/k:navigate enter:select
+          </Text>
+        </Box>
+
+        {agents.map((agent, i) => {
+          const isActive = agent.id === selectedId;
+          const isCursor = i === cursorIdx;
+          const answered = agent.decisions.filter(
+            (d) => d.answer !== null
+          ).length;
+          const total = agent.decisions.length;
+          const delegated = agent.decisions.filter((d) => d.delegated).length;
+
+          return (
+            <Box key={agent.id} flexDirection="column" marginBottom={1}>
+              <Box>
+                <Text color={isCursor ? "cyan" : "gray"}>
+                  {isCursor ? "> " : "  "}
+                </Text>
+                <Text
+                  color={isActive ? "cyan" : "white"}
+                  bold={isActive}
+                >
+                  {agent.id}
+                </Text>
+                <Text> </Text>
+                <Text
+                  color={
+                    (statusColors[agent.status] as any) || "white"
+                  }
+                >
+                  {agent.status}
+                </Text>
+              </Box>
+              <Box paddingLeft={4}>
+                <Text color="gray">
+                  {answered}/{total} answered
+                  {delegated > 0 ? `, ${delegated} delegated` : ""}
+                </Text>
+              </Box>
+            </Box>
+          );
+        })}
       </Box>
 
-      {agents.map((agent, i) => {
-        const isSelected = agent.id === selectedId;
-        const isCursor = i === cursorIdx;
+      {/* Agent detail */}
+      {selected && (
+        <Box
+          flexDirection="column"
+          width="60%"
+          borderStyle="single"
+          borderColor="gray"
+          paddingX={1}
+        >
+          <Text color="cyan" bold>
+            {selected.id}
+          </Text>
 
-        return (
-          <Box key={agent.id} paddingLeft={1}>
-            <Text color={isCursor ? "cyan" : "white"}>
-              {isCursor ? "> " : "  "}
+          <Box marginTop={1}>
+            <Text color="gray">Task: </Text>
+            <Text wrap="wrap">{selected.task}</Text>
+          </Box>
+
+          <Box marginTop={1}>
+            <Text color="gray">Status: </Text>
+            <Text
+              color={
+                (statusColors[selected.status] as any) || "white"
+              }
+            >
+              {selected.status}
             </Text>
-            <Text color={isSelected ? "cyan" : "white"} bold={isSelected}>
-              {agent.id}
-            </Text>
-            <Text> </Text>
-            <Text color={(statusColors[agent.status] as any) || "white"}>
-              [{agent.status}]
-            </Text>
-            <Text> </Text>
+            <Text color="gray"> | Phase: </Text>
+            <Text>{selected.phase}</Text>
+          </Box>
+
+          <Box marginTop={1}>
             <Text color="gray">
-              {agent.task.length > 50
-                ? agent.task.slice(0, 50) + "..."
-                : agent.task}
-            </Text>
-            <Text> </Text>
-            <Text color="gray" dimColor>
-              {agent.decisions.length}d
+              Decisions: {selected.decisions.length} total,{" "}
+              {selected.decisions.filter((d) => d.answer !== null).length}{" "}
+              answered,{" "}
+              {selected.decisions.filter((d) => d.answer === null).length}{" "}
+              pending
             </Text>
           </Box>
-        );
-      })}
+
+          {selected.currentOutput && (
+            <Box marginTop={1} flexDirection="column">
+              <Text color="gray" dimColor>
+                Latest output:
+              </Text>
+              <Text wrap="wrap" color="gray">
+                {selected.currentOutput.length > 300
+                  ? selected.currentOutput.slice(-300) + "..."
+                  : selected.currentOutput}
+              </Text>
+            </Box>
+          )}
+
+          {selected.error && (
+            <Box marginTop={1}>
+              <Text color="red">Error: {selected.error}</Text>
+            </Box>
+          )}
+        </Box>
+      )}
     </Box>
   );
 }

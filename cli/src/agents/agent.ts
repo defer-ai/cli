@@ -32,6 +32,8 @@ export interface AgentState {
   messages: Message[];
   currentOutput: string;
   parsedOptions: ParsedOption[];
+  /** Index of the currently active pending decision */
+  pendingIndex: number;
   error?: string;
 }
 
@@ -81,7 +83,6 @@ export class Agent {
     this.onUpdate = onUpdate;
     this.cwd = cwd || process.cwd();
 
-    // Load or create store
     this.store = loadStore(this.cwd) || createStore(this.cwd, task);
 
     this.state = {
@@ -93,6 +94,7 @@ export class Agent {
       messages: [],
       currentOutput: "",
       parsedOptions: [],
+      pendingIndex: -1,
     };
   }
 
@@ -117,6 +119,57 @@ export class Agent {
       savedAt: new Date().toISOString(),
     };
     writeFileSync(sessionFile, JSON.stringify(session, null, 2));
+  }
+
+  /** Find the index of the next pending decision */
+  private findNextPendingIndex(afterIndex = -1): number {
+    for (let i = afterIndex + 1; i < this.state.decisions.length; i++) {
+      if (this.state.decisions[i].answer === null) return i;
+    }
+    return -1;
+  }
+
+  private buildOptionsForDecision(idx: number): ParsedOption[] {
+    const d = this.state.decisions[idx];
+    if (!d || d.options.length === 0) return [];
+    return d.options.map((o) => ({
+      label: `${o.key}) ${o.label}`,
+      value: o.key,
+    }));
+  }
+
+  private moveToNextPending(): void {
+    const nextIdx = this.findNextPendingIndex(this.state.pendingIndex);
+    if (nextIdx >= 0) {
+      const parsedOptions = this.buildOptionsForDecision(nextIdx);
+      this.update({
+        decisions: this.state.decisions,
+        pendingIndex: nextIdx,
+        parsedOptions,
+        status: "asking",
+      });
+    } else {
+      // All answered, send to AI for confirmation
+      const summary = this.state.decisions
+        .map(
+          (d) =>
+            `${d.id}: ${d.question} -> ${d.delegated ? "DELEGATED: " : ""}${d.answer}`
+        )
+        .join("\n");
+
+      this.state.messages.push({
+        role: "user",
+        content: `Here are my answers:\n${summary}\n\nPlease confirm the decision record then proceed with implementation.`,
+      });
+      this.update({
+        status: "thinking",
+        currentOutput: "",
+        parsedOptions: [],
+        pendingIndex: -1,
+        phase: "confirming",
+      });
+      this.runCompletion();
+    }
   }
 
   static loadSession(
@@ -144,12 +197,14 @@ export class Agent {
       agent.state.messages = session.messages || [];
       agent.state.phase = session.phase || "decomposing";
 
-      const hasPending = agent.state.decisions.some((d) => d.answer === null);
-      agent.state.status = hasPending ? "asking" : "done";
-
-      // Build options from pending decisions
-      if (hasPending) {
-        agent.state.parsedOptions = agent.buildOptionsFromDecisions();
+      const pendingIdx = agent.findNextPendingIndex();
+      if (pendingIdx >= 0) {
+        agent.state.status = "asking";
+        agent.state.pendingIndex = pendingIdx;
+        agent.state.parsedOptions =
+          agent.buildOptionsForDecision(pendingIdx);
+      } else {
+        agent.state.status = session.status === "executing" ? "executing" : "done";
       }
 
       return agent;
@@ -158,23 +213,18 @@ export class Agent {
     }
   }
 
-  private buildOptionsFromDecisions(): ParsedOption[] {
-    // Find first pending decision and return its options
-    const pending = this.state.decisions.find((d) => d.answer === null);
-    if (!pending || pending.options.length === 0) return [];
-    return pending.options.map((o) => ({
-      label: `${o.key}) ${o.label}`,
-      value: o.key,
-    }));
-  }
-
   async start(): Promise<void> {
     this.update({ status: "thinking" });
 
-    const hasPending = this.state.decisions.some((d) => d.answer === null);
-    if (hasPending) {
-      const parsedOptions = this.buildOptionsFromDecisions();
-      this.update({ status: "asking", phase: "decomposing", parsedOptions });
+    const pendingIdx = this.findNextPendingIndex();
+    if (pendingIdx >= 0) {
+      const parsedOptions = this.buildOptionsForDecision(pendingIdx);
+      this.update({
+        status: "asking",
+        phase: "decomposing",
+        pendingIndex: pendingIdx,
+        parsedOptions,
+      });
       return;
     }
 
@@ -188,53 +238,23 @@ export class Agent {
 
   async sendUserMessage(content: string): Promise<void> {
     // Check if this is answering a pending decision
-    const pending = this.state.decisions.find((d) => d.answer === null);
-    if (pending) {
-      // Match option key (single letter)
+    const pendingIdx = this.state.pendingIndex;
+    const pending =
+      pendingIdx >= 0 ? this.state.decisions[pendingIdx] : null;
+
+    if (pending && pending.answer === null) {
+      // Match option key
       const optionMatch = content.trim().match(/^([A-Z])$/i);
       if (optionMatch) {
         const key = optionMatch[1].toUpperCase();
         const option = pending.options.find((o) => o.key === key);
         if (option) {
-          const isDelegate =
-            option.label.toLowerCase().includes("choose for me");
           pending.answer = option.label;
-          pending.delegated = isDelegate;
+          pending.delegated =
+            option.label.toLowerCase().includes("choose for me");
           pending.date = new Date().toISOString().split("T")[0];
           this.persist();
-
-          // Check if more pending
-          const nextPending = this.state.decisions.find(
-            (d) => d.answer === null
-          );
-          if (nextPending) {
-            const parsedOptions = this.buildOptionsFromDecisions();
-            this.update({
-              decisions: this.state.decisions,
-              parsedOptions,
-            });
-            return;
-          }
-
-          // All answered - send summary to AI
-          const summary = this.state.decisions
-            .map(
-              (d) =>
-                `${d.id}: ${d.question} -> ${d.delegated ? "DELEGATED: " : ""}${d.answer}`
-            )
-            .join("\n");
-
-          this.state.messages.push({
-            role: "user",
-            content: `Here are my answers:\n${summary}\n\nPlease confirm the decision record then proceed.`,
-          });
-          this.update({
-            status: "thinking",
-            currentOutput: "",
-            parsedOptions: [],
-            phase: "confirming",
-          });
-          await this.runCompletion();
+          this.moveToNextPending();
           return;
         }
       }
@@ -243,38 +263,7 @@ export class Agent {
       pending.answer = content.trim();
       pending.date = new Date().toISOString().split("T")[0];
       this.persist();
-
-      const nextPending = this.state.decisions.find(
-        (d) => d.answer === null
-      );
-      if (nextPending) {
-        const parsedOptions = this.buildOptionsFromDecisions();
-        this.update({
-          decisions: this.state.decisions,
-          parsedOptions,
-        });
-        return;
-      }
-
-      // All done
-      const summary = this.state.decisions
-        .map(
-          (d) =>
-            `${d.id}: ${d.question} -> ${d.delegated ? "DELEGATED: " : ""}${d.answer}`
-        )
-        .join("\n");
-
-      this.state.messages.push({
-        role: "user",
-        content: `Here are my answers:\n${summary}\n\nPlease confirm the decision record then proceed.`,
-      });
-      this.update({
-        status: "thinking",
-        currentOutput: "",
-        parsedOptions: [],
-        phase: "confirming",
-      });
-      await this.runCompletion();
+      this.moveToNextPending();
       return;
     }
 
@@ -327,7 +316,7 @@ export class Agent {
         content: fullResponse,
       });
 
-      // Parse structured decisions from JSON block
+      // Parse structured decisions
       const newDecisions = this.parseStructuredDecisions(fullResponse);
       const existingQuestions = new Set(
         this.state.decisions.map((d) => d.question)
@@ -341,18 +330,18 @@ export class Agent {
         this.persist();
       }
 
-      const hasQuestions = unique.length > 0;
-      const hasPending = this.state.decisions.some((d) => d.answer === null);
+      const pendingIdx = this.findNextPendingIndex();
 
-      if (hasQuestions || hasPending) {
-        const parsedOptions = this.buildOptionsFromDecisions();
+      if (pendingIdx >= 0) {
+        const parsedOptions = this.buildOptionsForDecision(pendingIdx);
         this.update({
           status: "asking",
           phase: "decomposing",
+          pendingIndex: pendingIdx,
           parsedOptions,
         });
-      } else if (this.state.phase === "confirming") {
-        this.update({ status: "executing", phase: "executing" });
+      } else if (this.state.phase === "confirming" || this.state.phase === "executing") {
+        this.update({ status: "done", phase: "executing" });
       } else {
         this.update({ status: "done" });
       }
@@ -373,7 +362,6 @@ export class Agent {
       /```defer-decisions\s*\n([\s\S]*?)\n```/
     );
     if (!match) {
-      // Fallback: try to find any JSON array of decisions
       return this.parseFallbackDecisions(output);
     }
 
@@ -382,31 +370,27 @@ export class Agent {
       if (!Array.isArray(raw)) return [];
 
       const today = new Date().toISOString().split("T")[0];
-      return raw.map(
-        (
-          item: {
-            category?: string;
-            question?: string;
-            options?: { key: string; label: string }[];
-            context?: string;
-          },
-        ) => {
-          const id = nextDecisionId(this.state.decisions);
-          return {
-            id,
-            category: item.category || "General",
-            question: item.question || "",
-            options: (item.options || []).map((o) => ({
-              key: o.key,
-              label: o.label,
-            })),
-            context: item.context || "",
-            answer: null,
-            delegated: false,
-            date: today,
-          } satisfies Decision;
-        }
-      );
+      const result: Decision[] = [];
+
+      for (const item of raw) {
+        // Use accumulated result + existing decisions for ID generation
+        const id = nextDecisionId([...this.state.decisions, ...result]);
+        result.push({
+          id,
+          category: item.category || "General",
+          question: item.question || "",
+          options: (item.options || []).map((o: { key: string; label: string }) => ({
+            key: o.key,
+            label: o.label,
+          })),
+          context: item.context || "",
+          answer: null,
+          delegated: false,
+          date: today,
+        });
+      }
+
+      return result;
     } catch {
       return [];
     }
@@ -417,17 +401,19 @@ export class Agent {
     const decisions: Decision[] = [];
     const today = new Date().toISOString().split("T")[0];
     let currentCategory = "General";
+    let lastDecision: Decision | null = null;
     const lines = output.split("\n");
 
     for (const line of lines) {
       const catMatch = line.match(/^##\s+(.+)/);
       if (catMatch && !catMatch[1].startsWith("[")) {
         currentCategory = catMatch[1].trim();
+        continue;
       }
 
       const qMatch = line.match(/\*\*Q\d+:\s*(.+?)\*\*/);
       if (qMatch) {
-        decisions.push({
+        const d: Decision = {
           id: nextDecisionId([...this.state.decisions, ...decisions]),
           category: currentCategory,
           question: qMatch[1],
@@ -436,20 +422,27 @@ export class Agent {
           answer: null,
           delegated: false,
           date: today,
-        });
+        };
+        decisions.push(d);
+        lastDecision = d;
+        continue;
       }
-    }
 
-    // Try to attach options to the last decision
-    for (const line of lines) {
-      const optMatch = line.match(
-        /^[-*]\s+\*{0,2}([A-Z])[.)]\*{0,2}\.?\s*(.+)/
-      );
-      if (optMatch && decisions.length > 0) {
-        const last = decisions[decisions.length - 1];
-        const label = optMatch[2].trim().replace(/\*+/g, "").trim();
-        if (label && !last.options.some((o) => o.key === optMatch[1])) {
-          last.options.push({ key: optMatch[1], label });
+      // Attach options to last decision
+      if (lastDecision) {
+        const optMatch = line.match(
+          /^[-*]\s+\*{0,2}([A-Z])[.)]\*{0,2}\.?\s*(.+)/
+        );
+        if (optMatch) {
+          const label = optMatch[2].trim().replace(/\*+/g, "").trim();
+          if (label && !lastDecision.options.some((o) => o.key === optMatch[1])) {
+            lastDecision.options.push({ key: optMatch[1], label });
+          }
+        }
+
+        const ctxMatch = line.match(/Context:\s*(.+)/i);
+        if (ctxMatch) {
+          lastDecision.context = ctxMatch[1].trim();
         }
       }
     }

@@ -15,6 +15,8 @@ export interface AgentState {
     messages: Message[];
     currentOutput: string;
     parsedOptions: ParsedOption[];
+    /** Index of the currently active pending decision */
+    pendingIndex: number;
     error?: string;
 }
 export declare class Agent {
@@ -27,8 +29,11 @@ export declare class Agent {
     private update;
     private persist;
     private saveSession;
+    /** Find the index of the next pending decision */
+    private findNextPendingIndex;
+    private buildOptionsForDecision;
+    private moveToNextPending;
     static loadSession(provider: LLMProvider, onUpdate: (state: AgentState) => void, cwd?: string): Agent | null;
-    private buildOptionsFromDecisions;
     start(): Promise<void>;
     sendUserMessage(content: string): Promise<void>;
     revisitDecision(decisionId: string, newAnswer: string): Promise<void>;

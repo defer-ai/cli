@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import type { AgentState } from "../agents/agent.js";
 
@@ -10,10 +10,16 @@ export function DecisionsTab({ agent }: Props) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [showOutput, setShowOutput] = useState(false);
 
+  // Sync selectedIdx with the current pending decision
+  useEffect(() => {
+    if (agent && agent.pendingIndex >= 0) {
+      setSelectedIdx(agent.pendingIndex);
+    }
+  }, [agent?.pendingIndex]);
+
   useInput((input, key) => {
     if (!agent) return;
-
-    const max = agent.decisions.length - 1;
+    const max = Math.max(agent.decisions.length - 1, 0);
     if (input === "j" || key.downArrow) {
       setSelectedIdx((i) => Math.min(i + 1, max));
     }
@@ -33,10 +39,18 @@ export function DecisionsTab({ agent }: Props) {
     );
   }
 
-  if (agent.decisions.length === 0 && !agent.currentOutput) {
+  if (agent.decisions.length === 0 && agent.status === "thinking") {
     return (
-      <Box padding={1} flexDirection="column">
-        <Text color="gray">Decomposing task...</Text>
+      <Box padding={1}>
+        <Text color="cyan">Decomposing task...</Text>
+      </Box>
+    );
+  }
+
+  if (agent.decisions.length === 0) {
+    return (
+      <Box padding={1}>
+        <Text color="gray">No decisions yet.</Text>
       </Box>
     );
   }
@@ -57,41 +71,34 @@ export function DecisionsTab({ agent }: Props) {
   }
 
   // Group by category
-  const categories = new Map<string, typeof agent.decisions>();
-  for (const d of agent.decisions) {
+  const categories = new Map<string, { decision: (typeof agent.decisions)[0]; globalIdx: number }[]>();
+  agent.decisions.forEach((d, i) => {
     const cat = d.category || "General";
     if (!categories.has(cat)) categories.set(cat, []);
-    categories.get(cat)!.push(d);
-  }
+    categories.get(cat)!.push({ decision: d, globalIdx: i });
+  });
 
-  let globalIdx = 0;
   const selected = agent.decisions[selectedIdx];
 
   return (
     <Box padding={1} flexDirection="row">
       {/* Decision list */}
-      <Box flexDirection="column" width="60%">
-        <Box marginBottom={1}>
-          <Text color="gray" dimColor>
-            j/k:navigate o:raw output i:respond
-          </Text>
-        </Box>
-
-        {Array.from(categories.entries()).map(([category, decisions]) => (
+      <Box flexDirection="column" width="55%">
+        {Array.from(categories.entries()).map(([category, items]) => (
           <Box key={category} flexDirection="column" marginBottom={1}>
             <Text color="cyan" bold>
               {category}
             </Text>
-            {decisions.map((d) => {
-              const idx = globalIdx++;
+            {items.map(({ decision: d, globalIdx: idx }) => {
               const isSelected = idx === selectedIdx;
+              const isCurrent = idx === agent.pendingIndex;
               const isPending = d.answer === null;
               const isDelegated = d.delegated;
 
               return (
                 <Box key={d.id} paddingLeft={1}>
                   <Text color={isSelected ? "cyan" : "gray"}>
-                    {isSelected ? ">" : " "}{" "}
+                    {isCurrent ? ">" : isSelected ? ">" : " "}{" "}
                   </Text>
                   <Text color="gray" dimColor>
                     {d.id}{" "}
@@ -107,11 +114,12 @@ export function DecisionsTab({ agent }: Props) {
                           ? "magenta"
                           : "green"
                     }
+                    bold={isCurrent}
                   >
                     {isPending
                       ? "pending"
                       : isDelegated
-                        ? `delegated: ${d.answer}`
+                        ? `delegated`
                         : d.answer}
                   </Text>
                 </Box>
@@ -127,10 +135,19 @@ export function DecisionsTab({ agent }: Props) {
             </Text>
           </Box>
         )}
-
         {agent.status === "thinking" && (
           <Box marginTop={1}>
             <Text color="cyan">Thinking...</Text>
+          </Box>
+        )}
+        {agent.status === "executing" && (
+          <Box marginTop={1}>
+            <Text color="blue">Executing...</Text>
+          </Box>
+        )}
+        {agent.status === "done" && (
+          <Box marginTop={1}>
+            <Text color="green">Done.</Text>
           </Box>
         )}
       </Box>
@@ -139,24 +156,23 @@ export function DecisionsTab({ agent }: Props) {
       {selected && (
         <Box
           flexDirection="column"
-          width="40%"
+          width="45%"
           borderStyle="single"
           borderColor="gray"
           paddingX={1}
+          paddingY={0}
         >
           <Text color="cyan" bold>
             {selected.id}
           </Text>
-          <Text color="gray" dimColor>
-            {selected.category}
-          </Text>
+          <Text color="gray">{selected.category}</Text>
           <Box marginTop={1}>
-            <Text bold>{selected.question}</Text>
+            <Text bold wrap="wrap">{selected.question}</Text>
           </Box>
 
           {selected.context ? (
             <Box marginTop={1}>
-              <Text color="gray" italic>
+              <Text color="gray" italic wrap="wrap">
                 {selected.context}
               </Text>
             </Box>
@@ -164,21 +180,15 @@ export function DecisionsTab({ agent }: Props) {
 
           {selected.options.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
-              <Text color="gray" dimColor>
-                Options:
-              </Text>
               {selected.options.map((o) => (
-                <Box key={o.key} paddingLeft={1}>
-                  <Text color="white">
-                    {o.key}) {o.label}
-                  </Text>
-                </Box>
+                <Text key={o.key} color="white">
+                  {o.key}) {o.label}
+                </Text>
               ))}
             </Box>
           )}
 
           <Box marginTop={1}>
-            <Text color="gray">Answer: </Text>
             <Text
               color={
                 selected.answer === null
@@ -193,12 +203,6 @@ export function DecisionsTab({ agent }: Props) {
                 : selected.delegated
                   ? `delegated: ${selected.answer}`
                   : selected.answer}
-            </Text>
-          </Box>
-
-          <Box marginTop={1}>
-            <Text color="gray" dimColor>
-              {selected.date}
             </Text>
           </Box>
         </Box>

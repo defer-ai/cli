@@ -17,10 +17,6 @@ export function App({ task, provider }) {
     const [selectedAgent, setSelectedAgent] = useState(null);
     const [inputMode, setInputMode] = useState(false);
     const [manager] = useState(() => new AgentManager(provider, (states) => setAgents([...states])));
-    // Clear screen on mount
-    useEffect(() => {
-        process.stdout.write("\x1b[2J\x1b[H");
-    }, []);
     // Try to resume a previous session, or start fresh
     useEffect(() => {
         const resumed = Agent.loadSession(provider, (state) => {
