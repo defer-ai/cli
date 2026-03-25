@@ -64,6 +64,7 @@ export async function logCommand(options: LogOptions): Promise<void> {
     context: "",
     answer: answer.trim(),
     delegated: !!options.delegated,
+    assumption: false,
     date: today,
   });
 

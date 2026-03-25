@@ -45,6 +45,7 @@ export async function logCommand(options) {
         context: "",
         answer: answer.trim(),
         delegated: !!options.delegated,
+        assumption: false,
         date: today,
     });
     saveStore(cwd, store);

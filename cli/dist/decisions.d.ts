@@ -10,6 +10,10 @@ export interface Decision {
     context: string;
     answer: string | null;
     delegated: boolean;
+    /** AI made this choice autonomously during execution */
+    assumption: boolean;
+    /** AI's reasoning for the assumption */
+    reasoning?: string;
     date: string;
 }
 export interface DecisionStore {

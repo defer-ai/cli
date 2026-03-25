@@ -39,7 +39,30 @@ Rules for the JSON:
 - "options": 2-6 options, each with "key" (single uppercase letter) and "label". Last option must be "Choose for me"
 - "context": one sentence explaining why this decision matters
 
-You may include a brief human-readable summary before the JSON block, but the JSON block is MANDATORY.`;
+You may include a brief human-readable summary before the JSON block, but the JSON block is MANDATORY.
+
+## ASSUMPTION TRACKING
+
+During execution, every choice you make — no matter how small — MUST be tagged as an assumption. This includes: variable names, file paths, error messages, library versions, patterns, defaults, ordering, formatting, EVERYTHING.
+
+Tag assumptions inline in your output using this format:
+[ASSUMPTION category: description of what you chose and why]
+
+Examples:
+[ASSUMPTION naming: Used camelCase for API routes because the framework convention is camelCase]
+[ASSUMPTION error: Return 422 for validation errors instead of 400 because it's more semantically correct]
+[ASSUMPTION structure: Put routes in src/routes/ following the framework's recommended layout]
+
+Also output a JSON block at the end of each execution turn:
+
+\`\`\`defer-assumptions
+[
+  {"category": "naming", "decision": "camelCase for API routes", "reasoning": "framework convention"},
+  {"category": "error", "decision": "422 for validation errors", "reasoning": "more semantically correct than 400"}
+]
+\`\`\`
+
+These assumptions are logged alongside user decisions. The user can review them with /decisions and challenge any they disagree with. Every decision must be accounted for, whether the user made it or you did.`;
 export class Agent {
     state;
     provider;
@@ -276,6 +299,12 @@ export class Agent {
                 this.persist();
                 this.retryCount = 0;
             }
+            // Parse assumptions from execution output
+            const assumptions = this.parseAssumptions(fullResponse);
+            if (assumptions.length > 0) {
+                this.state.decisions.push(...assumptions);
+                this.persist();
+            }
             const pendingIdx = this.findNextPendingIndex();
             if (pendingIdx >= 0) {
                 const parsedOptions = this.buildOptionsForDecision(pendingIdx);
@@ -330,6 +359,7 @@ export class Agent {
                     context: item.context || "",
                     answer: null,
                     delegated: false,
+                    assumption: false,
                     date: today,
                 });
             }
@@ -362,6 +392,7 @@ export class Agent {
                     context: "",
                     answer: null,
                     delegated: false,
+                    assumption: false,
                     date: today,
                 };
                 decisions.push(d);
@@ -384,5 +415,67 @@ export class Agent {
             }
         }
         return decisions;
+    }
+    /** Parse assumptions from ```defer-assumptions JSON blocks and inline [ASSUMPTION] tags */
+    parseAssumptions(output) {
+        const assumptions = [];
+        const today = new Date().toISOString().split("T")[0];
+        const existingDecisions = [
+            ...this.state.decisions,
+            ...assumptions,
+        ];
+        // Parse JSON block
+        const jsonMatch = output.match(/```defer-assumptions\s*\n([\s\S]*?)\n```/);
+        if (jsonMatch) {
+            try {
+                const raw = JSON.parse(jsonMatch[1]);
+                if (Array.isArray(raw)) {
+                    for (const item of raw) {
+                        const cat = item.category || "Assumption";
+                        const id = nextDecisionId([...existingDecisions, ...assumptions], cat);
+                        assumptions.push({
+                            id,
+                            category: cat,
+                            question: item.decision || "",
+                            options: [],
+                            context: "",
+                            answer: item.decision || "",
+                            delegated: true,
+                            assumption: true,
+                            reasoning: item.reasoning || "",
+                            date: today,
+                        });
+                    }
+                }
+            }
+            catch {
+                // ignore parse errors
+            }
+        }
+        // Also parse inline [ASSUMPTION category: description] tags
+        const inlineRegex = /\[ASSUMPTION\s+(\w+):\s*([^\]]+)\]/g;
+        let match;
+        while ((match = inlineRegex.exec(output)) !== null) {
+            const cat = match[1];
+            const desc = match[2].trim();
+            // Skip if already captured from JSON block
+            if (assumptions.some((a) => a.question === desc || a.answer === desc)) {
+                continue;
+            }
+            const id = nextDecisionId([...existingDecisions, ...assumptions], cat);
+            assumptions.push({
+                id,
+                category: cat,
+                question: desc,
+                options: [],
+                context: "",
+                answer: desc,
+                delegated: true,
+                assumption: true,
+                reasoning: "",
+                date: today,
+            });
+        }
+        return assumptions;
     }
 }

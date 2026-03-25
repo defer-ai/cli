@@ -46,4 +46,6 @@ export declare class Agent {
     private parseStructuredDecisions;
     /** Fallback: parse Q&A format if no JSON block */
     private parseFallbackDecisions;
+    /** Parse assumptions from ```defer-assumptions JSON blocks and inline [ASSUMPTION] tags */
+    private parseAssumptions;
 }
