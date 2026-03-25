@@ -11,7 +11,7 @@
 
 AI keeps making choices you didn't ask for. It picks your tech stack, your file structure, your error messages. You don't find out until the code is wrong.
 
-Defer makes the AI ask first, then execute. Slow upfront. Zero rework later.
+Defer asks first, then executes. Slow upfront. Zero rework later.
 
 ## Quick Start
 

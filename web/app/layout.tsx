@@ -15,11 +15,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "defer.sh | Zero-Autonomy AI",
   description:
-    "AI keeps making choices you didn't ask for. Defer makes the AI ask first, then execute. Every decision tracked.",
+    "AI keeps making choices you didn't ask for. Defer asks first, then executes. Every decision tracked.",
   openGraph: {
     title: "defer.sh | Zero-Autonomy AI",
     description:
-      "AI keeps making choices you didn't ask for. Defer makes the AI ask first, then execute.",
+      "AI keeps making choices you didn't ask for. Defer asks first, then executes.",
     url: "https://defer.sh",
     siteName: "defer.sh",
     type: "website",
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "defer.sh | Zero-Autonomy AI",
     description:
-      "AI keeps making choices you didn't ask for. Defer makes the AI ask first, then execute.",
+      "AI keeps making choices you didn't ask for. Defer asks first, then executes.",
   },
 };
 
