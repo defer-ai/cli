@@ -146,10 +146,12 @@ export class Agent {
                 role: "assistant",
                 content: fullResponse,
             });
-            // Parse any decisions from the response
+            // Parse any decisions from the response, dedup by question text
             const newDecisions = this.parseDecisionsFromOutput(fullResponse);
-            if (newDecisions.length > 0) {
-                this.state.decisions.push(...newDecisions);
+            const existingQuestions = new Set(this.state.decisions.map((d) => d.question));
+            const unique = newDecisions.filter((d) => !existingQuestions.has(d.question));
+            if (unique.length > 0) {
+                this.state.decisions.push(...unique);
                 this.persistDecisions();
             }
             // Determine phase based on content
@@ -207,34 +209,45 @@ export class Agent {
         }
         return questions;
     }
-    /** Extract selectable options from AI output (e.g. "A) JWT  B) Sessions  C) Choose for me") */
+    /** Extract selectable options from AI output */
     parseOptionsFromOutput(output) {
         const options = [];
+        const seen = new Set();
         const lines = output.split("\n");
         for (const line of lines) {
-            // Match lines like "Options: A) foo  B) bar  C) baz"
-            // or "- **A.** foo" or "- **A)** foo"
-            const optionLineMatch = line.match(/(?:Options:\s*)?([A-Z][.)]\s*.+)/);
-            if (!optionLineMatch)
-                continue;
-            // Extract individual options: "A) thing", "B) thing", etc.
-            const optRegex = /([A-Z])[.)]\s*\*{0,2}\.?\s*\*{0,2}\s*([^A-Z)]+?)(?=\s+[A-Z][.)]|\s*$)/g;
-            let match;
-            while ((match = optRegex.exec(optionLineMatch[1])) !== null) {
-                const label = match[2].trim().replace(/\*+/g, "").trim();
-                if (label) {
-                    options.push({ label: `${match[1]}) ${label}`, value: match[1] });
-                }
-            }
-        }
-        // Also match markdown list style: "- **A.** Description here"
-        for (const line of lines) {
-            const mdMatch = line.match(/^[-*]\s+\*{0,2}([A-Z])[.)]\*{0,2}\s+(.+)/);
+            // Match: "- **A.** Description" or "- **A)** Description"
+            const mdMatch = line.match(/^[-*]\s+\*{0,2}([A-Z])[.)]\*{0,2}\.?\s*(.+)/);
             if (mdMatch) {
+                const key = mdMatch[1];
                 const label = mdMatch[2].trim().replace(/\*+/g, "").trim();
-                if (label &&
-                    !options.some((o) => o.value === mdMatch[1])) {
-                    options.push({ label: `${mdMatch[1]}) ${label}`, value: mdMatch[1] });
+                if (label && !seen.has(key)) {
+                    seen.add(key);
+                    options.push({ label: `${key}) ${label}`, value: key });
+                }
+                continue;
+            }
+            // Match: "A) Description" or "A. Description" (inline options)
+            const inlineMatch = line.match(/^\s*([A-Z])[.)]\s+(.+)/);
+            if (inlineMatch) {
+                const key = inlineMatch[1];
+                const label = inlineMatch[2].trim().replace(/\*+/g, "").trim();
+                if (label && !seen.has(key)) {
+                    seen.add(key);
+                    options.push({ label: `${key}) ${label}`, value: key });
+                }
+                continue;
+            }
+            // Match: "Options: A) foo B) bar C) baz" on a single line
+            if (/options:/i.test(line)) {
+                const optRegex = /([A-Z])\)\s*([^A-Z)]+?)(?=\s+[A-Z]\)|\s*$)/g;
+                let match;
+                while ((match = optRegex.exec(line)) !== null) {
+                    const key = match[1];
+                    const label = match[2].trim();
+                    if (label && !seen.has(key)) {
+                        seen.add(key);
+                        options.push({ label: `${key}) ${label}`, value: key });
+                    }
                 }
             }
         }

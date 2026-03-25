@@ -35,6 +35,6 @@ export declare class Agent {
     revisitDecision(decisionId: string, newAnswer: string): Promise<void>;
     private runCompletion;
     private parseDecisionsFromOutput;
-    /** Extract selectable options from AI output (e.g. "A) JWT  B) Sessions  C) Choose for me") */
+    /** Extract selectable options from AI output */
     private parseOptionsFromOutput;
 }

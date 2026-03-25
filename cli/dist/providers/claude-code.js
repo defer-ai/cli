@@ -69,40 +69,46 @@ export class ClaudeCodeProvider {
             env: { ...process.env },
         });
         const rl = createInterface({ input: child.stdout });
-        let resultEmitted = false;
+        let textEmitted = false;
         for await (const line of rl) {
             if (!line.trim())
                 continue;
             try {
                 const event = JSON.parse(line);
-                // Content block deltas (streaming text chunks)
+                // Content block deltas (streaming text chunks) - preferred
                 if (event.type === "content_block_delta") {
                     if (event.delta?.type === "text_delta" && event.delta.text) {
                         yield { type: "text", content: event.delta.text };
-                        resultEmitted = true;
+                        textEmitted = true;
                     }
+                    continue;
                 }
-                // Assistant message with full content blocks
-                if (event.type === "assistant" && event.message?.content) {
+                // Assistant message with full content - only if no deltas came
+                if (event.type === "assistant" && !textEmitted && event.message?.content) {
                     for (const block of event.message.content) {
-                        if (block.type === "text" && !resultEmitted) {
+                        if (block.type === "text") {
                             yield { type: "text", content: block.text };
+                            textEmitted = true;
                         }
                     }
+                    continue;
                 }
-                // Final result
+                // Final result - only if nothing else emitted text
                 if (event.type === "result") {
-                    if (!resultEmitted && event.result) {
+                    if (!textEmitted && event.result) {
                         const text = typeof event.result === "string"
                             ? event.result
-                            : event.result.content
-                                ?.filter((b) => b.type === "text")
-                                .map((b) => b.text)
-                                .join("") || "";
+                            : typeof event.result.result === "string"
+                                ? event.result.result
+                                : event.result.content
+                                    ?.filter((b) => b.type === "text")
+                                    .map((b) => b.text)
+                                    .join("") || "";
                         if (text) {
                             yield { type: "text", content: text };
                         }
                     }
+                    continue;
                 }
                 if (event.type === "error") {
                     yield {
