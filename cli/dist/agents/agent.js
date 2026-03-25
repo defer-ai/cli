@@ -64,7 +64,7 @@ export class Agent {
         };
     }
     update(partial) {
-        Object.assign(this.state, partial);
+        this.state = { ...this.state, ...partial };
         this.onUpdate(this.state);
     }
     persist() {

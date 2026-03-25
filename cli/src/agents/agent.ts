@@ -111,7 +111,7 @@ export class Agent {
   }
 
   private update(partial: Partial<AgentState>): void {
-    Object.assign(this.state, partial);
+    this.state = { ...this.state, ...partial };
     this.onUpdate(this.state);
   }
 

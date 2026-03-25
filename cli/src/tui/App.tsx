@@ -93,15 +93,31 @@ export function App({ task, provider }: AppProps) {
     prevStatus.current = current.status;
   }, [current?.status, view]);
 
-  // Suppress raw decomposition output
+  // Stream output to display, suppress only the defer-decisions JSON block
   useEffect(() => {
     if (!current?.currentOutput) return;
-    if (current.phase === "decomposing" && current.status === "thinking")
-      return;
+
     const output = current.currentOutput;
-    if (output.includes("```defer-decisions")) return;
-    setOutputLines(output.split("\n"));
-  }, [current?.currentOutput, current?.phase, current?.status]);
+
+    // During initial decomposition, suppress everything (it's the JSON block)
+    if (
+      current.phase === "decomposing" &&
+      current.status === "thinking" &&
+      current.decisions.length === 0
+    ) {
+      return;
+    }
+
+    // Strip out defer-decisions JSON blocks but keep everything else
+    const cleaned = output.replace(
+      /```defer-decisions[\s\S]*?```/g,
+      ""
+    ).trim();
+
+    if (cleaned) {
+      setOutputLines(cleaned.split("\n"));
+    }
+  }, [current?.currentOutput, current?.phase, current?.status, current?.decisions.length]);
 
   const startTask = useCallback(
     (taskText: string) => {
@@ -391,7 +407,7 @@ export function App({ task, provider }: AppProps) {
       </Box>
 
       {/* Status bar */}
-      <Box paddingX={1}>
+      <Box paddingX={1} marginTop={1}>
         {current ? (
           <>
             <Text color={statusColor} dimColor>

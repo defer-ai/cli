@@ -69,17 +69,23 @@ export function App({ task, provider }) {
         }
         prevStatus.current = current.status;
     }, [current?.status, view]);
-    // Suppress raw decomposition output
+    // Stream output to display, suppress only the defer-decisions JSON block
     useEffect(() => {
         if (!current?.currentOutput)
             return;
-        if (current.phase === "decomposing" && current.status === "thinking")
-            return;
         const output = current.currentOutput;
-        if (output.includes("```defer-decisions"))
+        // During initial decomposition, suppress everything (it's the JSON block)
+        if (current.phase === "decomposing" &&
+            current.status === "thinking" &&
+            current.decisions.length === 0) {
             return;
-        setOutputLines(output.split("\n"));
-    }, [current?.currentOutput, current?.phase, current?.status]);
+        }
+        // Strip out defer-decisions JSON blocks but keep everything else
+        const cleaned = output.replace(/```defer-decisions[\s\S]*?```/g, "").trim();
+        if (cleaned) {
+            setOutputLines(cleaned.split("\n"));
+        }
+    }, [current?.currentOutput, current?.phase, current?.status, current?.decisions.length]);
     const startTask = useCallback((taskText) => {
         const agent = manager.spawn(taskText);
         setSelectedAgent(agent.state.id);
@@ -279,5 +285,5 @@ export function App({ task, provider }) {
                         ? "green"
                         : "red";
     return (_jsxs(Box, { flexDirection: "column", height: rows, children: [_jsxs(Box, { flexGrow: 1, children: [_jsx(Box, { flexDirection: "column", paddingX: 1, paddingTop: 1, children: _jsx(Mascot, { mood: mood }) }), _jsxs(Box, { flexDirection: "column", flexGrow: 1, paddingX: 1, children: [_jsxs(Box, { paddingTop: 1, marginBottom: 1, children: [_jsx(Text, { color: "cyan", bold: true, children: "defer" }), _jsxs(Text, { color: "gray", dimColor: true, children: [" ", "v", VERSION, " | ", model] })] }), showBanner && !current ? (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Text, { color: "gray", dimColor: true, children: ["cwd", " ", process.cwd().replace(process.env.HOME || "", "~")] }), _jsx(Box, { marginTop: 1, children: _jsx(Text, { color: "gray", dimColor: true, children: "Type a task to start. /help for commands." }) })] })) : (_jsxs(Box, { flexDirection: "column", flexGrow: 1, children: [current?.status === "thinking" &&
-                                        outputLines.length === 0 && (_jsx(Text, { color: "cyan", children: "Decomposing task..." })), visible.map((line, i) => (_jsx(Text, { wrap: "wrap", children: line }, i)))] }))] })] }), _jsxs(Box, { paddingX: 1, children: [current ? (_jsxs(_Fragment, { children: [_jsx(Text, { color: statusColor, dimColor: true, children: current.status }), current.decisions.length > 0 && (_jsxs(Text, { color: "gray", dimColor: true, children: [" | ", current.decisions.length - pendingCount, "/", current.decisions.length, " decisions"] })), pendingCount > 0 && (_jsxs(Text, { color: "yellow", dimColor: true, children: [" ", "(", pendingCount, " pending)"] }))] })) : (_jsx(Text, { color: "gray", dimColor: true, children: model })), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "/help" })] }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: "cyan", bold: true, children: "defer > " }), _jsx(Text, { children: inputValue }), _jsx(Text, { color: "gray", children: "|" })] })] }));
+                                        outputLines.length === 0 && (_jsx(Text, { color: "cyan", children: "Decomposing task..." })), visible.map((line, i) => (_jsx(Text, { wrap: "wrap", children: line }, i)))] }))] })] }), _jsxs(Box, { paddingX: 1, marginTop: 1, children: [current ? (_jsxs(_Fragment, { children: [_jsx(Text, { color: statusColor, dimColor: true, children: current.status }), current.decisions.length > 0 && (_jsxs(Text, { color: "gray", dimColor: true, children: [" | ", current.decisions.length - pendingCount, "/", current.decisions.length, " decisions"] })), pendingCount > 0 && (_jsxs(Text, { color: "yellow", dimColor: true, children: [" ", "(", pendingCount, " pending)"] }))] })) : (_jsx(Text, { color: "gray", dimColor: true, children: model })), _jsx(Box, { flexGrow: 1 }), _jsx(Text, { color: "gray", dimColor: true, children: "/help" })] }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: "cyan", bold: true, children: "defer > " }), _jsx(Text, { children: inputValue }), _jsx(Text, { color: "gray", children: "|" })] })] }));
 }
