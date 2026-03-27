@@ -138,21 +138,20 @@ export function Demo() {
             <div className="shrink-0 hidden sm:flex items-start pt-2">
               <WebMascot
                 mood={mood}
-                pixelSize={5}
-                speed={mood === "thinking" ? 200 : 600}
+                pixelSize={4}
               />
             </div>
 
             {/* Content */}
             <div className="flex-1 space-y-2">
               <div>
-                <span className="text-cyan-400 font-bold">defer</span>
+                <span className="text-orange-500 font-bold">defer</span>
                 <span className="text-gray-500"> v0.1.0 | sonnet</span>
               </div>
 
               {/* Boot / Decomposing */}
               {(phase === "boot" || phase === "decomposing") && (
-                <div className="text-cyan-400 animate-pulse">
+                <div className="text-orange-500 animate-pulse">
                   Decomposing task...
                 </div>
               )}
@@ -160,7 +159,7 @@ export function Demo() {
               {/* Domain priorities */}
               {(phase === "domains" || phase === "domain-adjust") && (
                 <div className="space-y-1">
-                  <div className="text-cyan-400 font-bold">
+                  <div className="text-orange-500 font-bold">
                     How much do you care about each area?
                   </div>
                   <div className="mt-2 space-y-0.5">
@@ -177,7 +176,7 @@ export function Demo() {
                       { name: "UI", level: "medium", bar: "██░░░", decisions: 2 },
                     ].map((d) => (
                       <div key={d.name}>
-                        <span className={d.active ? "text-cyan-400" : "text-gray-600"}>
+                        <span className={d.active ? "text-orange-500" : "text-gray-600"}>
                           {d.active ? "> " : "  "}
                         </span>
                         <span className={d.active ? "text-white" : "text-gray-400"}>
@@ -199,7 +198,7 @@ export function Demo() {
               {(phase === "decision-1" || phase === "decision-1-pick") && (
                 <div className="space-y-2">
                   <div>
-                    <span className="text-cyan-400 font-bold">1/6</span>
+                    <span className="text-orange-500 font-bold">1/6</span>
                     <span className="text-gray-500">{"  Stack  STACK-001"}</span>
                   </div>
                   <div className="text-white font-bold">
@@ -213,13 +212,13 @@ export function Demo() {
                       { key: "D", label: "Choose for me", delegated: true },
                     ].map((o) => (
                       <div key={o.key}>
-                        <span className={o.picked ? "text-cyan-400" : "text-gray-500"}>
+                        <span className={o.picked ? "text-orange-500" : "text-gray-500"}>
                           {o.picked ? " > " : "   "}
                         </span>
                         <span
                           className={
                             o.picked
-                              ? "text-cyan-400 font-bold"
+                              ? "text-orange-500 font-bold"
                               : o.delegated
                                 ? "text-purple-400"
                                 : "text-white"
@@ -237,7 +236,7 @@ export function Demo() {
               {(phase === "decision-2" || phase === "decision-2-pick") && (
                 <div className="space-y-2">
                   <div>
-                    <span className="text-cyan-400 font-bold">2/6</span>
+                    <span className="text-orange-500 font-bold">2/6</span>
                     <span className="text-gray-500">{"  Stack  STACK-002"}</span>
                   </div>
                   <div className="text-white font-bold">Frontend framework?</div>
@@ -248,13 +247,13 @@ export function Demo() {
                       { key: "C", label: "Choose for me", delegated: true },
                     ].map((o) => (
                       <div key={o.key}>
-                        <span className={o.picked ? "text-cyan-400" : "text-gray-500"}>
+                        <span className={o.picked ? "text-orange-500" : "text-gray-500"}>
                           {o.picked ? " > " : "   "}
                         </span>
                         <span
                           className={
                             o.picked
-                              ? "text-cyan-400 font-bold"
+                              ? "text-orange-500 font-bold"
                               : o.delegated
                                 ? "text-purple-400"
                                 : "text-white"
@@ -279,7 +278,7 @@ export function Demo() {
                   <div className="text-green-400 font-bold">
                     All 6 decisions answered
                   </div>
-                  <div className="mt-1 text-cyan-400 animate-pulse">
+                  <div className="mt-1 text-orange-500 animate-pulse">
                     Building...
                   </div>
                 </div>
@@ -336,11 +335,11 @@ export function Demo() {
               {/* Revisit: user selects an AI choice */}
               {phase === "revisit-select" && (
                 <div className="space-y-1">
-                  <div className="text-cyan-400">
+                  <div className="text-orange-500">
                     {">"} /revisit ERRO-001
                   </div>
                   <div className="mt-2">
-                    <span className="text-cyan-400 font-bold">ERRO-001</span>
+                    <span className="text-orange-500 font-bold">ERRO-001</span>
                     <span className="text-gray-500">{"  error"}</span>
                   </div>
                   <div className="text-white font-bold">
@@ -356,7 +355,7 @@ export function Demo() {
               {phase === "revisit-why" && (
                 <div className="space-y-1">
                   <div>
-                    <span className="text-cyan-400 font-bold">ERRO-001</span>
+                    <span className="text-orange-500 font-bold">ERRO-001</span>
                     <span className="text-gray-500">{"  error"}</span>
                   </div>
                   <div className="text-white font-bold">
@@ -378,7 +377,7 @@ export function Demo() {
               {phase === "revisit-suggest" && (
                 <div className="space-y-1">
                   <div>
-                    <span className="text-cyan-400 font-bold">ERRO-001</span>
+                    <span className="text-orange-500 font-bold">ERRO-001</span>
                     <span className="text-gray-500">
                       {"  error  "}
                     </span>
@@ -416,7 +415,7 @@ export function Demo() {
               {phase === "revisit-pick" && (
                 <div className="space-y-1">
                   <div>
-                    <span className="text-cyan-400 font-bold">ERRO-001</span>
+                    <span className="text-orange-500 font-bold">ERRO-001</span>
                   </div>
                   <div className="text-white font-bold">
                     HTTP status for validation errors?
@@ -437,8 +436,8 @@ export function Demo() {
                       </span>
                     </div>
                     <div>
-                      <span className="text-cyan-400">{" > "}</span>
-                      <span className="text-cyan-400 font-bold">
+                      <span className="text-orange-500">{" > "}</span>
+                      <span className="text-orange-500 font-bold">
                         D) RFC 7807 Problem Details
                       </span>
                     </div>
@@ -479,7 +478,7 @@ export function Demo() {
 
           {/* Input */}
           <div className="px-4 py-2 border-t border-border/50">
-            <span className="text-cyan-400 font-bold text-xs">
+            <span className="text-orange-500 font-bold text-xs">
               {"defer > "}
             </span>
             <span className="text-gray-600 animate-pulse">|</span>

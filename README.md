@@ -1,166 +1,196 @@
-```
-  ▄██████▄         ▄██████▄
-  ██    ██         ██    ██     defer.sh
-  ▀██████▀         ▀██████▀     zero-autonomy ai
+# defer
 
-           ████████             v0.1.0
-```
-
-[![npm version](https://img.shields.io/npm/v/@defer/cli.svg)](https://www.npmjs.com/package/@defer/cli)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/defer-ai/cli/blob/main/LICENSE)
+Zero-autonomy AI. Every decision is yours.
 
 AI keeps making choices you didn't ask for. It picks your tech stack, your file structure, your error messages. You don't find out until the code is wrong.
 
-Defer asks first, then executes. Slow upfront. Zero rework later.
+Defer decomposes your project into decisions, lets you set how much you care about each domain, auto-decides the rest, and implements everything while you watch and challenge in real-time.
 
 ## Quick Start
 
 ```bash
-# Requires Claude Code installed and logged in
-npx @defer/cli "build a todo app"
-```
+# Build from source (requires Go 1.22+)
+cd go && go build -o defer . && ./defer "build a todo app"
 
-That's it. Defer wraps Claude Code, decomposes your task into decisions, and asks before writing a single line.
+# Or with Claude Code installed (no API key needed)
+defer "build a secret sharing tool"
 
-## What Happens
+# Or with Anthropic API key (enables tool interception)
+export ANTHROPIC_API_KEY=sk-ant-...
+defer "build a dream journal"
 
-1. You give it a task
-2. The AI decomposes it into categorized decisions with selectable options
-3. You set how much you care about each domain (skip to paranoid)
-4. You answer decisions one by one (or say "choose for me")
-5. The AI executes with full context of every choice
-6. Every decision the AI makes during execution is tracked as an assumption
-
-```
-defer > build a todo app
-
-[? ?]  How much do you care about each area?
-
-  > Stack             ██░░░  medium    3 decisions
-    Data              █████  paranoid  2 decisions
-    API               ░░░░░  skip      2 decisions
-    UI                ██░░░  medium    3 decisions
-
----
-
-[◉ ◉]  1/8  Stack  STACK-001
-
-  Backend language and framework?
-
-  Determines ecosystem and deployment model
-
-   > A) Node.js (TypeScript)
-     B) Python (FastAPI)
-     C) Go
-     D) Choose for me
-```
-
-## Features
-
-**Decision workflow:**
-- Categorized decisions with selectable options
-- Per-domain care levels: skip, low, medium, high, paranoid
-- "Choose for me" delegates to AI with logged reasoning
-- Undo last answer, ask about tradeoffs, revisit by ID
-
-**Assumption tracking:**
-- Every choice the AI makes during execution is tagged
-- `[ASSUMPTION naming: Used camelCase because framework convention]`
-- Assumptions logged alongside user decisions in DECISIONS.md
-- Nothing is invisible. `/decisions` shows everything.
-
-**Profiles and history:**
-- `/profile save my-stack` saves your decisions as a reusable template
-- `/profile use my-stack` pre-fills matching decisions on new projects
-- `/history` shows previous sessions with cost and duration
-
-**Session management:**
-- Decisions persisted to `.defer/decisions.json` + human-readable `DECISIONS.md`
-- Quit and resume where you left off
-- Cost and token tracking in the status bar
-
-## Commands
-
-```
-defer                          Interactive mode
-defer "build auth"             Start with a task
-
-/help                          All commands
-/model <sonnet|opus|haiku>     Switch model
-/decisions                     View all decisions inline
-/revisit STACK-001             Change a specific decision
-/profile save|use|list         Manage reusable decision templates
-/history                       Previous sessions
-/export                        Decision record as markdown table
-/cost                          Session cost and tokens
-/clear                         Clear output
-/quit                          Exit (auto-saves to history)
-```
-
-**In the decision view:**
-```
-↑↓   navigate options
-enter confirm selection
-t     type custom answer
-u     undo last answer
-w     explain tradeoffs of highlighted option
-a     ask a question about the decision
-c     change an answered decision
-esc   back to stream
+# Debug mode (no TUI, prints everything to stdout)
+defer --debug "build a todo app"
 ```
 
 ## How It Works
 
-Defer spawns `claude` as a subprocess using your existing Claude Code authentication. No API key needed, no extra setup.
+```
+You: "build a secret sharing tool"
+         │
+    Decomposer (Sonnet)
+         │ extracts 8 high-level decisions
+         │ across Stack, Security, API, UI, etc.
+         │
+    Decision Swarm (Haiku × N, parallel)
+         │ each domain gets 8-12 sub-decisions
+         │ ~50 total decisions in seconds
+         │
+    You set care levels per domain
+         │ skip → auto-decided (gray in tree)
+         │ paranoid → you must confirm (yellow)
+         │
+    Decision Tree (main view)
+         │ watch decisions appear in real-time
+         │ navigate, inspect, challenge any decision
+         │ change your mind at any point
+         │
+    Executor (Sonnet, full tool access)
+         │ implements everything based on decisions
+         │ if you change a decision, it re-implements
+         │
+    Done. DECISIONS.md tracks everything.
+```
 
-The system prompt instructs Claude to decompose tasks into structured decisions (as a parseable JSON block), and to tag every autonomous choice during execution as an assumption. The TUI renders the decisions as a selection interface, persists everything to disk, and streams execution output.
+## The Decision Tree
+
+The tree is the only view. Decisions stream in as agents work.
+
+```
+  defer
+  29/29 decisions  ○ 3 pending
+
+  Stack
+    ▪ STACK-001  Backend framework       → Next.js
+    ▪ STACK-002  Database                → PostgreSQL
+    ▪ STACK-003  ORM                     → Prisma
+
+  Security
+    ✓ SECU-001  Encryption method       → AES-256-GCM
+    ○ SECU-002  Key management          → (pending)
+
+  UI
+    ▪ UI-001    Component library       → shadcn/ui
+    ▪ UI-002    Styling approach        → Tailwind CSS
+```
+
+- `○` pending (yellow) -- needs your input
+- `✓` confirmed (green) -- you decided
+- `▪` auto-decided (gray) -- agent decided, challengeable
+
+### Controls
+
+```
+Tree:
+  ↑↓       navigate decisions
+  enter    inspect / pick option
+  tab      live agent feed
+  ctrl+c×2 quit
+
+Detail:
+  ↑↓       navigate options
+  enter    confirm selection
+  c        custom answer (free text)
+  s        shuffle (AI generates new options)
+  w        why (explain tradeoffs)
+  a        ask (question about this decision)
+  q        back to tree
+```
+
+## Care Levels
+
+After decomposition, you set how much you care about each domain:
+
+```
+  Stack     ░░░░░ skip      → all auto-decided
+  Security  █████ paranoid  → you confirm everything
+  API       ██░░░ medium    → auto-decided
+  UI        ████░ high      → you confirm everything
+```
+
+Same number of decisions regardless of care level. The only difference: skip/low/medium get auto-answered, high/paranoid stay pending for you.
+
+## Architecture
+
+```
+go/
+  cmd/
+    root.go          # CLI entry, launches Bubbletea or debug mode
+    init.go          # defer init subcommand
+    debug.go         # headless debug mode (--debug flag)
+  internal/
+    api/
+      client.go      # Anthropic SDK wrapper
+      claude_code.go # Claude Code subprocess provider
+      tools.go       # Tool schemas (Read, Write, Edit, Bash, Glob, Grep)
+      toolexec.go    # Tool execution (file I/O, shell commands)
+      stream.go      # Agent loop with tool interception
+    agent/
+      agent.go       # Decomposition agent
+      swarm.go       # Haiku subagent swarm (parallel domain expansion)
+      executor.go    # Implementation executor
+      manager.go     # Coordinator
+      prompts.go     # All system prompts
+    decision/
+      decision.go    # Core types
+      store.go       # Persistence (.defer/decisions.json)
+      id.go          # Timestamp-based ID generation (no collisions)
+      markdown.go    # DECISIONS.md generation
+    tui/
+      app.go         # Root Bubbletea model (Elm architecture)
+      tree.go        # Decision tree + detail view + feed
+      priorities.go  # Domain priority picker
+      welcome.go     # Welcome screen
+      mascot.go      # Pixel art mascot (half-block characters)
+      styles.go      # Lip Gloss styles
+      messages.go    # All tea.Msg types
+```
+
+### Two Provider Modes
+
+| | Direct API | Claude Code Subprocess |
+|---|---|---|
+| Auth | `ANTHROPIC_API_KEY` | `claude login` (existing subscription) |
+| Tool interception | Every Write/Edit/Bash logged as decision | Tool calls intercepted from stream-json |
+| Cost | Pay per token | Free with subscription |
+| Tool permissions | Controlled per care level | Claude Code handles internally |
 
 ## Decision Record
 
-After a session, you have `DECISIONS.md`:
+After a session:
 
 ```markdown
+# DECISIONS.md
+
+> Task: build a secret sharing tool
+
 ## Decisions
 
 | ID | Category | Question | Answer | Date |
 |----|----------|----------|--------|------|
-| STACK-001 | Stack | Backend language? | Node.js (TypeScript) | 2026-03-25 |
-| DATA-001 | Data | Database? | DELEGATED: PostgreSQL | 2026-03-25 |
+| STACK-001 | Stack | Backend framework? | Next.js | 2026-03-26 |
+| SECU-001 | Security | Encryption? | AES-256-GCM | 2026-03-26 |
 
-## Assumptions
+## AI Choices
 
 | ID | Category | What was decided | Reasoning |
 |----|----------|------------------|-----------|
-| NAMI-001 | naming | camelCase for routes | framework convention |
-| ERRO-001 | error | 422 for validation | more semantically correct |
+| STACK-002 | Stack | TypeScript strict mode | Type safety for crypto operations |
 ```
-
-## Install
-
-```bash
-# Run directly
-npx @defer/cli
-
-# Or install globally
-npm install -g @defer/cli
-defer "build something"
-```
-
-Requires Claude Code (`npm install -g @anthropic-ai/claude-code && claude login`).
 
 ## Development
 
 ```bash
-git clone https://github.com/defer-ai/cli
-cd cli
-npm install
-npm run build
-npm test
+cd go
+go build ./...        # build
+go test ./...         # run tests (~100 tests)
+go test -race ./...   # race condition check
+go build -o defer .   # build binary
 ```
 
 ## Website
 
-[defer.sh](https://defer.sh) - Next.js app in `web/`, deployed via Vercel.
+[defer.sh](https://defer.sh) -- Next.js app in `web/`.
 
 ## License
 
