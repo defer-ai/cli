@@ -109,27 +109,70 @@ func isPixelOn(x, y, size int, mood MascotMood, tick, seed int) bool {
 		return true
 	}
 
-	// Pupil
-	pupilRatio := 0.65
-	lidOffset := 4.0
+	// Mood-specific eye parameters
+	pupilRatio := 0.55
+	topLid := 0.0     // how many pixels from top are erased (0 = fully open)
+	bottomLid := 0.0   // how many pixels from bottom are erased
 
 	switch mood {
+	case MoodIdle:
+		pupilRatio = 0.55
+		topLid = 2 // slightly droopy
 	case MoodThinking:
-		pupilRatio = 0.75
-		lidOffset = 37.5
+		pupilRatio = 0.65
+		topLid = 8  // squinting from top
+		bottomLid = 5 // and bottom
 	case MoodExecuting:
-		pupilRatio = 0.75
-		lidOffset = 37.5
+		pupilRatio = 0.6
+		topLid = 6
+		bottomLid = 3
 	case MoodDone:
-		pupilRatio = 0.0
-		lidOffset = 60
+		pupilRatio = 0.0 // no pupil, solid fill
+		topLid = 10      // heavy lids = happy squint
+		bottomLid = 4
 	case MoodError:
-		pupilRatio = 0.75
+		pupilRatio = 0.7 // wide pupils = startled
+		topLid = 0       // eyes wide open
+		bottomLid = 0
 	}
 
-	// Simple lid: if y is within lid offset from top, erase
-	if float64(y) < lidOffset*float64(size)/60.0 {
-		return false
+	halfSize := float64(size) / 2.0
+
+	// Top lid: erase pixels near the top of the circle
+	if topLid > 0 {
+		distFromTop := float64(y) - (c - r) // distance from top of circle
+		if distFromTop < topLid {
+			return false
+		}
+	}
+
+	// Bottom lid: erase pixels near the bottom
+	if bottomLid > 0 {
+		distFromBottom := (c + r) - float64(y)
+		if distFromBottom < bottomLid {
+			return false
+		}
+	}
+
+	_ = halfSize
+
+	// Done mood: solid fill (no pupil, no noise -- just the eye shape)
+	if mood == MoodDone {
+		return true
+	}
+
+	// Error mood: X pattern inside the eye
+	if mood == MoodError {
+		cx, cy := float64(size)/2, float64(size)/2
+		ex := float64(x) - cx
+		ey := float64(y) - cy
+		// X shape: pixels near the diagonals
+		onDiag1 := math.Abs(ex-ey) < 2.5
+		onDiag2 := math.Abs(ex+ey) < 2.5
+		if onDiag1 || onDiag2 {
+			return noise(x, y, tick*3+seed) // flickering X
+		}
+		return noise(x, y, tick+seed) && (tick+x+y)%3 == 0 // sparse noise
 	}
 
 	// Pupil hole

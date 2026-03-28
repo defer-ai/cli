@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -213,7 +214,32 @@ func (m TreeModel) decisionItems() []decision.Decision {
 		}
 		items = append(items, d)
 	}
+	sortDecisionsByCategory(items)
 	return items
+}
+
+// sortDecisionsByCategory sorts decisions so same-category items are grouped,
+// preserving the order of first appearance for categories.
+func sortDecisionsByCategory(decs []decision.Decision) {
+	if len(decs) <= 1 {
+		return
+	}
+	// Determine category order by first appearance
+	catOrder := map[string]int{}
+	idx := 0
+	for _, d := range decs {
+		key := strings.ToLower(strings.TrimSpace(d.Category))
+		if _, ok := catOrder[key]; !ok {
+			catOrder[key] = idx
+			idx++
+		}
+	}
+	// Stable sort by category order
+	sort.SliceStable(decs, func(i, j int) bool {
+		ki := strings.ToLower(strings.TrimSpace(decs[i].Category))
+		kj := strings.ToLower(strings.TrimSpace(decs[j].Category))
+		return catOrder[ki] < catOrder[kj]
+	})
 }
 
 func (m TreeModel) decisionCount() int {
@@ -346,12 +372,17 @@ func (m TreeModel) viewTree() string {
 		dec    *decision.Decision
 		decIdx int
 	}
+	// Sort decisions by category (preserving original category order)
+	sortDecisionsByCategory(visibleDecs)
+
 	var flat []flatItem
 	lastCat := ""
 	decIdx := 0
 	for i := range visibleDecs {
 		d := &visibleDecs[i]
-		if d.Category != lastCat {
+		catKey := strings.ToLower(strings.TrimSpace(d.Category))
+		lastKey := strings.ToLower(strings.TrimSpace(lastCat))
+		if catKey != lastKey {
 			if lastCat != "" {
 				flat = append(flat, flatItem{isCat: true, cat: ""})
 			}

@@ -516,29 +516,52 @@ func (m Model) computeOverallStatus() string {
 	if m.manager == nil {
 		return "idle"
 	}
+
+	// Check decomposition agent
+	if m.manager.Agent() != nil {
+		agentSt := m.manager.Agent().State()
+		if agentSt.Status == agent.StatusThinking {
+			return "thinking"
+		}
+	}
+
+	// Check executors
 	execs := m.manager.Executors()
+	if len(execs) == 0 {
+		// Executors not launched yet -- check if we have pending decisions
+		for _, d := range m.tree.decisionItems() {
+			if d.IsPending() {
+				return "thinking" // waiting for user input
+			}
+		}
+		if m.executorsLaunched {
+			return "executing" // just launched, waiting for first event
+		}
+		return "idle"
+	}
+
 	anyActive := false
-	allDone := len(execs) > 0
+	allDone := true
 	for _, e := range execs {
 		st := e.State()
-		if st.Status == agent.DomainExecuting || st.Status == agent.DomainPlanning || st.Status == agent.DomainVerifying {
+		switch st.Status {
+		case agent.DomainExecuting, agent.DomainPlanning, agent.DomainVerifying, agent.DomainPending:
 			anyActive = true
-		}
-		if st.Status != agent.DomainDone && st.Status != agent.DomainError {
+			allDone = false
+		case agent.DomainDone, agent.DomainError:
+			// done or errored
+		default:
 			allDone = false
 		}
 	}
+
 	if anyActive {
 		return "executing"
 	}
-	if allDone && len(execs) > 0 {
+	if allDone {
 		return "done"
 	}
-	agentSt := m.manager.Agent().State()
-	if agentSt.Status == agent.StatusThinking {
-		return "thinking"
-	}
-	return "idle"
+	return "executing" // default to executing if executors exist but not all done
 }
 
 func extractShortStatus(output, fallback string) string {
