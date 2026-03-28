@@ -6,12 +6,11 @@ import "github.com/defer-ai/cli/internal/decision"
 type EventType int
 
 const (
-	AgentStateChanged  EventType = iota // decomposition agent state updated
-	AgentDecisionsReady                 // decomposition complete, decisions available
-	ExecStateChanged                    // domain executor state changed
-	ExecDecisionStored                  // executor logged a new decision
-	AllExecutorsDone                    // all domain executors finished
-	SwarmComplete                       // swarm expansion finished
+	AgentStateChanged   EventType = iota // decomposition agent state updated
+	AgentDecisionsReady                  // decomposition complete, decisions available
+	ExecStateChanged                     // domain executor state changed
+	ExecDecisionStored                   // executor logged a new decision
+	AllExecutorsDone                     // all domain executors finished
 )
 
 // Event is sent from agent goroutines to the TUI.

@@ -26,8 +26,8 @@ func managerDecisions() []decision.Decision {
 
 func setupManagerWithDecs(t *testing.T) *Manager {
 	t.Helper()
-	m := NewManager(nil, nil, "/tmp/test")
-	a := NewAgent("test task", nil, nil, "/tmp/test")
+	m := NewManager(nil, "/tmp/test")
+	a := NewAgent("test task", nil, "/tmp/test")
 	a.state.Decisions = managerDecisions()
 	a.state.Status = StatusDone
 	m.agent = a
@@ -246,7 +246,7 @@ func TestAllDecisions(t *testing.T) {
 }
 
 func TestNewManagerInitialState(t *testing.T) {
-	mgr := NewManager(nil, nil, "/tmp/test")
+	mgr := NewManager(nil, "/tmp/test")
 
 	if mgr.agent != nil {
 		t.Error("agent should be nil initially")
@@ -260,15 +260,15 @@ func TestNewManagerInitialState(t *testing.T) {
 }
 
 func TestAutoDecideOnNilAgent(t *testing.T) {
-	mgr := NewManager(nil, nil, "/tmp/test")
+	mgr := NewManager(nil, "/tmp/test")
 
 	// Should not panic
 	mgr.AutoDecide(map[string]CareLevel{"Stack": CareLevelSkip})
 }
 
 func TestAutoDecideLeadingTrailingSpaces(t *testing.T) {
-	m := NewManager(nil, nil, "/tmp/test")
-	a := NewAgent("test", nil, nil, "/tmp/test")
+	m := NewManager(nil, "/tmp/test")
+	a := NewAgent("test", nil, "/tmp/test")
 	a.state.Decisions = []decision.Decision{
 		{ID: "S-001", Category: "  Stack  ", Question: "Lang?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}}, Source: "user"},
@@ -286,5 +286,37 @@ func TestAutoDecideLeadingTrailingSpaces(t *testing.T) {
 		if strings.TrimSpace(d.Category) == "Stack" && d.Answer == nil {
 			t.Error("should handle leading/trailing spaces in category matching")
 		}
+	}
+}
+
+func TestGroupByCategory(t *testing.T) {
+	decs := []decision.Decision{
+		{Category: "Stack", Question: "Q1"},
+		{Category: "Stack", Question: "Q2"},
+		{Category: "Stack", Question: "Q3"},
+		{Category: "Data", Question: "Q4"},
+		{Category: "Data", Question: "Q5"},
+		{Category: "API", Question: "Q6"},
+		{Category: "API", Question: "Q7"},
+		{Category: "API", Question: "Q8"},
+		{Category: "UI", Question: "Q9"},
+		{Category: "UI", Question: "Q10"},
+	}
+
+	groups := GroupByCategory(decs)
+	if len(groups) != 4 {
+		t.Fatalf("expected 4 groups, got %d", len(groups))
+	}
+	if len(groups["Stack"]) != 3 {
+		t.Errorf("Stack group = %d, want 3", len(groups["Stack"]))
+	}
+	if len(groups["Data"]) != 2 {
+		t.Errorf("Data group = %d, want 2", len(groups["Data"]))
+	}
+	if len(groups["API"]) != 3 {
+		t.Errorf("API group = %d, want 3", len(groups["API"]))
+	}
+	if len(groups["UI"]) != 2 {
+		t.Errorf("UI group = %d, want 2", len(groups["UI"]))
 	}
 }

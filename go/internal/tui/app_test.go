@@ -87,12 +87,12 @@ func updateModel(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
 func setupAtPriorities(t *testing.T, decs []decision.Decision) Model {
 	t.Helper()
 	dir := t.TempDir()
-	m := NewModel("", nil, nil, dir)
+	m := NewModel("", nil, dir)
 	m.task = "test task"
 
 	// Create manager with a pre-populated agent
-	m.manager = agent.NewManager(nil, nil, m.cwd)
-	mgrAgent := agent.NewAgent("test task", nil, nil, m.cwd)
+	m.manager = agent.NewManager(nil, m.cwd)
+	mgrAgent := agent.NewAgent("test task", nil, m.cwd)
 	agent.SetAgentDecisions(mgrAgent, decs)
 	agent.SetManagerAgent(m.manager, mgrAgent)
 
@@ -127,7 +127,7 @@ func setupAtTree(t *testing.T, decs []decision.Decision, priorities map[string]a
 func setupAtTreeNoExecutors(t *testing.T, decs []decision.Decision) Model {
 	t.Helper()
 	dir := t.TempDir()
-	m := NewModel("", nil, nil, dir)
+	m := NewModel("", nil, dir)
 	m.task = "test task"
 	m.view = ViewTree
 	m.tree.decisions = make([]decision.Decision, len(decs))
@@ -138,8 +138,8 @@ func setupAtTreeNoExecutors(t *testing.T, decs []decision.Decision) Model {
 	m.height = 40
 
 	// Create a manager with the decisions
-	m.manager = agent.NewManager(nil, nil, m.cwd)
-	mgrAgent := agent.NewAgent("test task", nil, nil, m.cwd)
+	m.manager = agent.NewManager(nil, m.cwd)
+	mgrAgent := agent.NewAgent("test task", nil, m.cwd)
 	agent.SetAgentDecisions(mgrAgent, decs)
 	agent.SetManagerAgent(m.manager, mgrAgent)
 
@@ -149,7 +149,7 @@ func setupAtTreeNoExecutors(t *testing.T, decs []decision.Decision) Model {
 // --- tests ---
 
 func TestWelcomeToDecomposing(t *testing.T) {
-	m := NewModel("", nil, nil, t.TempDir())
+	m := NewModel("", nil, t.TempDir())
 
 	if m.view != ViewWelcome {
 		t.Fatalf("initial view = %d, want ViewWelcome (%d)", m.view, ViewWelcome)
@@ -184,7 +184,7 @@ func TestWelcomeToDecomposing(t *testing.T) {
 	}
 
 	// We don't process TaskSubmittedMsg further because it triggers decomposition
-	// with nil client. Just verify the message was produced correctly.
+	// with nil ccProvider. Just verify the message was produced correctly.
 }
 
 func TestDecomposingToPrivileges(t *testing.T) {
@@ -525,7 +525,7 @@ func TestSuggestReplacesOptions(t *testing.T) {
 }
 
 func TestWhyResponse(t *testing.T) {
-	m := NewModel("", nil, nil, t.TempDir())
+	m := NewModel("", nil, t.TempDir())
 	m.view = ViewTree
 	m.tree.decisions = fakeDecisions()
 
@@ -537,7 +537,7 @@ func TestWhyResponse(t *testing.T) {
 }
 
 func TestAllExecutorsDone(t *testing.T) {
-	m := NewModel("", nil, nil, t.TempDir())
+	m := NewModel("", nil, t.TempDir())
 	m.view = ViewTree
 	m.tree.decisions = fakeDecisions()
 
@@ -549,7 +549,7 @@ func TestAllExecutorsDone(t *testing.T) {
 }
 
 func TestDoubleCtrlCQuits(t *testing.T) {
-	m := NewModel("", nil, nil, t.TempDir())
+	m := NewModel("", nil, t.TempDir())
 	m.view = ViewTree
 	m.tree.decisions = fakeDecisions()
 
@@ -576,7 +576,7 @@ func TestDoubleCtrlCQuits(t *testing.T) {
 }
 
 func TestDoubleCtrlCSlow(t *testing.T) {
-	m := NewModel("", nil, nil, t.TempDir())
+	m := NewModel("", nil, t.TempDir())
 	m.view = ViewTree
 	m.tree.decisions = fakeDecisions()
 
@@ -609,7 +609,7 @@ func TestMiscCategoryFiltered(t *testing.T) {
 		Source:   "auto",
 	})
 
-	m := NewModel("", nil, nil, t.TempDir())
+	m := NewModel("", nil, t.TempDir())
 	m.view = ViewTree
 	m.tree.decisions = decs
 
@@ -628,7 +628,7 @@ func TestMiscCategoryFiltered(t *testing.T) {
 }
 
 func TestWindowSizePropagates(t *testing.T) {
-	m := NewModel("", nil, nil, t.TempDir())
+	m := NewModel("", nil, t.TempDir())
 	m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 200, Height: 50})
 
 	if m.width != 200 || m.height != 50 {
@@ -658,7 +658,7 @@ func TestViewRendersWithoutPanic(t *testing.T) {
 
 	for _, vv := range views {
 		t.Run(vv.name, func(t *testing.T) {
-			m := NewModel("", nil, nil, t.TempDir())
+			m := NewModel("", nil, t.TempDir())
 			m.view = vv.view
 			m.width = 80
 			m.height = 24
@@ -672,7 +672,7 @@ func TestViewRendersWithoutPanic(t *testing.T) {
 }
 
 func TestTaskSubmittedFromCLI(t *testing.T) {
-	m := NewModel("build something", nil, nil, t.TempDir())
+	m := NewModel("build something", nil, t.TempDir())
 	if m.view != ViewDecomposing {
 		t.Errorf("view = %d, want ViewDecomposing when task provided", m.view)
 	}

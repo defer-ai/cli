@@ -11,8 +11,7 @@ import (
 
 // Manager coordinates decomposition and domain execution.
 type Manager struct {
-	client     *api.Client              // direct API (may be nil)
-	ccProvider *api.ClaudeCodeProvider   // subprocess fallback (may be nil)
+	ccProvider *api.ClaudeCodeProvider
 	cwd        string
 	agent      *Agent
 	executors  []*Executor
@@ -20,10 +19,9 @@ type Manager struct {
 	store      *decision.DecisionStore
 }
 
-// NewManager creates a manager. Pass client OR ccProvider.
-func NewManager(client *api.Client, ccProvider *api.ClaudeCodeProvider, cwd string) *Manager {
+// NewManager creates a manager.
+func NewManager(ccProvider *api.ClaudeCodeProvider, cwd string) *Manager {
 	return &Manager{
-		client:     client,
 		ccProvider: ccProvider,
 		cwd:        cwd,
 	}
@@ -31,7 +29,7 @@ func NewManager(client *api.Client, ccProvider *api.ClaudeCodeProvider, cwd stri
 
 // StartDecomposition begins task decomposition.
 func (m *Manager) StartDecomposition(ctx context.Context, task string, onEvent func(Event)) {
-	m.agent = NewAgent(task, m.client, m.ccProvider, m.cwd)
+	m.agent = NewAgent(task, m.ccProvider, m.cwd)
 	m.agent.Decompose(ctx, onEvent)
 }
 
@@ -74,7 +72,6 @@ func (m *Manager) LaunchExecutors(ctx context.Context, task string, decisions []
 
 	// Single executor implements everything with full context
 	unified := NewExecutor(ExecOpts{
-		Client:       m.client,
 		CCProvider:   m.ccProvider,
 		CWD:          m.cwd,
 		Task:         task,
@@ -123,27 +120,6 @@ func (m *Manager) AutoDecide(priorities map[string]CareLevel) {
 	m.agent.AutoDecide(autoIDs)
 }
 
-// RunSwarm runs the Haiku subagent swarm to expand domains into sub-decisions.
-func (m *Manager) RunSwarm(ctx context.Context, task string, decisions []decision.Decision, onEvent func(Event)) {
-	swarm := NewSwarm(m.client, m.ccProvider)
-	swarm.ExpandDomains(ctx, task, decisions, func(subDecs []decision.Decision) {
-		// Add sub-decisions to allDecs with dedup
-		for _, d := range subDecs {
-			dup := false
-			for _, existing := range m.allDecs {
-				if strings.EqualFold(strings.TrimSpace(existing.Question), strings.TrimSpace(d.Question)) {
-					dup = true
-					break
-				}
-			}
-			if !dup {
-				m.allDecs = append(m.allDecs, d)
-			}
-		}
-		onEvent(Event{Type: ExecDecisionStored, Decisions: subDecs})
-	})
-}
-
 // AllDecisions returns the current shared decision list.
 func (m *Manager) AllDecisions() []decision.Decision {
 	return m.allDecs
@@ -188,4 +164,13 @@ func (m *Manager) persistDecisions(task string) {
 	}
 	store.Decisions = m.AllDecisions()
 	decision.SaveStore(m.cwd, store)
+}
+
+// GroupByCategory groups decisions by their category.
+func GroupByCategory(decisions []decision.Decision) map[string][]decision.Decision {
+	groups := make(map[string][]decision.Decision)
+	for _, d := range decisions {
+		groups[d.Category] = append(groups[d.Category], d)
+	}
+	return groups
 }

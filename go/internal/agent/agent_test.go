@@ -73,7 +73,7 @@ func TestParseDecisionsEmpty(t *testing.T) {
 }
 
 func TestAutoDecide(t *testing.T) {
-	a := NewAgent("test", nil, nil, ".")
+	a := NewAgent("test", nil, ".")
 	a.state.Decisions = []decision.Decision{
 		{ID: "STACK-001", Category: "Stack", Question: "Language?", Options: []decision.DecisionOption{
 			{Key: "A", Label: "TypeScript"},

@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/defer-ai/cli/internal/api"
 	"github.com/defer-ai/cli/internal/decision"
 )
@@ -49,7 +51,6 @@ type ExecState struct {
 // Executor implements one domain.
 type Executor struct {
 	mu           sync.Mutex
-	client       *api.Client
 	ccProvider   *api.ClaudeCodeProvider
 	cwd          string
 	task         string
@@ -63,7 +64,6 @@ type Executor struct {
 
 // ExecOpts configures a new executor.
 type ExecOpts struct {
-	Client       *api.Client
 	CCProvider   *api.ClaudeCodeProvider
 	CWD          string
 	Task         string
@@ -77,7 +77,6 @@ type ExecOpts struct {
 // NewExecutor creates a domain executor.
 func NewExecutor(opts ExecOpts) *Executor {
 	return &Executor{
-		client:       opts.Client,
 		ccProvider:   opts.CCProvider,
 		cwd:          opts.CWD,
 		task:         opts.Task,
@@ -145,6 +144,15 @@ func (e *Executor) Execute(ctx context.Context) {
 	// Phase 4: Extract implicit decisions (always runs)
 	e.extract(ctx, fullOutput)
 
+	// Phase 5: Build verification
+	e.setStatus(DomainVerifying, "Build check...", "")
+	ok, buildOutput := e.verifyBuild(ctx)
+	if ok {
+		fullOutput += "\n[build verification: PASS]"
+	} else if buildOutput != "" {
+		fullOutput += "\n[build verification: FAIL]\n" + buildOutput
+	}
+
 	e.setStatus(DomainDone, fullOutput, "")
 }
 
@@ -163,31 +171,24 @@ func (e *Executor) decisionSummary() string {
 	return strings.Join(lines, "\n")
 }
 
-func (e *Executor) useSubprocess() bool {
-	return e.client == nil && e.ccProvider != nil
-}
-
-// simpleCompletion runs a one-shot completion via API or subprocess.
+// simpleCompletion runs a one-shot completion via subprocess.
 func (e *Executor) simpleCompletion(ctx context.Context, systemPrompt, userMsg string) (string, error) {
-	if e.useSubprocess() {
-		cp := api.NewClaudeCodeProvider(e.ccProvider.GetModel())
-		events := make(chan api.Event, 100)
-		go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
-		var text string
-		for ev := range events {
-			if ev.Type == api.EventTextDelta {
-				text += ev.Text
-			}
-			if ev.Type == api.EventDone || ev.Type == api.EventError {
-				if ev.Error != nil {
-					return text, ev.Error
-				}
-				break
-			}
+	cp := api.NewClaudeCodeProvider(e.ccProvider.GetModel())
+	events := make(chan api.Event, 100)
+	go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
+	var text string
+	for ev := range events {
+		if ev.Type == api.EventTextDelta {
+			text += ev.Text
 		}
-		return text, nil
+		if ev.Type == api.EventDone || ev.Type == api.EventError {
+			if ev.Error != nil {
+				return text, ev.Error
+			}
+			break
+		}
 	}
-	return api.SimpleCompletion(ctx, e.client, systemPrompt, userMsg)
+	return text, nil
 }
 
 func (e *Executor) execute(ctx context.Context, decSummary string) string {
@@ -198,29 +199,9 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 
 	events := make(chan api.Event, 100)
 
-	if e.useSubprocess() {
-		// Use a fresh subprocess provider per domain (isolated sessions)
-		cp := api.NewClaudeCodeProvider(e.ccProvider.GetModel())
-		go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
-	} else {
-		go api.RunAgentLoop(ctx, api.RunConfig{
-			Client:       e.client,
-			SystemPrompt: systemPrompt,
-			Messages: []anthropic.MessageParam{
-				{
-					Role: anthropic.MessageParamRoleUser,
-					Content: []anthropic.ContentBlockParamUnion{
-						{OfText: &anthropic.TextBlockParam{Text: userMsg}},
-					},
-				},
-			},
-			ToolSet:      api.AllTools,
-			CWD:          e.cwd,
-			MaxTurns:     50,
-			Domain:       e.domain,
-			AllDecisions: *e.allDecisions,
-		}, events)
-	}
+	// Use a fresh subprocess provider per domain (isolated sessions)
+	cp := api.NewClaudeCodeProvider(e.ccProvider.GetModel())
+	go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
 
 	var fullText string
 	for ev := range events {
@@ -292,28 +273,8 @@ func (e *Executor) fix(ctx context.Context, issues, decSummary string) string {
 	userMsg := fmt.Sprintf("Verification found issues:\n%s\n\nFix these now.", issues)
 
 	events := make(chan api.Event, 100)
-	if e.useSubprocess() {
-		cp := api.NewClaudeCodeProvider(e.ccProvider.GetModel())
-		go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
-	} else {
-		go api.RunAgentLoop(ctx, api.RunConfig{
-			Client:       e.client,
-			SystemPrompt: systemPrompt,
-			Messages: []anthropic.MessageParam{
-				{
-					Role: anthropic.MessageParamRoleUser,
-					Content: []anthropic.ContentBlockParamUnion{
-						{OfText: &anthropic.TextBlockParam{Text: userMsg}},
-					},
-				},
-			},
-			ToolSet:      api.AllTools,
-			CWD:          e.cwd,
-			MaxTurns:     20,
-			Domain:       e.domain,
-			AllDecisions: *e.allDecisions,
-		}, events)
-	}
+	cp := api.NewClaudeCodeProvider(e.ccProvider.GetModel())
+	go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
 
 	var fullText string
 	for ev := range events {
@@ -345,6 +306,70 @@ func (e *Executor) extract(ctx context.Context, output string) {
 
 	decs := e.parseImplicitChoices(resp)
 	e.storeDecisions(decs)
+}
+
+// verifyBuild detects project type and runs build/test commands.
+func (e *Executor) verifyBuild(ctx context.Context) (bool, string) {
+	type check struct {
+		marker  string
+		buildCmd string
+		testCmd  string
+	}
+
+	checks := []check{
+		{"go.mod", "go build ./...", "go test ./... -count=1"},
+		{"package.json", "npm run build", "npm test"},
+		{"Makefile", "make", ""},
+	}
+
+	for _, c := range checks {
+		if _, err := os.Stat(filepath.Join(e.cwd, c.marker)); err != nil {
+			continue
+		}
+
+		var results []string
+		allOk := true
+
+		if c.buildCmd != "" {
+			buildCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+			cmd := exec.CommandContext(buildCtx, "sh", "-c", c.buildCmd)
+			cmd.Dir = e.cwd
+			out, err := cmd.CombinedOutput()
+			cancel()
+			if err != nil {
+				allOk = false
+				output := string(out)
+				if len(output) > 2000 {
+					output = output[len(output)-2000:]
+				}
+				results = append(results, fmt.Sprintf("build (%s): FAIL\n%s", c.buildCmd, output))
+			} else {
+				results = append(results, fmt.Sprintf("build (%s): OK", c.buildCmd))
+			}
+		}
+
+		if c.testCmd != "" {
+			testCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+			cmd := exec.CommandContext(testCtx, "sh", "-c", c.testCmd)
+			cmd.Dir = e.cwd
+			out, err := cmd.CombinedOutput()
+			cancel()
+			if err != nil {
+				allOk = false
+				output := string(out)
+				if len(output) > 2000 {
+					output = output[len(output)-2000:]
+				}
+				results = append(results, fmt.Sprintf("test (%s): FAIL\n%s", c.testCmd, output))
+			} else {
+				results = append(results, fmt.Sprintf("test (%s): OK", c.testCmd))
+			}
+		}
+
+		return allOk, strings.Join(results, "\n")
+	}
+
+	return true, "" // no build system detected, pass by default
 }
 
 func (e *Executor) storeDecision(d decision.Decision) {

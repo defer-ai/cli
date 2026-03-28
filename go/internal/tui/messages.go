@@ -18,10 +18,6 @@ type ExecutorDecisionStoredMsg struct {
 }
 type AllExecutorsDoneMsg struct{}
 
-// Swarm messages
-type SwarmDecisionsMsg struct{ Decisions []decision.Decision }
-type SwarmCompleteMsg struct{}
-
 // UI messages
 type TaskSubmittedMsg struct{ Task string }
 type PrioritiesConfirmedMsg struct{ Priorities map[string]agent.CareLevel }
@@ -53,8 +49,6 @@ func BridgeAgentEvent(ev agent.Event) tea.Msg {
 		return ExecutorDecisionStoredMsg{ExecutorID: ev.ExecutorID, Decisions: ev.Decisions}
 	case agent.AllExecutorsDone:
 		return AllExecutorsDoneMsg{}
-	case agent.SwarmComplete:
-		return SwarmCompleteMsg{}
 	default:
 		return nil
 	}

@@ -20,16 +20,10 @@ var rootCmd = &cobra.Command{
 	Short: "Zero-Autonomy AI. Every decision is yours.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		hasAPIKey := api.IsConfigured()
-		hasClaude := api.IsClaudeInstalled()
-
-		if !hasAPIKey && !hasClaude {
-			fmt.Fprintln(os.Stderr, "Error: No AI provider available.")
+		if !api.IsClaudeInstalled() {
+			fmt.Fprintln(os.Stderr, "Error: Claude Code not found.")
 			fmt.Fprintln(os.Stderr, "")
-			fmt.Fprintln(os.Stderr, "Option 1: Set ANTHROPIC_API_KEY for direct API (tool interception)")
-			fmt.Fprintln(os.Stderr, "  export ANTHROPIC_API_KEY=sk-ant-...")
-			fmt.Fprintln(os.Stderr, "")
-			fmt.Fprintln(os.Stderr, "Option 2: Install Claude Code (free with subscription)")
+			fmt.Fprintln(os.Stderr, "Install Claude Code (free with subscription):")
 			fmt.Fprintln(os.Stderr, "  npm install -g @anthropic-ai/claude-code && claude login")
 			os.Exit(1)
 		}
@@ -39,22 +33,14 @@ var rootCmd = &cobra.Command{
 			task = args[0]
 		}
 
-		var client *api.Client
-		var ccProvider *api.ClaudeCodeProvider
-
-		if hasAPIKey {
-			client = api.NewClient(model)
-		} else {
-			ccProvider = api.NewClaudeCodeProvider(model)
-		}
-
+		ccProvider := api.NewClaudeCodeProvider(model)
 		cwd, _ := os.Getwd()
 
 		if debug {
-			return runDebug(task, model, client, ccProvider, cwd)
+			return runDebug(task, model, ccProvider, cwd)
 		}
 
-		m := tui.NewModel(task, client, ccProvider, cwd)
+		m := tui.NewModel(task, ccProvider, cwd)
 
 		p := tea.NewProgram(m,
 			tea.WithAltScreen(),

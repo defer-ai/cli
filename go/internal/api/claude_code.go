@@ -10,7 +10,31 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/defer-ai/cli/internal/decision"
 )
+
+// EventType classifies agent loop events.
+type EventType int
+
+const (
+	EventTextDelta     EventType = iota // Claude produced text
+	EventToolCallStart                  // Claude wants to call a tool
+	EventToolCallDone                   // Tool execution finished
+	EventDecisionFound                  // An implicit decision was logged
+	EventDone                           // Agent loop finished
+	EventError                          // Something went wrong
+)
+
+// Event is emitted by the agent loop.
+type Event struct {
+	Type       EventType
+	Text       string             // for TextDelta
+	ToolCall   *ToolCall          // for ToolCallStart
+	ToolResult *ToolResult        // for ToolCallDone
+	Decision   *decision.Decision // for DecisionFound
+	Error      error              // for Error
+}
 
 // ClaudeCodeProvider runs Claude Code as a subprocess.
 // Used when no ANTHROPIC_API_KEY is set (user has Claude Code authenticated via subscription).
@@ -50,7 +74,7 @@ func findClaude() string {
 }
 
 // RunCompletion sends a prompt via Claude Code subprocess and emits events.
-// This replaces RunAgentLoop when using subprocess mode.
+// Events are sent to the channel as they occur. The channel is closed when done.
 func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, userPrompt string, events chan<- Event) {
 	claudePath := findClaude()
 	if claudePath == "" {

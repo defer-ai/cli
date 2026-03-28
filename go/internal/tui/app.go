@@ -38,8 +38,7 @@ type Model struct {
 
 	// Backend
 	manager    *agent.Manager
-	client     *api.Client             // direct API (nil if using subprocess)
-	ccProvider *api.ClaudeCodeProvider  // subprocess fallback (nil if using API)
+	ccProvider *api.ClaudeCodeProvider
 	cwd        string
 	eventChan  chan tea.Msg
 	ctx        context.Context
@@ -55,12 +54,11 @@ type Model struct {
 	domainPriorities map[string]agent.CareLevel
 }
 
-// NewModel creates the root model. Pass client OR ccProvider (not both).
-func NewModel(task string, client *api.Client, ccProvider *api.ClaudeCodeProvider, cwd string) Model {
+// NewModel creates the root model.
+func NewModel(task string, ccProvider *api.ClaudeCodeProvider, cwd string) Model {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := Model{
 		task:             task,
-		client:           client,
 		ccProvider:       ccProvider,
 		cwd:              cwd,
 		welcome:          NewWelcomeModel(),
@@ -72,7 +70,7 @@ func NewModel(task string, client *api.Client, ccProvider *api.ClaudeCodeProvide
 	}
 
 	// Always create manager upfront (Init can't modify the model)
-	m.manager = agent.NewManager(client, ccProvider, cwd)
+	m.manager = agent.NewManager(ccProvider, cwd)
 
 	if task != "" {
 		m.view = ViewDecomposing
@@ -139,7 +137,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case TaskSubmittedMsg:
 		m.task = msg.Task
 		m.view = ViewDecomposing
-		m.manager = agent.NewManager(m.client, m.ccProvider, m.cwd)
+		m.manager = agent.NewManager(m.ccProvider, m.cwd)
 		ch := m.eventChan
 		m.manager.StartDecomposition(m.ctx, m.task, func(ev agent.Event) {
 			ch <- BridgeAgentEvent(ev)
@@ -166,42 +164,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AgentDecisionsReadyMsg:
 		m.tree.decisions = msg.Decisions
-		// Keep ViewDecomposing while swarm runs
-		m.view = ViewDecomposing
-		// Launch swarm in background
-		if m.manager != nil {
-			ch := m.eventChan
-			go func() {
-				m.manager.RunSwarm(m.ctx, m.task, msg.Decisions, func(ev agent.Event) {
-					if ev.Type == agent.ExecDecisionStored {
-						ch <- SwarmDecisionsMsg{Decisions: ev.Decisions}
-					}
-				})
-				ch <- SwarmCompleteMsg{}
-			}()
-		}
-		cmds = append(cmds, ListenForEvents(m.eventChan))
-		return m, tea.Batch(cmds...)
-
-	case SwarmDecisionsMsg:
-		// Merge swarm sub-decisions into tree in real-time
-		existing := make(map[string]bool)
-		for _, d := range m.tree.decisions {
-			existing[d.ID] = true
-		}
-		for _, d := range msg.Decisions {
-			if !existing[d.ID] {
-				m.tree.decisions = append(m.tree.decisions, d)
-				existing[d.ID] = true
-			}
-		}
-		cmds = append(cmds, ListenForEvents(m.eventChan))
-		return m, tea.Batch(cmds...)
-
-	case SwarmCompleteMsg:
-		// Swarm finished, now show priorities
+		// Go straight to priorities (no swarm step)
 		m.view = ViewPriorities
-		m.priorities = NewPrioritiesModel(m.tree.decisions)
+		m.priorities = NewPrioritiesModel(msg.Decisions)
 		m.priorities.width = m.width
 		m.priorities.height = m.height
 		cmds = append(cmds, ListenForEvents(m.eventChan))
@@ -381,20 +346,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case WhyDecisionMsg:
-		// Launch async completion
+		// Launch async completion via subprocess
 		ch := m.eventChan
-		if m.client != nil {
-			go func() {
-				resp, err := api.SimpleCompletion(m.ctx, m.client,
-					"Explain tradeoffs concisely.",
-					"Explain tradeoffs of choosing \""+msg.Label+"\" for decision "+msg.ID)
-				if err != nil {
-					ch <- WhyResponseMsg{Text: "Error: " + err.Error()}
-				} else {
-					ch <- WhyResponseMsg{Text: resp}
-				}
-			}()
-		} else if m.ccProvider != nil {
+		if m.ccProvider != nil {
 			go func() {
 				events := make(chan api.Event, 100)
 				go m.ccProvider.RunCompletion(m.ctx,
@@ -421,18 +375,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AskDecisionMsg:
 		ch := m.eventChan
-		if m.client != nil {
-			go func() {
-				resp, err := api.SimpleCompletion(m.ctx, m.client,
-					"Answer concisely.",
-					"Question about decision "+msg.ID+": "+msg.Question)
-				if err != nil {
-					ch <- WhyResponseMsg{Text: "Error: " + err.Error()}
-				} else {
-					ch <- WhyResponseMsg{Text: resp}
-				}
-			}()
-		} else if m.ccProvider != nil {
+		if m.ccProvider != nil {
 			go func() {
 				events := make(chan api.Event, 100)
 				go m.ccProvider.RunCompletion(m.ctx,
@@ -487,18 +430,7 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 			}
 		}
 
-		if m.client != nil {
-			go func() {
-				resp, err := api.SimpleCompletion(m.ctx, m.client,
-					"You output JSON arrays of options. Nothing else.",
-					prompt)
-				if err != nil {
-					ch <- WhyResponseMsg{Text: "Error: " + err.Error()}
-				} else {
-					doSuggest(resp)
-				}
-			}()
-		} else if m.ccProvider != nil {
+		if m.ccProvider != nil {
 			go func() {
 				events := make(chan api.Event, 100)
 				go m.ccProvider.RunCompletion(m.ctx,

@@ -4,20 +4,18 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
-	"time"
 	"unicode"
 )
 
-// Counter to ensure uniqueness even within the same millisecond.
+// Counter to ensure uniqueness within a session.
 var idCounter uint64
 
-// NextID generates a globally unique ID like STACK-0326220145-001.
-// Uses category prefix + timestamp + atomic counter. No collisions possible.
+// NextID generates a unique ID like STACK-001, STACK-002, etc.
+// Uses category prefix + atomic counter. No timestamp, no collision possible within a process.
 func NextID(_ []Decision, category string) string {
 	prefix := categoryPrefix(category)
-	ts := time.Now().Format("0102150405") // MMDDHHMMSS (10 chars)
 	seq := atomic.AddUint64(&idCounter, 1)
-	return fmt.Sprintf("%s-%s-%03d", prefix, ts, seq%1000)
+	return fmt.Sprintf("%s-%03d", prefix, seq)
 }
 
 func categoryPrefix(category string) string {

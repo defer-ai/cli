@@ -11,7 +11,7 @@ import (
 )
 
 // runDebug executes the full flow synchronously to stdout (no TUI).
-func runDebug(task, modelName string, client *api.Client, ccProvider *api.ClaudeCodeProvider, cwd string) error {
+func runDebug(task, modelName string, ccProvider *api.ClaudeCodeProvider, cwd string) error {
 	if task == "" {
 		return fmt.Errorf("--debug requires a task argument")
 	}
@@ -19,7 +19,7 @@ func runDebug(task, modelName string, client *api.Client, ccProvider *api.Claude
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mgr := agent.NewManager(client, ccProvider, cwd)
+	mgr := agent.NewManager(ccProvider, cwd)
 
 	// --- Decomposition ---
 	fmt.Printf("Decomposing: %s\n", task)
@@ -42,31 +42,6 @@ func runDebug(task, modelName string, client *api.Client, ccProvider *api.Claude
 	for _, d := range decisions {
 		fmt.Printf("  [%s] %s: %s\n", d.ID, d.Category, d.Question)
 	}
-
-	// --- Swarm ---
-	fmt.Println("\nRunning swarm expansion...")
-
-	swarmDone := make(chan struct{})
-	var swarmCount int
-
-	go func() {
-		mgr.RunSwarm(ctx, task, decisions, func(ev agent.Event) {
-			if ev.Type == agent.ExecDecisionStored && len(ev.Decisions) > 0 {
-				swarmCount += len(ev.Decisions)
-				for _, d := range ev.Decisions {
-					fmt.Printf("  [swarm] [%s] %s: %s\n", d.ID, d.Category, d.Question)
-				}
-			}
-		})
-		close(swarmDone)
-	}()
-
-	<-swarmDone
-	fmt.Printf("Swarm complete: %d sub-decisions added\n", swarmCount)
-
-	// Merge swarm decisions into decisions list
-	allDecs := mgr.AllDecisions()
-	decisions = allDecs
 
 	// --- Domain summary ---
 	fmt.Println("\nDomain summary:")

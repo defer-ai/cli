@@ -91,8 +91,8 @@ func TestNextIDFormat(t *testing.T) {
 	id := NextID(nil, "Stack")
 
 	parts := strings.Split(id, "-")
-	if len(parts) != 3 {
-		t.Fatalf("ID %q has %d parts, want 3 (PREFIX-TIMESTAMP-SEQ)", id, len(parts))
+	if len(parts) != 2 {
+		t.Fatalf("ID %q has %d parts, want 2 (PREFIX-SEQ)", id, len(parts))
 	}
 
 	prefix := parts[0]
@@ -100,14 +100,9 @@ func TestNextIDFormat(t *testing.T) {
 		t.Errorf("prefix = %q, want STACK", prefix)
 	}
 
-	timestamp := parts[1]
-	if len(timestamp) != 10 {
-		t.Errorf("timestamp %q has %d chars, want 10 (MMDDHHMMSS)", timestamp, len(timestamp))
-	}
-
-	seq := parts[2]
-	if len(seq) != 3 {
-		t.Errorf("seq %q has %d chars, want 3", seq, len(seq))
+	seq := parts[1]
+	if len(seq) < 3 {
+		t.Errorf("seq %q has %d chars, want at least 3", seq, len(seq))
 	}
 }
 

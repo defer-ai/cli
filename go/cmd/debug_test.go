@@ -5,7 +5,7 @@ import (
 )
 
 func TestRunDebugRequiresTask(t *testing.T) {
-	err := runDebug("", "sonnet", nil, nil, "/tmp/test")
+	err := runDebug("", "sonnet", nil, "/tmp/test")
 	if err == nil {
 		t.Fatal("expected error for empty task")
 	}
@@ -15,11 +15,11 @@ func TestRunDebugRequiresTask(t *testing.T) {
 }
 
 func TestRunDebugNoProviderDoesNotPanic(t *testing.T) {
-	// With both client and ccProvider nil, decomposition will never
+	// With ccProvider nil, decomposition will never
 	// send AgentDecisionsReady. We cannot run the full flow, but we
 	// ensure it doesn't panic on setup. The function will block on
 	// the decomposeDone channel, so we just validate the error case.
-	err := runDebug("", "sonnet", nil, nil, "/tmp/test")
+	err := runDebug("", "sonnet", nil, "/tmp/test")
 	if err == nil {
 		t.Fatal("expected error")
 	}

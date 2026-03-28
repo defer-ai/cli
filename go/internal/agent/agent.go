@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/defer-ai/cli/internal/api"
 	"github.com/defer-ai/cli/internal/decision"
 )
@@ -36,17 +35,14 @@ type State struct {
 // Agent handles task decomposition.
 type Agent struct {
 	mu         sync.Mutex
-	client     *api.Client
 	ccProvider *api.ClaudeCodeProvider
 	cwd        string
 	state      State
-	messages   []anthropic.MessageParam
 }
 
-// NewAgent creates a decomposition agent. Pass client OR ccProvider.
-func NewAgent(task string, client *api.Client, ccProvider *api.ClaudeCodeProvider, cwd string) *Agent {
+// NewAgent creates a decomposition agent.
+func NewAgent(task string, ccProvider *api.ClaudeCodeProvider, cwd string) *Agent {
 	return &Agent{
-		client:     client,
 		ccProvider: ccProvider,
 		cwd:        cwd,
 		state: State{
@@ -54,11 +50,6 @@ func NewAgent(task string, client *api.Client, ccProvider *api.ClaudeCodeProvide
 			Status: StatusIdle,
 		},
 	}
-}
-
-// useSubprocess returns true if using Claude Code subprocess.
-func (a *Agent) useSubprocess() bool {
-	return a.client == nil && a.ccProvider != nil
 }
 
 // State returns an immutable snapshot.
@@ -89,106 +80,8 @@ func (a *Agent) Decompose(ctx context.Context, onEvent func(Event)) {
 			}
 		}()
 
-		if a.useSubprocess() {
-			a.runDecompositionSubprocess(ctx, onEvent, 0)
-		} else {
-			a.messages = []anthropic.MessageParam{
-				{
-					Role: anthropic.MessageParamRoleUser,
-					Content: []anthropic.ContentBlockParamUnion{
-						{OfText: &anthropic.TextBlockParam{Text: a.state.Task}},
-					},
-				},
-			}
-			a.runDecomposition(ctx, onEvent, 0)
-		}
+		a.runDecompositionSubprocess(ctx, onEvent, 0)
 	}()
-}
-
-func (a *Agent) runDecomposition(ctx context.Context, onEvent func(Event), retries int) {
-	events := make(chan api.Event, 100)
-
-	go api.RunAgentLoop(ctx, api.RunConfig{
-		Client:       a.client,
-		SystemPrompt: DecomposePrompt,
-		Messages:     a.messages,
-		ToolSet:      api.ReadOnlyTools,
-		CWD:          a.cwd,
-		MaxTurns:     10,
-	}, events)
-
-	var fullText string
-	for ev := range events {
-		switch ev.Type {
-		case api.EventTextDelta:
-			fullText += ev.Text
-			a.mu.Lock()
-			a.state.Output = fullText
-			a.mu.Unlock()
-			onEvent(Event{Type: AgentStateChanged})
-
-		case api.EventError:
-			a.mu.Lock()
-			a.state.Status = StatusError
-			a.state.Error = ev.Error.Error()
-			a.mu.Unlock()
-			onEvent(Event{Type: AgentStateChanged})
-			return
-
-		case api.EventDone:
-			// Parse decisions from the response
-			decisions := parseDecisions(fullText, a.state.Decisions)
-
-			if len(decisions) == 0 && retries < 2 {
-				// Retry
-				a.messages = append(a.messages,
-					anthropic.MessageParam{
-						Role: anthropic.MessageParamRoleAssistant,
-						Content: []anthropic.ContentBlockParamUnion{
-							{OfText: &anthropic.TextBlockParam{Text: fullText}},
-						},
-					},
-					anthropic.MessageParam{
-						Role: anthropic.MessageParamRoleUser,
-						Content: []anthropic.ContentBlockParamUnion{
-							{OfText: &anthropic.TextBlockParam{Text: "You did not output a ```defer-decisions JSON block. This is required. Output the decisions now."}},
-						},
-					},
-				)
-				a.runDecomposition(ctx, onEvent, retries+1)
-				return
-			}
-
-			// Add Misc catch-all
-			hasMisc := false
-			for _, d := range decisions {
-				if strings.EqualFold(d.Category, "misc") {
-					hasMisc = true
-					break
-				}
-			}
-			if !hasMisc && len(decisions) > 0 {
-				miscAnswer := "(catch-all category)"
-				decisions = append(decisions, decision.Decision{
-					ID:        decision.NextID(decisions, "Misc"),
-					Category:  "Misc",
-					Question:  "Uncategorized implementation decisions",
-					Answer:    &miscAnswer,
-					Delegated: true,
-					Implicit:  true,
-					Source:    "auto",
-					Date:      time.Now().Format("2006-01-02"),
-				})
-			}
-
-			a.mu.Lock()
-			a.state.Decisions = decisions
-			a.state.Status = StatusDone
-			a.mu.Unlock()
-			onEvent(Event{Type: AgentDecisionsReady, Decisions: decisions})
-			return
-		}
-	}
 }
 
 // runDecompositionSubprocess uses Claude Code subprocess for decomposition.
@@ -236,14 +129,14 @@ func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Eve
 			if !hasMisc && len(decisions) > 0 {
 				miscAnswer := "(catch-all category)"
 				decisions = append(decisions, decision.Decision{
-					ID:       decision.NextID(decisions, "Misc"),
-					Category: "Misc",
-					Question: "Uncategorized implementation decisions",
-					Answer:   &miscAnswer,
+					ID:        decision.NextID(decisions, "Misc"),
+					Category:  "Misc",
+					Question:  "Uncategorized implementation decisions",
+					Answer:    &miscAnswer,
 					Delegated: true,
 					Implicit:  true,
 					Source:    "auto",
-					Date:     time.Now().Format("2006-01-02"),
+					Date:      time.Now().Format("2006-01-02"),
 				})
 			}
 
