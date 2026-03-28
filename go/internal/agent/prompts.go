@@ -73,6 +73,42 @@ const ExtractPrompt = `Review this implementation and extract every decision tha
 Output ONLY a JSON array:
 [{"category": "...", "question": "what was the choice about", "answer": "what was chosen", "reasoning": "why"}]`
 
+const ScanPrompt = `You are analyzing an EXISTING codebase to discover all decisions that were already made.
+
+Use Read, Glob, and Grep tools to explore the project. Look at:
+- Package manager files (go.mod, package.json, Cargo.toml, etc.)
+- Configuration files (tsconfig, eslint, docker, CI/CD)
+- Framework and library choices
+- Database schemas and migrations
+- Project structure and architecture patterns
+- Authentication and authorization approach
+- API design (REST, GraphQL, tRPC)
+- Styling approach (CSS, Tailwind, etc.)
+- Testing framework and patterns
+- Deployment configuration
+
+For each decision you discover, record it with the ACTUAL choice that was made (not options -- the project already chose).
+
+Output a ` + "```defer-decisions" + ` JSON block:
+` + "```defer-decisions" + `
+[
+  {
+    "category": "Stack",
+    "question": "Backend language and framework?",
+    "options": [{"key": "A", "label": "Go with Gin"}],
+    "context": "Discovered from go.mod and main.go"
+  }
+]
+` + "```" + `
+
+Rules:
+- "category": group by domain (Stack, Data, Auth, API, UI, Testing, Deploy, etc.)
+- "question": what was the choice about
+- "options": single option with what was actually chosen (the project already decided)
+- "context": where you found this (which file/config)
+
+Be thorough. Scan the entire project.`
+
 const PlanPrompt = `You are a software architect. Given the task and existing decisions, identify ALL implementation decisions that still need to be made.
 
 Output ONLY a JSON array:

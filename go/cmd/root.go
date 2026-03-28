@@ -55,8 +55,8 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.Flags().StringVar(&model, "model", "sonnet", "Model to use (sonnet, opus, haiku)")
-	rootCmd.Flags().BoolVar(&debug, "debug", false, "Run headless (no TUI), print all output to stdout")
+	rootCmd.PersistentFlags().StringVar(&model, "model", "sonnet", "Model to use (sonnet, opus, haiku)")
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Run headless (no TUI), print all output to stdout")
 	rootCmd.AddCommand(initCmd)
 }
 

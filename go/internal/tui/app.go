@@ -152,6 +152,69 @@ func NewModel(task string, ccProvider *api.ClaudeCodeProvider, cwd string) Model
 	return m
 }
 
+// NewScanModel creates a model that scans an existing project.
+func NewScanModel(ccProvider *api.ClaudeCodeProvider, cwd string) Model {
+	ctx, cancel := context.WithCancel(context.Background())
+	m := Model{
+		task:             "(scanning project)",
+		ccProvider:       ccProvider,
+		cwd:              cwd,
+		welcome:          NewWelcomeModel(),
+		tree:             NewTreeModel(),
+		eventChan:        make(chan tea.Msg, 100),
+		ctx:              ctx,
+		cancel:           cancel,
+		domainPriorities: make(map[string]agent.CareLevel),
+		view:             ViewDecomposing,
+	}
+	m.manager = agent.NewManager(ccProvider, cwd)
+
+	// Start scan in background
+	ch := m.eventChan
+	go func() {
+		events := make(chan api.Event, 100)
+		scanUserPrompt := fmt.Sprintf("Scan the project at %s. Start by using Glob to find all files, then Read the key config files (go.mod, package.json, tsconfig.json, Dockerfile, etc.), then Read source files to understand the architecture. Output ALL discovered decisions.", cwd)
+		go ccProvider.RunCompletion(ctx, agent.ScanPrompt, scanUserPrompt, events)
+
+		var fullText string
+		for ev := range events {
+			switch ev.Type {
+			case api.EventTextDelta:
+				fullText += ev.Text
+				ch <- AgentStateChangedMsg{}
+			case api.EventDone:
+				decs := agent.ParseScanDecisions(fullText)
+				// Mark all as discovered
+				today := time.Now().Format("2006-01-02")
+				for i := range decs {
+					if decs[i].Answer == nil && len(decs[i].Options) > 0 {
+						answer := decs[i].Options[0].Label
+						decs[i].Answer = &answer
+					}
+					decs[i].Source = "discovered"
+					decs[i].Date = today
+				}
+				// Save immediately
+				store, _ := decision.LoadStore(cwd)
+				if store == nil {
+					store, _ = decision.CreateStore(cwd, "(scanned project)")
+				}
+				if store != nil {
+					store.Decisions = decs
+					_ = decision.SaveStore(cwd, store)
+				}
+				ch <- AgentDecisionsReadyMsg{Decisions: decs}
+				return
+			case api.EventError:
+				ch <- AgentDecisionsReadyMsg{Decisions: nil}
+				return
+			}
+		}
+	}()
+
+	return m
+}
+
 func loadPriorities(cwd string) map[string]agent.CareLevel {
 	data, err := os.ReadFile(filepath.Join(cwd, ".defer", "priorities.json"))
 	if err != nil {
@@ -293,28 +356,72 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		savePriorities(m.cwd, msg.Priorities, m.task)
 		m.view = ViewTree
 
-		if m.manager != nil {
+		if m.manager != nil && m.manager.Agent() != nil {
 			m.manager.AutoDecide(msg.Priorities)
 			m.tree.decisions = m.manager.Agent().Decisions()
-
-			// Only launch executors if ALL visible decisions are answered
-			allAnswered := true
-			for _, d := range m.tree.decisionItems() {
-				if d.IsPending() {
-					allAnswered = false
-					break
+		} else {
+			// Resume/scan path: auto-decide on tree decisions directly
+			today := time.Now().Format("2006-01-02")
+			priMap := make(map[string]agent.CareLevel)
+			for k, v := range msg.Priorities {
+				priMap[strings.ToLower(strings.TrimSpace(k))] = v
+			}
+			for i := range m.tree.decisions {
+				d := &m.tree.decisions[i]
+				if d.Answer != nil {
+					continue
+				}
+				level := priMap[strings.ToLower(strings.TrimSpace(d.Category))]
+				if level != agent.CareLevelParanoid && level != agent.CareLevelHigh {
+					var answer string
+					for _, opt := range d.Options {
+						if !strings.Contains(strings.ToLower(opt.Label), "choose for me") {
+							answer = opt.Label
+							break
+						}
+					}
+					if answer == "" && len(d.Options) > 0 {
+						answer = d.Options[0].Label
+					}
+					if answer == "" {
+						answer = "auto-decided"
+					}
+					d.Answer = &answer
+					d.Delegated = true
+					d.Source = "auto"
+					d.Date = today
 				}
 			}
-			if allAnswered {
-				ch := m.eventChan
-				m.manager.LaunchExecutors(m.ctx, m.task, m.tree.decisions, msg.Priorities, func(ev agent.Event) {
-					ch <- BridgeAgentEvent(ev)
-				})
-				m.executorsLaunched = true
-				m.tree.overallStatus = "executing"
-			} else {
-				m.tree.overallStatus = "thinking"
+			// Save
+			store, _ := decision.LoadStore(m.cwd)
+			if store != nil {
+				store.Decisions = m.tree.decisions
+				_ = decision.SaveStore(m.cwd, store)
 			}
+		}
+
+		// Only launch executors if there's a real task (not scan/resume without task)
+		isScanOnly := m.task == "" || m.task == "(scanned project)" || m.task == "(scanning project)"
+
+		allAnswered := true
+		for _, d := range m.tree.decisionItems() {
+			if d.IsPending() {
+				allAnswered = false
+				break
+			}
+		}
+
+		if allAnswered && !isScanOnly {
+			ch := m.eventChan
+			m.manager.LaunchExecutors(m.ctx, m.task, m.tree.decisions, msg.Priorities, func(ev agent.Event) {
+				ch <- BridgeAgentEvent(ev)
+			})
+			m.executorsLaunched = true
+			m.tree.overallStatus = "executing"
+		} else if !allAnswered {
+			m.tree.overallStatus = "thinking"
+		} else {
+			m.tree.overallStatus = "done" // scan complete, all cataloged
 		}
 
 		cmds = append(cmds, ListenForEvents(m.eventChan))

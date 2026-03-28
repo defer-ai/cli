@@ -256,6 +256,11 @@ func (a *Agent) AddDecisions(decs []decision.Decision) {
 
 // --- Parsing ---
 
+// ParseScanDecisions extracts decisions from a scan response.
+func ParseScanDecisions(text string) []decision.Decision {
+	return parseDecisions(text, nil)
+}
+
 var decisionBlockRe = regexp.MustCompile("```defer-decisions\\s*\n([\\s\\S]*?)\n```")
 
 func parseDecisions(text string, existing []decision.Decision) []decision.Decision {
