@@ -71,9 +71,9 @@ If issues exist, respond with: NEEDS FIX followed by a numbered list of issues.`
 const ExtractPrompt = `Review this implementation and extract every decision that was made. Include: files created, libraries chosen, patterns used, naming conventions, config values, architecture choices.
 
 Output ONLY a JSON array:
-[{"category": "...", "decision": "what was decided", "reasoning": "why"}]`
+[{"category": "...", "question": "what was the choice about", "answer": "what was chosen", "reasoning": "why"}]`
 
-const PlanPrompt = `You are a software architect. Given the task, domain, and existing decisions, identify ALL implementation decisions that still need to be made for this domain.
+const PlanPrompt = `You are a software architect. Given the task and existing decisions, identify ALL implementation decisions that still need to be made.
 
 Output ONLY a JSON array:
-[{"category": "domain", "decision": "what will be decided", "reasoning": "why this matters"}]`
+[{"category": "...", "question": "what needs to be decided", "answer": "your recommended choice", "reasoning": "why this matters"}]`

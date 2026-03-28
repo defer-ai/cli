@@ -50,16 +50,17 @@ type ExecState struct {
 
 // Executor implements one domain.
 type Executor struct {
-	mu           sync.Mutex
-	ccProvider   *api.ClaudeCodeProvider
-	cwd          string
-	task         string
-	domain       string
-	careLevel    CareLevel
-	decisions    []decision.Decision
-	allDecisions *[]decision.Decision
-	state        ExecState
-	onEvent      func(Event)
+	mu              sync.Mutex
+	ccProvider      *api.ClaudeCodeProvider
+	cwd             string
+	task            string
+	domain          string
+	careLevel       CareLevel
+	decisions       []decision.Decision
+	allDecisions    *[]decision.Decision
+	knownCategories []string // canonical categories from decomposition
+	state           ExecState
+	onEvent         func(Event)
 }
 
 // ExecOpts configures a new executor.
@@ -76,15 +77,27 @@ type ExecOpts struct {
 
 // NewExecutor creates a domain executor.
 func NewExecutor(opts ExecOpts) *Executor {
+	// Extract canonical categories from initial decisions
+	catSet := make(map[string]bool)
+	var cats []string
+	for _, d := range opts.Decisions {
+		lower := strings.ToLower(strings.TrimSpace(d.Category))
+		if !catSet[lower] {
+			catSet[lower] = true
+			cats = append(cats, d.Category)
+		}
+	}
+
 	return &Executor{
-		ccProvider:   opts.CCProvider,
-		cwd:          opts.CWD,
-		task:         opts.Task,
-		domain:       opts.Domain,
-		careLevel:    opts.CareLevel,
-		decisions:    opts.Decisions,
-		allDecisions: opts.AllDecisions,
-		onEvent:      opts.OnEvent,
+		ccProvider:      opts.CCProvider,
+		cwd:             opts.CWD,
+		task:            opts.Task,
+		domain:          opts.Domain,
+		careLevel:       opts.CareLevel,
+		decisions:       opts.Decisions,
+		allDecisions:    opts.AllDecisions,
+		knownCategories: cats,
+		onEvent:         opts.OnEvent,
 		state: ExecState{
 			ID:        fmt.Sprintf("domain-%s", opts.Domain),
 			Domain:    opts.Domain,
@@ -234,10 +247,12 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 }
 
 func (e *Executor) plan(ctx context.Context, decSummary string) {
-	msg := fmt.Sprintf("Task: %s\nDomain: %s\nExisting decisions:\n%s\n\nWhat implementation decisions will you need to make?",
-		e.task, e.domain, decSummary)
+	catList := strings.Join(e.knownCategories, ", ")
+	msg := fmt.Sprintf("Task: %s\nExisting decisions:\n%s\n\nKNOWN CATEGORIES (you MUST use only these): %s\n\nWhat implementation decisions will you need to make? Use ONLY the categories listed above.",
+		e.task, decSummary, catList)
 
-	resp, err := e.simpleCompletion(ctx, PlanPrompt, msg)
+	planPrompt := PlanPrompt + fmt.Sprintf("\n\nCRITICAL: The category field MUST be one of: %s. Do NOT invent new categories.", catList)
+	resp, err := e.simpleCompletion(ctx, planPrompt, msg)
 	if err != nil {
 		return // best effort
 	}
@@ -395,12 +410,55 @@ func (e *Executor) storeDecision(d decision.Decision) {
 
 func (e *Executor) normalizeCategoryLocked(cat string) string {
 	lower := strings.ToLower(strings.TrimSpace(cat))
-	for _, d := range *e.allDecisions {
-		if strings.EqualFold(strings.TrimSpace(d.Category), lower) {
-			return d.Category
+
+	// 1. Exact match against known categories from decomposition
+	for _, known := range e.knownCategories {
+		if strings.EqualFold(strings.TrimSpace(known), lower) {
+			return known
 		}
 	}
-	return cat
+
+	// 2. Substring match: "cli interface" matches "CLI", "data storage" matches "Storage"
+	for _, known := range e.knownCategories {
+		kl := strings.ToLower(strings.TrimSpace(known))
+		if strings.Contains(lower, kl) || strings.Contains(kl, lower) {
+			return known
+		}
+	}
+
+	// 3. Word overlap: find category with most matching words
+	catWords := strings.Fields(lower)
+	bestMatch := ""
+	bestScore := 0
+	for _, known := range e.knownCategories {
+		knownWords := strings.Fields(strings.ToLower(known))
+		score := 0
+		for _, cw := range catWords {
+			for _, kw := range knownWords {
+				if cw == kw || strings.HasPrefix(cw, kw) || strings.HasPrefix(kw, cw) {
+					score++
+				}
+			}
+		}
+		if score > bestScore {
+			bestScore = score
+			bestMatch = known
+		}
+	}
+	if bestScore > 0 {
+		return bestMatch
+	}
+
+	// 4. No match found -- use "Misc" if it exists, otherwise first known non-Misc category
+	for _, known := range e.knownCategories {
+		if strings.EqualFold(known, "Misc") {
+			return known
+		}
+	}
+	if len(e.knownCategories) > 0 {
+		return e.knownCategories[0]
+	}
+	return "Misc"
 }
 
 func (e *Executor) storeDecisions(decs []decision.Decision) {
@@ -433,26 +491,43 @@ func (e *Executor) parseImplicitChoices(text string) []decision.Decision {
 	if start >= 0 && end > start {
 		var raw []struct {
 			Category  string `json:"category"`
-			Decision  string `json:"decision"`
+			Decision  string `json:"decision"`  // old format
+			Question  string `json:"question"`   // new format
+			Answer    string `json:"answer"`     // new format
 			Reasoning string `json:"reasoning"`
 		}
 		if err := json.Unmarshal([]byte(text[start:end+1]), &raw); err == nil {
 			for _, item := range raw {
-				cat := e.normalizeCategory(item.Category)
-				answer := item.Decision
-				if answer == "" {
-					answer = item.Reasoning
+				cat := e.normalizeCategoryLocked(item.Category)
+
+				// Support both old ("decision") and new ("question"/"answer") formats
+				q := strings.TrimSpace(item.Question)
+				if q == "" {
+					q = strings.TrimSpace(item.Decision)
 				}
-				result = append(result, decision.Decision{
+				if q == "" {
+					continue
+				}
+
+				a := strings.TrimSpace(item.Answer)
+				if a == "" {
+					a = strings.TrimSpace(item.Reasoning)
+				}
+				if a == "" || strings.EqualFold(a, q) {
+					a = "(agent decided)"
+				}
+
+				d := decision.Decision{
 					ID:        decision.NextID(*e.allDecisions, cat),
 					Category:  cat,
-					Question:  item.Decision,
-					Answer:    &answer,
+					Question:  q,
+					Answer:    &a,
 					Implicit:  true,
 					Source:    "agent",
 					Reasoning: item.Reasoning,
 					Date:      today,
-				})
+				}
+				result = append(result, d)
 			}
 		}
 	}
