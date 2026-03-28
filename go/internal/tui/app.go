@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -69,15 +71,119 @@ func NewModel(task string, ccProvider *api.ClaudeCodeProvider, cwd string) Model
 		domainPriorities: make(map[string]agent.CareLevel),
 	}
 
-	// Always create manager upfront (Init can't modify the model)
 	m.manager = agent.NewManager(ccProvider, cwd)
 
-	if task != "" {
-		m.view = ViewDecomposing
+	// Check for existing session to resume (only if no new task given)
+	if task == "" {
+		store, _ := decision.LoadStore(cwd)
+		priorities := loadPriorities(cwd)
+
+		if store != nil && len(store.Decisions) > 0 {
+			// Resume existing session
+			m.tree.decisions = store.Decisions
+			m.domainPriorities = priorities
+			m.task = store.Task
+
+			// Auto-decide based on saved priorities
+			if len(priorities) > 0 {
+				priMap := make(map[string]agent.CareLevel)
+				for k, v := range priorities {
+					priMap[strings.ToLower(strings.TrimSpace(k))] = v
+				}
+				today := time.Now().Format("2006-01-02")
+				for i := range m.tree.decisions {
+					d := &m.tree.decisions[i]
+					if d.Answer != nil {
+						continue
+					}
+					level := priMap[strings.ToLower(strings.TrimSpace(d.Category))]
+					if level != agent.CareLevelParanoid && level != agent.CareLevelHigh {
+						// Auto-decide: pick first non-"choose for me" option
+						var answer string
+						for _, opt := range d.Options {
+							if !strings.Contains(strings.ToLower(opt.Label), "choose for me") {
+								answer = opt.Label
+								break
+							}
+						}
+						if answer == "" && len(d.Options) > 0 {
+							answer = d.Options[0].Label
+						}
+						if answer == "" {
+							answer = "auto-decided"
+						}
+						d.Answer = &answer
+						d.Delegated = true
+						d.Source = "auto"
+						d.Date = today
+					}
+				}
+				// Save auto-decided state
+				store.Decisions = m.tree.decisions
+				_ = decision.SaveStore(cwd, store)
+			}
+
+			if len(priorities) > 0 {
+				m.view = ViewTree
+				hasPending := false
+				for _, d := range m.tree.decisionItems() {
+					if d.IsPending() {
+						hasPending = true
+						break
+					}
+				}
+				if !hasPending {
+					m.tree.overallStatus = "done"
+				} else {
+					m.tree.overallStatus = "thinking"
+				}
+			} else {
+				m.view = ViewPriorities
+				m.priorities = NewPrioritiesModel(store.Decisions)
+			}
+		} else {
+			m.view = ViewWelcome
+		}
 	} else {
-		m.view = ViewWelcome
+		// New task given -- start fresh
+		m.view = ViewDecomposing
 	}
+
 	return m
+}
+
+func loadPriorities(cwd string) map[string]agent.CareLevel {
+	data, err := os.ReadFile(filepath.Join(cwd, ".defer", "priorities.json"))
+	if err != nil {
+		return nil
+	}
+	var raw map[string]string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	result := make(map[string]agent.CareLevel)
+	for k, v := range raw {
+		if k == "_task" {
+			continue
+		}
+		result[k] = agent.CareLevel(v)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func savePriorities(cwd string, priorities map[string]agent.CareLevel, task string) {
+	dir := filepath.Join(cwd, ".defer")
+	os.MkdirAll(dir, 0o755)
+	raw := make(map[string]string)
+	raw["_task"] = task
+	for k, v := range priorities {
+		raw[k] = string(v)
+	}
+	data, _ := json.MarshalIndent(raw, "", "  ")
+	os.WriteFile(filepath.Join(dir, "priorities.json"), data, 0o644)
 }
 
 func (m Model) Init() tea.Cmd {
@@ -164,7 +270,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AgentDecisionsReadyMsg:
 		m.tree.decisions = msg.Decisions
-		// Go straight to priorities (no swarm step)
+		// Persist decisions immediately so resume works
+		store, _ := decision.LoadStore(m.cwd)
+		if store == nil {
+			store, _ = decision.CreateStore(m.cwd, m.task)
+		}
+		if store != nil {
+			store.Decisions = msg.Decisions
+			store.Task = m.task
+			_ = decision.SaveStore(m.cwd, store)
+		}
+		// Go straight to priorities
 		m.view = ViewPriorities
 		m.priorities = NewPrioritiesModel(msg.Decisions)
 		m.priorities.width = m.width
@@ -174,6 +290,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case PrioritiesConfirmedMsg:
 		m.domainPriorities = msg.Priorities
+		savePriorities(m.cwd, msg.Priorities, m.task)
 		m.view = ViewTree
 
 		if m.manager != nil {
