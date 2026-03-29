@@ -17,6 +17,7 @@ type ExecutorDecisionStoredMsg struct {
 	Decisions  []decision.Decision
 }
 type AllExecutorsDoneMsg struct{}
+type ToolActivityMsg struct{ Description string }
 
 // UI messages
 type TaskSubmittedMsg struct{ Task string }
@@ -47,6 +48,8 @@ func BridgeAgentEvent(ev agent.Event) tea.Msg {
 		return ExecutorStateChangedMsg{ExecutorID: ev.ExecutorID}
 	case agent.ExecDecisionStored:
 		return ExecutorDecisionStoredMsg{ExecutorID: ev.ExecutorID, Decisions: ev.Decisions}
+	case agent.ExecToolActivity:
+		return ToolActivityMsg{Description: ev.ToolActivity}
 	case agent.AllExecutorsDone:
 		return AllExecutorsDoneMsg{}
 	default:

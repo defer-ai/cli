@@ -77,6 +77,7 @@ func (m *Manager) LaunchExecutors(ctx context.Context, task string, decisions []
 		Task:         task,
 		Domain:       "Implementation",
 		CareLevel:    CareLevelMedium,
+		Priorities:   priorities,
 		Decisions:    decisions,
 		AllDecisions: &m.allDecs,
 		OnEvent:      onEvent,

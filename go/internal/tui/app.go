@@ -461,6 +461,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 
+	case ToolActivityMsg:
+		// Add tool activity to the live feed
+		m.tree.feedLines = append(m.tree.feedLines, msg.Description)
+		if len(m.tree.feedLines) > 200 {
+			m.tree.feedLines = m.tree.feedLines[len(m.tree.feedLines)-200:]
+		}
+		// Also update reasoning with latest tool activity
+		m.reasoningLines = append(m.reasoningLines, msg.Description)
+		if len(m.reasoningLines) > 20 {
+			m.reasoningLines = m.reasoningLines[len(m.reasoningLines)-20:]
+		}
+		cmds = append(cmds, ListenForEvents(m.eventChan))
+		return m, tea.Batch(cmds...)
+
 	case ExecutorDecisionStoredMsg:
 		// Merge new decisions without overwriting user changes
 		m.manager.SyncDecisions(m.tree.decisions) // push user changes first

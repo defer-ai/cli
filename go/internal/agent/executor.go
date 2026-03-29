@@ -56,9 +56,10 @@ type Executor struct {
 	task            string
 	domain          string
 	careLevel       CareLevel
+	priorities      map[string]CareLevel // per-category care levels
 	decisions       []decision.Decision
 	allDecisions    *[]decision.Decision
-	knownCategories []string // canonical categories from decomposition
+	knownCategories []string
 	state           ExecState
 	onEvent         func(Event)
 }
@@ -70,6 +71,7 @@ type ExecOpts struct {
 	Task         string
 	Domain       string
 	CareLevel    CareLevel
+	Priorities   map[string]CareLevel
 	Decisions    []decision.Decision
 	AllDecisions *[]decision.Decision
 	OnEvent      func(Event)
@@ -88,12 +90,18 @@ func NewExecutor(opts ExecOpts) *Executor {
 		}
 	}
 
+	prios := make(map[string]CareLevel)
+	for k, v := range opts.Priorities {
+		prios[strings.ToLower(strings.TrimSpace(k))] = v
+	}
+
 	return &Executor{
 		ccProvider:      opts.CCProvider,
 		cwd:             opts.CWD,
 		task:            opts.Task,
 		domain:          opts.Domain,
 		careLevel:       opts.CareLevel,
+		priorities:      prios,
 		decisions:       opts.Decisions,
 		allDecisions:    opts.AllDecisions,
 		knownCategories: cats,
@@ -229,6 +237,15 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 			}
 			e.mu.Unlock()
 			e.onEvent(Event{Type: ExecStateChanged, ExecutorID: e.state.ID})
+
+		case api.EventToolCallStart:
+			if ev.ToolCall != nil {
+				e.onEvent(Event{
+					Type:         ExecToolActivity,
+					ExecutorID:   e.state.ID,
+					ToolActivity: ev.ToolCall.HumanDescription(),
+				})
+			}
 
 		case api.EventDecisionFound:
 			if ev.Decision != nil {
@@ -401,11 +418,33 @@ func (e *Executor) storeDecision(d decision.Decision) {
 		}
 	}
 
-	// Regenerate ID using current allDecisions (avoids stale snapshot duplicates)
+	// Regenerate ID
 	d.ID = decision.NextID(*e.allDecisions, d.Category)
+
+	// Apply care level: high/paranoid decisions stay pending for user review
+	level := e.getCareLevel(d.Category)
+	if level == CareLevelHigh || level == CareLevelParanoid {
+		d.Answer = nil
+		d.Delegated = false
+		d.Source = "agent"
+	}
+
+	// Skip: don't even log non-major decisions
+	if level == CareLevelSkip && d.Implicit {
+		return
+	}
 
 	*e.allDecisions = append(*e.allDecisions, d)
 	e.onEvent(Event{Type: ExecDecisionStored, ExecutorID: e.state.ID, Decisions: []decision.Decision{d}})
+}
+
+// getCareLevel returns the care level for a category.
+func (e *Executor) getCareLevel(category string) CareLevel {
+	key := strings.ToLower(strings.TrimSpace(category))
+	if level, ok := e.priorities[key]; ok {
+		return level
+	}
+	return e.careLevel // fall back to executor's default
 }
 
 func (e *Executor) normalizeCategoryLocked(cat string) string {
