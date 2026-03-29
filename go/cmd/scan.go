@@ -18,22 +18,22 @@ var scanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Scan existing project to discover decisions already made",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !api.IsClaudeInstalled() {
-			fmt.Fprintln(os.Stderr, "Error: Claude Code not found.")
+		cwd, _ := os.Getwd()
+
+		p, err := api.ResolveProvider(provider, apiKey, model)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error:", err)
 			os.Exit(1)
 		}
 
-		cwd, _ := os.Getwd()
-		ccProvider := api.NewClaudeCodeProvider(model)
-
 		if debug {
-			return runScanDebug(ccProvider, cwd)
+			return runScanDebug(p, cwd)
 		}
 
 		// Launch TUI in scan mode
-		m := tui.NewScanModel(ccProvider, cwd)
-		p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
-		_, err := p.Run()
+		m := tui.NewScanModel(p, cwd)
+		prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+		_, err = prog.Run()
 		return err
 	},
 }
@@ -42,14 +42,14 @@ func init() {
 	rootCmd.AddCommand(scanCmd)
 }
 
-func runScanDebug(ccProvider *api.ClaudeCodeProvider, cwd string) error {
+func runScanDebug(scanProvider api.Provider, cwd string) error {
 	fmt.Println("Scanning project at", cwd)
 	ctx := context.Background()
 
 	userPrompt := fmt.Sprintf(`Scan the project at %s. Start by running Glob to find all files, then Read the key config files (go.mod, package.json, tsconfig.json, Dockerfile, docker-compose.yml, etc.), then Read a few source files to understand the architecture. Output ALL discovered decisions as a `+"```defer-decisions```"+` JSON block.`, cwd)
 
 	events := make(chan api.Event, 100)
-	go ccProvider.RunCompletion(ctx, agent.ScanPrompt, userPrompt, events)
+	go scanProvider.RunCompletion(ctx, agent.ScanPrompt, userPrompt, events)
 
 	var fullText string
 	for ev := range events {

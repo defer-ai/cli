@@ -11,7 +11,7 @@ import (
 )
 
 // runDebug executes the full flow synchronously to stdout (no TUI).
-func runDebug(task, modelName string, ccProvider *api.ClaudeCodeProvider, cwd string) error {
+func runDebug(task, modelName string, provider api.Provider, cwd string) error {
 	if task == "" {
 		return fmt.Errorf("--debug requires a task argument")
 	}
@@ -19,7 +19,7 @@ func runDebug(task, modelName string, ccProvider *api.ClaudeCodeProvider, cwd st
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mgr := agent.NewManager(ccProvider, cwd)
+	mgr := agent.NewManager(provider, cwd)
 
 	// --- Decomposition ---
 	fmt.Printf("Decomposing: %s\n", task)

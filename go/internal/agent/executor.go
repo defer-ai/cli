@@ -51,7 +51,7 @@ type ExecState struct {
 // Executor implements one domain.
 type Executor struct {
 	mu              sync.Mutex
-	ccProvider      *api.ClaudeCodeProvider
+	provider        api.Provider
 	cwd             string
 	task            string
 	domain          string
@@ -66,7 +66,7 @@ type Executor struct {
 
 // ExecOpts configures a new executor.
 type ExecOpts struct {
-	CCProvider   *api.ClaudeCodeProvider
+	Provider     api.Provider
 	CWD          string
 	Task         string
 	Domain       string
@@ -96,7 +96,7 @@ func NewExecutor(opts ExecOpts) *Executor {
 	}
 
 	return &Executor{
-		ccProvider:      opts.CCProvider,
+		provider:        opts.Provider,
 		cwd:             opts.CWD,
 		task:            opts.Task,
 		domain:          opts.Domain,
@@ -192,15 +192,32 @@ func (e *Executor) decisionSummary() string {
 	return strings.Join(lines, "\n")
 }
 
-// simpleCompletion runs a one-shot completion via subprocess.
+// freshProvider creates a new provider for isolated sessions.
+// For ClaudeCodeProvider, creates a fresh subprocess; for stateless HTTP providers, reuses the provider.
+func (e *Executor) freshProvider() api.Provider {
+	if cc, ok := e.provider.(*api.ClaudeCodeProvider); ok {
+		return api.NewClaudeCodeProvider(cc.GetModel())
+	}
+	return e.provider // stateless HTTP providers can be reused
+}
+
+// simpleCompletion runs a one-shot completion, forwarding tool events to the feed.
 func (e *Executor) simpleCompletion(ctx context.Context, systemPrompt, userMsg string) (string, error) {
-	cp := api.NewClaudeCodeProvider(e.ccProvider.GetModel())
+	cp := e.freshProvider()
 	events := make(chan api.Event, 100)
 	go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
 	var text string
 	for ev := range events {
 		if ev.Type == api.EventTextDelta {
 			text += ev.Text
+		}
+		// Forward tool calls to the feed
+		if ev.Type == api.EventToolCallStart && ev.ToolCall != nil {
+			e.onEvent(Event{
+				Type:         ExecToolActivity,
+				ExecutorID:   e.state.ID,
+				ToolActivity: ev.ToolCall.HumanDescription(),
+			})
 		}
 		if ev.Type == api.EventDone || ev.Type == api.EventError {
 			if ev.Error != nil {
@@ -220,8 +237,8 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 
 	events := make(chan api.Event, 100)
 
-	// Use a fresh subprocess provider per domain (isolated sessions)
-	cp := api.NewClaudeCodeProvider(e.ccProvider.GetModel())
+	// Use a fresh provider per domain (isolated sessions)
+	cp := e.freshProvider()
 	go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
 
 	var fullText string
@@ -305,7 +322,7 @@ func (e *Executor) fix(ctx context.Context, issues, decSummary string) string {
 	userMsg := fmt.Sprintf("Verification found issues:\n%s\n\nFix these now.", issues)
 
 	events := make(chan api.Event, 100)
-	cp := api.NewClaudeCodeProvider(e.ccProvider.GetModel())
+	cp := e.freshProvider()
 	go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
 
 	var fullText string
@@ -523,23 +540,24 @@ func (e *Executor) parseImplicitChoices(text string) []decision.Decision {
 	var result []decision.Decision
 	today := time.Now().Format("2006-01-02")
 
-	// Try JSON array
-	// Find JSON array in text (might be wrapped in markdown)
 	start := strings.Index(text, "[")
 	end := strings.LastIndex(text, "]")
 	if start >= 0 && end > start {
 		var raw []struct {
 			Category  string `json:"category"`
-			Decision  string `json:"decision"`  // old format
-			Question  string `json:"question"`   // new format
-			Answer    string `json:"answer"`     // new format
+			Decision  string `json:"decision"`
+			Question  string `json:"question"`
+			Options   []struct {
+				Key   string `json:"key"`
+				Label string `json:"label"`
+			} `json:"options"`
+			Answer    string `json:"answer"`
 			Reasoning string `json:"reasoning"`
 		}
 		if err := json.Unmarshal([]byte(text[start:end+1]), &raw); err == nil {
 			for _, item := range raw {
 				cat := e.normalizeCategoryLocked(item.Category)
 
-				// Support both old ("decision") and new ("question"/"answer") formats
 				q := strings.TrimSpace(item.Question)
 				if q == "" {
 					q = strings.TrimSpace(item.Decision)
@@ -548,19 +566,43 @@ func (e *Executor) parseImplicitChoices(text string) []decision.Decision {
 					continue
 				}
 
-				a := strings.TrimSpace(item.Answer)
-				if a == "" {
-					a = strings.TrimSpace(item.Reasoning)
+				// Build options
+				var opts []decision.DecisionOption
+				for _, o := range item.Options {
+					if o.Label != "" {
+						key := o.Key
+						if key == "" {
+							key = string(rune('A' + len(opts)))
+						}
+						opts = append(opts, decision.DecisionOption{Key: key, Label: o.Label})
+					}
 				}
-				if a == "" || strings.EqualFold(a, q) {
-					a = "(agent decided)"
+
+				// Resolve the answer: "answer" field is the KEY (A, B, C) of the chosen option
+				var answerPtr *string
+				answerKey := strings.TrimSpace(item.Answer)
+				if answerKey != "" && len(opts) > 0 {
+					// Look up the option by key
+					for _, opt := range opts {
+						if strings.EqualFold(opt.Key, answerKey) {
+							answerPtr = &opt.Label
+							break
+						}
+					}
+					// If answer is a label directly (old format), use it
+					if answerPtr == nil {
+						answerPtr = &answerKey
+					}
+				} else if answerKey != "" {
+					answerPtr = &answerKey
 				}
 
 				d := decision.Decision{
 					ID:        decision.NextID(*e.allDecisions, cat),
 					Category:  cat,
 					Question:  q,
-					Answer:    &a,
+					Options:   opts,
+					Answer:    answerPtr,
 					Implicit:  true,
 					Source:    "agent",
 					Reasoning: item.Reasoning,

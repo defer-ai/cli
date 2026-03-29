@@ -70,8 +70,12 @@ If issues exist, respond with: NEEDS FIX followed by a numbered list of issues.`
 
 const ExtractPrompt = `Review this implementation and extract every decision that was made. Include: files created, libraries chosen, patterns used, naming conventions, config values, architecture choices.
 
+For EACH decision, include what was chosen AND what the alternatives were.
+
 Output ONLY a JSON array:
-[{"category": "...", "question": "what was the choice about", "answer": "what was chosen", "reasoning": "why"}]`
+[{"category": "...", "question": "what was the choice about", "options": [{"key": "A", "label": "what was chosen"}, {"key": "B", "label": "alternative 1"}, {"key": "C", "label": "alternative 2"}], "answer": "A", "reasoning": "why this was chosen"}]
+
+The first option (A) should always be what was actually chosen. Other options are what COULD have been chosen instead.`
 
 const ScanPrompt = `You are analyzing an EXISTING codebase to discover all decisions that were already made.
 
@@ -111,5 +115,9 @@ Be thorough. Scan the entire project.`
 
 const PlanPrompt = `You are a software architect. Given the task and existing decisions, identify ALL implementation decisions that still need to be made.
 
+For EACH decision, provide 3-4 concrete options to choose from.
+
 Output ONLY a JSON array:
-[{"category": "...", "question": "what needs to be decided", "answer": "your recommended choice", "reasoning": "why this matters"}]`
+[{"category": "...", "question": "what needs to be decided", "options": [{"key": "A", "label": "option 1"}, {"key": "B", "label": "option 2"}, {"key": "C", "label": "option 3"}], "answer": "A", "reasoning": "why you recommend this option"}]
+
+The "answer" field is the KEY (A, B, C) of your recommended option. Always provide real alternatives, not just your recommendation.`

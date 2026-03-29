@@ -15,7 +15,7 @@ func TestRunDebugRequiresTask(t *testing.T) {
 }
 
 func TestRunDebugNoProviderDoesNotPanic(t *testing.T) {
-	// With ccProvider nil, decomposition will never
+	// With provider nil, decomposition will never
 	// send AgentDecisionsReady. We cannot run the full flow, but we
 	// ensure it doesn't panic on setup. The function will block on
 	// the decomposeDone channel, so we just validate the error case.

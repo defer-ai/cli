@@ -39,12 +39,12 @@ type Model struct {
 	tree       TreeModel
 
 	// Backend
-	manager    *agent.Manager
-	ccProvider *api.ClaudeCodeProvider
-	cwd        string
-	eventChan  chan tea.Msg
-	ctx        context.Context
-	cancel     context.CancelFunc
+	manager  *agent.Manager
+	provider api.Provider
+	cwd      string
+	eventChan chan tea.Msg
+	ctx       context.Context
+	cancel    context.CancelFunc
 
 	// State
 	mascotTick      int
@@ -57,11 +57,11 @@ type Model struct {
 }
 
 // NewModel creates the root model.
-func NewModel(task string, ccProvider *api.ClaudeCodeProvider, cwd string) Model {
+func NewModel(task string, provider api.Provider, cwd string) Model {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := Model{
 		task:             task,
-		ccProvider:       ccProvider,
+		provider:         provider,
 		cwd:              cwd,
 		welcome:          NewWelcomeModel(),
 		tree:             NewTreeModel(),
@@ -71,7 +71,7 @@ func NewModel(task string, ccProvider *api.ClaudeCodeProvider, cwd string) Model
 		domainPriorities: make(map[string]agent.CareLevel),
 	}
 
-	m.manager = agent.NewManager(ccProvider, cwd)
+	m.manager = agent.NewManager(provider, cwd)
 
 	// Check for existing session to resume (only if no new task given)
 	if task == "" {
@@ -153,11 +153,11 @@ func NewModel(task string, ccProvider *api.ClaudeCodeProvider, cwd string) Model
 }
 
 // NewScanModel creates a model that scans an existing project.
-func NewScanModel(ccProvider *api.ClaudeCodeProvider, cwd string) Model {
+func NewScanModel(provider api.Provider, cwd string) Model {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := Model{
 		task:             "(scanning project)",
-		ccProvider:       ccProvider,
+		provider:         provider,
 		cwd:              cwd,
 		welcome:          NewWelcomeModel(),
 		tree:             NewTreeModel(),
@@ -167,14 +167,14 @@ func NewScanModel(ccProvider *api.ClaudeCodeProvider, cwd string) Model {
 		domainPriorities: make(map[string]agent.CareLevel),
 		view:             ViewDecomposing,
 	}
-	m.manager = agent.NewManager(ccProvider, cwd)
+	m.manager = agent.NewManager(provider, cwd)
 
 	// Start scan in background
 	ch := m.eventChan
 	go func() {
 		events := make(chan api.Event, 100)
 		scanUserPrompt := fmt.Sprintf("Scan the project at %s. Start by using Glob to find all files, then Read the key config files (go.mod, package.json, tsconfig.json, Dockerfile, etc.), then Read source files to understand the architecture. Output ALL discovered decisions.", cwd)
-		go ccProvider.RunCompletion(ctx, agent.ScanPrompt, scanUserPrompt, events)
+		go provider.RunCompletion(ctx, agent.ScanPrompt, scanUserPrompt, events)
 
 		var fullText string
 		for ev := range events {
@@ -306,7 +306,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case TaskSubmittedMsg:
 		m.task = msg.Task
 		m.view = ViewDecomposing
-		m.manager = agent.NewManager(m.ccProvider, m.cwd)
+		m.manager = agent.NewManager(m.provider, m.cwd)
 		ch := m.eventChan
 		m.manager.StartDecomposition(m.ctx, m.task, func(ev agent.Event) {
 			ch <- BridgeAgentEvent(ev)
@@ -429,32 +429,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ExecutorStateChangedMsg:
 		if m.manager != nil {
+			// Only update the status line, NOT the feed
+			// Feed is populated exclusively by ToolActivityMsg (real tool calls)
 			var lines []string
-			var feedLines []string
 			for _, exec := range m.manager.Executors() {
 				st := exec.State()
 				if st.Status == agent.DomainExecuting || st.Status == agent.DomainPlanning || st.Status == agent.DomainVerifying {
 					status := extractShortStatus(st.Output, st.Status.String())
 					lines = append(lines, "["+st.Domain+"] "+status)
-					// Feed: last few lines of raw output
-					if st.Output != "" {
-						outLines := strings.Split(st.Output, "\n")
-						for _, ol := range outLines[max(0, len(outLines)-3):] {
-							if strings.TrimSpace(ol) != "" {
-								feedLines = append(feedLines, "["+st.Domain+"] "+strings.TrimSpace(ol))
-							}
-						}
-					}
 				}
 			}
 			if len(lines) > 0 {
 				m.reasoningLines = lines
-			}
-			if len(feedLines) > 0 {
-				m.tree.feedLines = append(m.tree.feedLines, feedLines...)
-				if len(m.tree.feedLines) > 200 {
-					m.tree.feedLines = m.tree.feedLines[len(m.tree.feedLines)-200:]
-				}
 			}
 			m.tree.overallStatus = m.computeOverallStatus()
 		}
@@ -586,10 +572,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case WhyDecisionMsg:
 		// Launch async completion via subprocess
 		ch := m.eventChan
-		if m.ccProvider != nil {
+		if m.provider != nil {
 			go func() {
 				events := make(chan api.Event, 100)
-				go m.ccProvider.RunCompletion(m.ctx,
+				go m.provider.RunCompletion(m.ctx,
 					"Explain tradeoffs concisely.",
 					"Explain tradeoffs of choosing \""+msg.Label+"\" for decision "+msg.ID,
 					events)
@@ -613,10 +599,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AskDecisionMsg:
 		ch := m.eventChan
-		if m.ccProvider != nil {
+		if m.provider != nil {
 			go func() {
 				events := make(chan api.Event, 100)
-				go m.ccProvider.RunCompletion(m.ctx,
+				go m.provider.RunCompletion(m.ctx,
 					"Answer concisely.",
 					"Question about decision "+msg.ID+": "+msg.Question,
 					events)
@@ -668,10 +654,10 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 			}
 		}
 
-		if m.ccProvider != nil {
+		if m.provider != nil {
 			go func() {
 				events := make(chan api.Event, 100)
-				go m.ccProvider.RunCompletion(m.ctx,
+				go m.provider.RunCompletion(m.ctx,
 					"You output JSON arrays of options. Nothing else.",
 					prompt,
 					events)

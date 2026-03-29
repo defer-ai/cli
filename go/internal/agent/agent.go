@@ -34,17 +34,17 @@ type State struct {
 
 // Agent handles task decomposition.
 type Agent struct {
-	mu         sync.Mutex
-	ccProvider *api.ClaudeCodeProvider
-	cwd        string
-	state      State
+	mu       sync.Mutex
+	provider api.Provider
+	cwd      string
+	state    State
 }
 
 // NewAgent creates a decomposition agent.
-func NewAgent(task string, ccProvider *api.ClaudeCodeProvider, cwd string) *Agent {
+func NewAgent(task string, provider api.Provider, cwd string) *Agent {
 	return &Agent{
-		ccProvider: ccProvider,
-		cwd:        cwd,
+		provider: provider,
+		cwd:      cwd,
 		state: State{
 			Task:   task,
 			Status: StatusIdle,
@@ -88,7 +88,7 @@ func (a *Agent) Decompose(ctx context.Context, onEvent func(Event)) {
 func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Event), retries int) {
 	events := make(chan api.Event, 100)
 
-	go a.ccProvider.RunCompletion(ctx, DecomposePrompt, a.state.Task, events)
+	go a.provider.RunCompletion(ctx, DecomposePrompt, a.state.Task, events)
 
 	var fullText string
 	for ev := range events {
@@ -112,7 +112,7 @@ func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Eve
 			decisions := parseDecisions(fullText, a.state.Decisions)
 
 			if len(decisions) == 0 && retries < 2 {
-				a.ccProvider.ResetSession()
+				a.provider.ResetSession()
 				prompt := "You did not output a ```defer-decisions JSON block. This is required. Output the decisions now.\n\nOriginal task: " + a.state.Task
 				a.runDecompositionSubprocessRetry(ctx, onEvent, retries+1, prompt)
 				return
@@ -152,7 +152,7 @@ func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Eve
 
 func (a *Agent) runDecompositionSubprocessRetry(ctx context.Context, onEvent func(Event), retries int, prompt string) {
 	events := make(chan api.Event, 100)
-	go a.ccProvider.RunCompletion(ctx, DecomposePrompt, prompt, events)
+	go a.provider.RunCompletion(ctx, DecomposePrompt, prompt, events)
 
 	var fullText string
 	for ev := range events {

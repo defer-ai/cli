@@ -11,25 +11,25 @@ import (
 
 // Manager coordinates decomposition and domain execution.
 type Manager struct {
-	ccProvider *api.ClaudeCodeProvider
-	cwd        string
-	agent      *Agent
-	executors  []*Executor
-	allDecs    []decision.Decision
-	store      *decision.DecisionStore
+	provider  api.Provider
+	cwd       string
+	agent     *Agent
+	executors []*Executor
+	allDecs   []decision.Decision
+	store     *decision.DecisionStore
 }
 
 // NewManager creates a manager.
-func NewManager(ccProvider *api.ClaudeCodeProvider, cwd string) *Manager {
+func NewManager(provider api.Provider, cwd string) *Manager {
 	return &Manager{
-		ccProvider: ccProvider,
-		cwd:        cwd,
+		provider: provider,
+		cwd:      cwd,
 	}
 }
 
 // StartDecomposition begins task decomposition.
 func (m *Manager) StartDecomposition(ctx context.Context, task string, onEvent func(Event)) {
-	m.agent = NewAgent(task, m.ccProvider, m.cwd)
+	m.agent = NewAgent(task, m.provider, m.cwd)
 	m.agent.Decompose(ctx, onEvent)
 }
 
@@ -72,7 +72,7 @@ func (m *Manager) LaunchExecutors(ctx context.Context, task string, decisions []
 
 	// Single executor implements everything with full context
 	unified := NewExecutor(ExecOpts{
-		CCProvider:   m.ccProvider,
+		Provider:     m.provider,
 		CWD:          m.cwd,
 		Task:         task,
 		Domain:       "Implementation",
