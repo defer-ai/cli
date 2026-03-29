@@ -54,7 +54,7 @@ func TestAutoDecidePriorities(t *testing.T) {
 		{"STACK-001", true, "skip domain auto-decides"},
 		{"STACK-002", true, "skip domain auto-decides (second)"},
 		{"UI-001", false, "paranoid domain stays pending"},
-		{"DATA-001", true, "medium domain auto-decides"},
+		{"DATA-001", false, "medium domain keeps first decision per category pending"},
 	}
 
 	for _, tt := range tests {

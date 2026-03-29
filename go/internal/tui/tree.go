@@ -528,22 +528,34 @@ func (m TreeModel) viewTree() string {
 			answer = DimStyle.Render("(pending)")
 		}
 
+		// Impact indicator: ▰▰▰ for high impact decisions
+		impactStr := ""
+		if d.Impact >= 7 {
+			impactStr = RedStyle.Render("▰▰▰") + " "
+		} else if d.Impact >= 4 {
+			impactStr = YellowStyle.Render("▰▰") + " "
+		} else if d.Impact >= 1 {
+			impactStr = DimStyle.Render("▰") + " "
+		}
+
 		idStr := pad(d.ID, idW)
 		qStr := trunc(d.Question, qW)
 
 		var row string
 		if isCur {
-			row = fmt.Sprintf("  %s%s %s %s  %s",
+			row = fmt.Sprintf("  %s%s %s%s %s  %s",
 				cursor,
 				iconStyle.Render(icon),
+				impactStr,
 				BoldWhite.Render(idStr),
 				BoldWhite.Render(qStr),
 				DimStyle.Render(answer),
 			)
 		} else {
-			row = fmt.Sprintf("  %s%s %s %s  %s",
+			row = fmt.Sprintf("  %s%s %s%s %s  %s",
 				cursor,
 				iconStyle.Render(icon),
+				impactStr,
 				idStr,
 				qStr,
 				DimStyle.Render(answer),
@@ -660,14 +672,27 @@ func (m TreeModel) viewDetail() string {
 	var lines []string
 	lines = append(lines, "")
 
-	// Header: ID + category + tags
+	// Header: ID + category + tags + impact
 	header := "  " + DetailTitleStyle.Render(sel.ID) + "  " + DimStyle.Render(sel.Category)
+	if sel.Impact >= 7 {
+		header += "  " + RedStyle.Render(fmt.Sprintf("impact %d/10", sel.Impact))
+	} else if sel.Impact >= 4 {
+		header += "  " + YellowStyle.Render(fmt.Sprintf("impact %d/10", sel.Impact))
+	} else if sel.Impact >= 1 {
+		header += "  " + DimStyle.Render(fmt.Sprintf("impact %d/10", sel.Impact))
+	}
 	if sel.Delegated {
 		header += "  " + MagentaStyle.Render("auto-decided")
 	} else if sel.Implicit {
 		header += "  " + DimStyle.Render("implicit")
 	}
 	lines = append(lines, header)
+
+	// Dependencies
+	if len(sel.DependsOn) > 0 {
+		deps := "  " + DimStyle.Render("depends on: "+strings.Join(sel.DependsOn, ", "))
+		lines = append(lines, deps)
+	}
 	lines = append(lines, "")
 
 	// Question + context

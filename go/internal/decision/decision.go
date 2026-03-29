@@ -17,7 +17,9 @@ type Decision struct {
 	Delegated bool             `json:"delegated"`
 	Implicit  bool             `json:"implicit"`
 	Reasoning string           `json:"reasoning,omitempty"`
-	Source    string           `json:"source,omitempty"` // "user", "auto", "agent"
+	Source    string           `json:"source,omitempty"` // "user", "auto", "agent", "discovered"
+	Impact    int              `json:"impact,omitempty"`    // 0-10, how many other decisions this affects
+	DependsOn []string         `json:"dependsOn,omitempty"` // IDs of decisions this depends on
 	Date      string           `json:"date"`
 }
 

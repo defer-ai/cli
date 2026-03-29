@@ -262,7 +262,7 @@ func TestAutoDecideSkipsParanoid(t *testing.T) {
 	}{
 		{"SKIP-001", true, "skip domain should be auto-decided"},
 		{"LOW-001", true, "low domain should be auto-decided"},
-		{"MED-001", true, "medium domain should be auto-decided"},
+		{"MED-001", false, "medium domain keeps first decision pending"},
 		{"HIGH-001", false, "high domain should stay pending"},
 		{"PARA-001", false, "paranoid domain should stay pending"},
 	}

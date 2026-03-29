@@ -42,6 +42,10 @@ Rules for the JSON:
 - "question": clear, specific question
 - "options": 2-6 options, each with "key" (uppercase letter) and "label". Last must be "Choose for me"
 - "context": one sentence explaining why this matters
+- "impact": 0-10, how many other decisions this affects (10 = foundational, changes everything; 0 = isolated, affects nothing else)
+- "dependsOn": array of question strings this decision depends on (empty if independent)
+
+Order decisions by impact (highest first). Foundational decisions like "Backend framework?" (impact 10) should come before isolated decisions like "Date format?" (impact 1).
 
 You have access to Read, Glob, and Grep tools to explore the project before identifying decisions. Use them to understand the existing codebase.`
 

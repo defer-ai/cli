@@ -180,13 +180,10 @@ func (e *Executor) Execute(ctx context.Context) {
 func (e *Executor) decisionSummary() string {
 	var lines []string
 	for _, d := range e.decisions {
-		answer := "(pending)"
-		if d.Answer != nil {
-			answer = *d.Answer
-			if d.Delegated {
-				answer = "DELEGATED: " + answer
-			}
+		if d.Answer == nil {
+			continue // skip pending decisions -- don't implement things the user hasn't decided
 		}
+		answer := *d.Answer
 		lines = append(lines, fmt.Sprintf("%s: %s -> %s", d.ID, d.Question, answer))
 	}
 	return strings.Join(lines, "\n")
@@ -282,10 +279,10 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 
 func (e *Executor) plan(ctx context.Context, decSummary string) {
 	catList := strings.Join(e.knownCategories, ", ")
-	msg := fmt.Sprintf("Task: %s\nExisting decisions:\n%s\n\nKNOWN CATEGORIES (you MUST use only these): %s\n\nWhat implementation decisions will you need to make? Use ONLY the categories listed above.",
+	msg := fmt.Sprintf("Task: %s\n\nALREADY DECIDED (do NOT repeat these):\n%s\n\nKNOWN CATEGORIES (you MUST use only these): %s\n\nWhat NEW implementation decisions still need to be made? Do NOT rephrase or reference existing decisions. Only list decisions that are NOT in the 'already decided' list above.",
 		e.task, decSummary, catList)
 
-	planPrompt := PlanPrompt + fmt.Sprintf("\n\nCRITICAL: The category field MUST be one of: %s. Do NOT invent new categories.", catList)
+	planPrompt := PlanPrompt + fmt.Sprintf("\n\nCRITICAL: The category field MUST be one of: %s. Do NOT invent new categories. Do NOT repeat or rephrase any decision from the ALREADY DECIDED list.", catList)
 	resp, err := e.simpleCompletion(ctx, planPrompt, msg)
 	if err != nil {
 		return // best effort
@@ -428,10 +425,18 @@ func (e *Executor) storeDecision(d decision.Decision) {
 	// Normalize category
 	d.Category = e.normalizeCategoryLocked(d.Category)
 
-	// Dedup by question
+	// Dedup by question (normalize: strip parenthetical references, lowercase, trim)
+	newQ := normalizeQuestion(d.Question)
 	for _, existing := range *e.allDecisions {
-		if strings.EqualFold(strings.TrimSpace(existing.Question), strings.TrimSpace(d.Question)) {
+		existQ := normalizeQuestion(existing.Question)
+		if existQ == newQ {
 			return
+		}
+		// Also check if one contains the other (catches rephrased duplicates)
+		if len(existQ) > 20 && len(newQ) > 20 {
+			if strings.Contains(newQ, existQ[:20]) || strings.Contains(existQ, newQ[:20]) {
+				return
+			}
 		}
 	}
 
@@ -515,6 +520,30 @@ func (e *Executor) normalizeCategoryLocked(cat string) string {
 		return e.knownCategories[0]
 	}
 	return "Misc"
+}
+
+// normalizeQuestion strips parenthetical references and normalizes for dedup comparison.
+func normalizeQuestion(q string) string {
+	// Remove parenthetical references like "(LAYOUT-037 — explicitly pending)"
+	result := q
+	for {
+		start := strings.LastIndex(result, "(")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(result[start:], ")")
+		if end < 0 {
+			break
+		}
+		inner := result[start+1 : start+end]
+		// Only strip if it looks like a reference (contains an ID pattern or "pending"/"explicit")
+		if strings.Contains(inner, "-") || strings.Contains(strings.ToLower(inner), "pending") || strings.Contains(strings.ToLower(inner), "explicit") {
+			result = result[:start] + result[start+end+1:]
+		} else {
+			break
+		}
+	}
+	return strings.ToLower(strings.TrimSpace(result))
 }
 
 func (e *Executor) storeDecisions(decs []decision.Decision) {

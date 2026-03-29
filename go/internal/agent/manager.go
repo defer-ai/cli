@@ -108,14 +108,45 @@ func (m *Manager) AutoDecide(priorities map[string]CareLevel) {
 		priMap[strings.ToLower(strings.TrimSpace(k))] = v
 	}
 
+	// Count decisions per category to know which is "first" (most impactful)
+	catFirstSeen := make(map[string]bool) // track if we've seen the first decision in each category
+
 	var autoIDs []string
 	for _, d := range m.agent.Decisions() {
 		if d.Answer != nil {
 			continue
 		}
-		level := priMap[strings.ToLower(strings.TrimSpace(d.Category))]
-		if level != CareLevelParanoid && level != CareLevelHigh {
+		catKey := strings.ToLower(strings.TrimSpace(d.Category))
+		level := priMap[catKey]
+
+		switch level {
+		case CareLevelSkip:
+			// Auto-decide everything
 			autoIDs = append(autoIDs, d.ID)
+		case CareLevelLow:
+			// Auto-decide everything (user only sees decisions they actively inspect)
+			autoIDs = append(autoIDs, d.ID)
+		case CareLevelMedium:
+			// Show first decision per category, auto-decide the rest
+			if catFirstSeen[catKey] {
+				autoIDs = append(autoIDs, d.ID)
+			} else {
+				catFirstSeen[catKey] = true
+				// Leave pending -- this is the key decision for this domain
+			}
+		case CareLevelHigh:
+			// Show all decisions (none auto-decided)
+			// Don't add to autoIDs
+		case CareLevelParanoid:
+			// Show all decisions + sub-decisions (none auto-decided)
+			// Don't add to autoIDs
+		default:
+			// Default to medium behavior
+			if catFirstSeen[catKey] {
+				autoIDs = append(autoIDs, d.ID)
+			} else {
+				catFirstSeen[catKey] = true
+			}
 		}
 	}
 	m.agent.AutoDecide(autoIDs)

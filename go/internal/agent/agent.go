@@ -270,13 +270,15 @@ func parseDecisions(text string, existing []decision.Decision) []decision.Decisi
 	}
 
 	var raw []struct {
-		Category string `json:"category"`
-		Question string `json:"question"`
-		Options  []struct {
+		Category  string `json:"category"`
+		Question  string `json:"question"`
+		Options   []struct {
 			Key   string `json:"key"`
 			Label string `json:"label"`
 		} `json:"options"`
-		Context string `json:"context"`
+		Context   string   `json:"context"`
+		Impact    int      `json:"impact"`
+		DependsOn []string `json:"dependsOn"`
 	}
 
 	if err := json.Unmarshal([]byte(match[1]), &raw); err != nil {
@@ -297,13 +299,15 @@ func parseDecisions(text string, existing []decision.Decision) []decision.Decisi
 			opts[i] = decision.DecisionOption{Key: o.Key, Label: o.Label}
 		}
 		d := decision.Decision{
-			ID:       decision.NextID(all, cat),
-			Category: cat,
-			Question: item.Question,
-			Options:  opts,
-			Context:  item.Context,
-			Source:   "user",
-			Date:     today,
+			ID:        decision.NextID(all, cat),
+			Category:  cat,
+			Question:  item.Question,
+			Options:   opts,
+			Context:   item.Context,
+			Impact:    item.Impact,
+			DependsOn: item.DependsOn,
+			Source:    "user",
+			Date:      today,
 		}
 		all = append(all, d)
 		result = append(result, d)
