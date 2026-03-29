@@ -26,10 +26,10 @@ var careLevels = []struct {
 
 // PrioritiesModel lets the user set care levels per domain.
 type PrioritiesModel struct {
-	categories []string
-	priorities map[string]agent.CareLevel
-	counts     map[string]int
-	cursor     int
+	categories    []string
+	priorities    map[string]agent.CareLevel
+	counts        map[string]int
+	cursor        int
 	width, height int
 }
 
@@ -101,11 +101,24 @@ func (m PrioritiesModel) View() string {
 	if w < 40 {
 		w = 80
 	}
+	h := m.height
+	if h < 10 {
+		h = 24
+	}
 
-	var b strings.Builder
-	b.WriteString("\n  " + BoldAccent.Render("How much do you care about each area?") + "\n")
-	b.WriteString("  " + DimStyle.Render("←→ adjust, ↑↓ navigate, enter confirm") + "\n\n")
+	innerWidth := w - 4
+	if innerWidth < 20 {
+		innerWidth = 20
+	}
 
+	var lines []string
+
+	// Instruction
+	lines = append(lines, "")
+	lines = append(lines, "  "+BoldWhite.Render("How much do you care about each area?"))
+	lines = append(lines, "")
+
+	// Category rows
 	for i, cat := range m.categories {
 		isCur := i == m.cursor
 		level := m.priorities[cat]
@@ -134,16 +147,25 @@ func (m PrioritiesModel) View() string {
 		}
 
 		count := m.counts[cat]
-		b.WriteString(fmt.Sprintf("  %s%s  %s %s  %s\n",
+		row := fmt.Sprintf("  %s%s  %s %s  %s",
 			cursor,
 			catStyle.Render(pad(cat, 18)),
 			lipgloss.NewStyle().Foreground(info.Color).Render(info.Bar),
 			lipgloss.NewStyle().Foreground(info.Color).Render(pad(info.Label, 10)),
 			DimStyle.Render(fmt.Sprintf("%d decisions", count)),
-		))
+		)
+		lines = append(lines, row)
 	}
 
-	// Selected category detail
+	// Fill vertical space
+	usedLines := len(lines) + 5 // divider + detail + divider + footer + borders
+	remaining := h - usedLines - 4
+	for i := 0; i < remaining; i++ {
+		lines = append(lines, "")
+	}
+
+	// Middle divider + selected category detail
+	lines = append(lines, buildMiddleBorder(innerWidth))
 	if m.cursor < len(m.categories) {
 		cat := m.categories[m.cursor]
 		level := m.priorities[cat]
@@ -154,15 +176,16 @@ func (m PrioritiesModel) View() string {
 				break
 			}
 		}
-		b.WriteString("\n  " + Separator(w-4) + "\n")
-		b.WriteString("  " + BoldAccent.Render(cat) + "  " + DimStyle.Render(desc) + "\n")
+		lines = append(lines, "  "+BoldAccent.Render(cat)+": "+DimStyle.Render(desc))
 	}
 
-	// Footer
-	b.WriteString("\n  " + Separator(w-4) + "\n")
-	b.WriteString("  " + AccentStyle.Render("←→") + DimStyle.Render(" adjust  "))
-	b.WriteString(AccentStyle.Render("↑↓") + DimStyle.Render(" navigate  "))
-	b.WriteString(AccentStyle.Render("enter") + DimStyle.Render(" confirm"))
+	// Middle divider + footer
+	lines = append(lines, buildMiddleBorder(innerWidth))
+	footer := "  " + AccentStyle.Render("←→") + DimStyle.Render(" adjust  ") +
+		AccentStyle.Render("↑↓") + DimStyle.Render(" navigate  ") +
+		AccentStyle.Render("enter") + DimStyle.Render(" confirm")
+	lines = append(lines, footer)
 
-	return b.String()
+	content := strings.Join(lines, "\n")
+	return buildBorderedBox(content, innerWidth, "Domain Priorities", "")
 }

@@ -720,9 +720,7 @@ func (m Model) View() string {
 		return m.welcome.View()
 
 	case ViewDecomposing:
-		// Show mascot + "Analyzing..."
-		mascot := RenderMascot(MoodThinking, m.mascotTick)
-		return mascot + "\n\n  " + AccentStyle.Render("Analyzing task...") + "\n"
+		return m.viewDecomposing()
 
 	case ViewPriorities:
 		return m.priorities.View()
@@ -734,6 +732,57 @@ func (m Model) View() string {
 	}
 
 	return ""
+}
+
+func (m Model) viewDecomposing() string {
+	w := m.width
+	if w < 40 {
+		w = 80
+	}
+	h := m.height
+	if h < 10 {
+		h = 24
+	}
+
+	innerWidth := w - 4
+	if innerWidth < 20 {
+		innerWidth = 20
+	}
+
+	mascot := RenderMascot(MoodThinking, m.mascotTick)
+
+	var lines []string
+	lines = append(lines, "")
+
+	mascotLines := strings.Split(mascot, "\n")
+	for _, ml := range mascotLines {
+		lines = append(lines, "     "+ml)
+	}
+	lines = append(lines, "")
+	lines = append(lines, "     "+AccentStyle.Render("Analyzing task..."))
+	lines = append(lines, "")
+
+	// Show reasoning lines if available
+	if len(m.reasoningLines) > 0 {
+		maxShow := 4
+		start := len(m.reasoningLines) - maxShow
+		if start < 0 {
+			start = 0
+		}
+		for _, rl := range m.reasoningLines[start:] {
+			lines = append(lines, "     "+DimStyle.Render(trunc(rl, innerWidth-8)))
+		}
+	}
+
+	// Fill remaining space
+	usedLines := len(lines) + 2
+	remaining := h - usedLines - 4
+	for i := 0; i < remaining; i++ {
+		lines = append(lines, "")
+	}
+
+	content := strings.Join(lines, "\n")
+	return buildBorderedBox(content, innerWidth, "defer", "decomposing")
 }
 
 func (m Model) computeOverallStatus() string {

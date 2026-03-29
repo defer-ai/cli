@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/defer-ai/cli/internal/agent"
 	"github.com/defer-ai/cli/internal/decision"
 )
@@ -285,13 +286,28 @@ func (m TreeModel) View() string {
 // ========== FEED VIEW ==========
 func (m TreeModel) viewFeed() string {
 	w := m.width
+	if w < 40 {
+		w = 80
+	}
 	h := m.height
+	if h < 10 {
+		h = 24
+	}
 
-	var b strings.Builder
-	b.WriteString("\n  " + BoldAccent.Render("Live Agent Feed") + "\n")
-	b.WriteString("  " + Separator(w-4) + "\n")
+	innerWidth := w - 4
+	if innerWidth < 20 {
+		innerWidth = 20
+	}
 
-	feedH := h - 5
+	var lines []string
+	lines = append(lines, "")
+
+	// Feed content area
+	feedH := h - 8 // top border + empty line + divider + footer + bottom border + buffer
+	if feedH < 3 {
+		feedH = 3
+	}
+
 	start := 0
 	if len(m.feedLines) > feedH {
 		start = len(m.feedLines) - feedH
@@ -299,27 +315,36 @@ func (m TreeModel) viewFeed() string {
 	visible := m.feedLines[start:]
 
 	for _, line := range visible {
-		b.WriteString("  " + DimStyle.Render(trunc(line, w-4)) + "\n")
+		lines = append(lines, "  "+DimStyle.Render(trunc(line, innerWidth-4)))
 	}
 	for i := len(visible); i < feedH; i++ {
-		b.WriteString("\n")
+		lines = append(lines, "")
 	}
 
-	b.WriteString("  " + Separator(w-4) + "\n")
-	b.WriteString("  " + AccentStyle.Render("tab") + DimStyle.Render(" back to tree"))
+	// Divider + footer
+	lines = append(lines, buildMiddleBorder(innerWidth))
+	footer := "  " + AccentStyle.Render("tab") + DimStyle.Render(" back to tree")
+	lines = append(lines, footer)
 
-	return b.String()
+	content := strings.Join(lines, "\n")
+	return buildBorderedBox(content, innerWidth, "Live Agent Feed", "")
 }
 
 // ========== TREE VIEW ==========
 func (m TreeModel) viewTree() string {
 	w := m.width
+	if w < 40 {
+		w = 80
+	}
 	h := m.height
+	if h < 10 {
+		h = 24
+	}
 
-	var b strings.Builder
-
-	mascot := RenderMascot(StatusToMood(m.overallStatus), m.mascotTick)
-	mascotLines := strings.Split(mascot, "\n")
+	innerWidth := w - 4
+	if innerWidth < 20 {
+		innerWidth = 20
+	}
 
 	visibleDecs := m.decisionItems()
 	total := len(visibleDecs)
@@ -333,46 +358,27 @@ func (m TreeModel) viewTree() string {
 		}
 	}
 
-	stats := BoldAccent.Render("defer") + "\n"
-	stats += DimStyle.Render(fmt.Sprintf("%d/%d decisions", answered, total))
+	// Build header status for right side of title bar
+	var statusParts []string
+	statusParts = append(statusParts, fmt.Sprintf("%d/%d decisions", answered, total))
 	if pending > 0 {
-		stats += YellowStyle.Render(fmt.Sprintf("  ○ %d pending", pending))
+		statusParts = append(statusParts, fmt.Sprintf("○ %d pending", pending))
 	}
-	statsLines := strings.Split(stats, "\n")
-
-	mascotW := 36
-	maxLines := len(mascotLines)
-	if len(statsLines) > maxLines {
-		maxLines = len(statsLines)
+	if m.overallStatus != "" {
+		statusParts = append(statusParts, m.overallStatus)
 	}
-	for i := 0; i < maxLines; i++ {
-		ml := ""
-		if i < len(mascotLines) {
-			ml = mascotLines[i]
-		}
-		sl := ""
-		if i < len(statsLines) {
-			sl = statsLines[i]
-		}
-		b.WriteString(fmt.Sprintf("  %-*s  %s\n", mascotW, ml, sl))
-	}
+	rightStatus := strings.Join(statusParts, " ── ")
 
-	b.WriteString("  " + Separator(w-4) + "\n")
+	var lines []string
+	lines = append(lines, "")
 
-	headerLines := maxLines + 1
-	footerLines := 2
-	treeH := h - headerLines - footerLines
-	if treeH < 3 {
-		treeH = 3
-	}
-
+	// Build flat item list for the tree
 	type flatItem struct {
 		isCat  bool
 		cat    string
 		dec    *decision.Decision
 		decIdx int
 	}
-	// Sort decisions by category (preserving original category order)
 	sortDecisionsByCategory(visibleDecs)
 
 	var flat []flatItem
@@ -393,6 +399,7 @@ func (m TreeModel) viewTree() string {
 		decIdx++
 	}
 
+	// Find cursor position in flat list
 	cursorFlat := 0
 	di := 0
 	for i, item := range flat {
@@ -405,6 +412,28 @@ func (m TreeModel) viewTree() string {
 		}
 	}
 
+	// Activity bar: last 2-3 feed lines
+	activityLines := 2
+	activityContent := make([]string, 0, activityLines)
+	if len(m.feedLines) > 0 {
+		start := len(m.feedLines) - activityLines
+		if start < 0 {
+			start = 0
+		}
+		for _, fl := range m.feedLines[start:] {
+			activityContent = append(activityContent, DimStyle.Render(trunc(fl, innerWidth-4)))
+		}
+	}
+
+	// Calculate available tree height:
+	// total = h - borders(2) - empty(1) - activity divider(1) - activity(activityLines) - footer divider(1) - footer(1) - border padding
+	fixedLines := 2 + 1 + 1 + len(activityContent) + 1 + 1 + 2
+	treeH := h - fixedLines
+	if treeH < 3 {
+		treeH = 3
+	}
+
+	// Scrolling
 	scrollStart := cursorFlat - treeH/2
 	if scrollStart < 0 {
 		scrollStart = 0
@@ -418,7 +447,7 @@ func (m TreeModel) viewTree() string {
 
 	idW := 12
 	ansW := 30
-	qW := w - idW - ansW - 12
+	qW := innerWidth - idW - ansW - 12
 	if qW < 10 {
 		qW = 10
 	}
@@ -428,9 +457,9 @@ func (m TreeModel) viewTree() string {
 		item := flat[i]
 		if item.isCat {
 			if item.cat == "" {
-				b.WriteString("\n")
+				lines = append(lines, "")
 			} else {
-				b.WriteString("  " + BoldAccent.Render(item.cat) + "\n")
+				lines = append(lines, "  "+CategoryStyle.Render(item.cat))
 			}
 			rendered++
 			continue
@@ -445,7 +474,6 @@ func (m TreeModel) viewTree() string {
 				icon = "✓"
 				iconStyle = GreenStyle
 			} else {
-				// auto-decided, delegated, implicit, agent -- all gray
 				icon = "▪"
 				iconStyle = DimStyle
 			}
@@ -459,43 +487,61 @@ func (m TreeModel) viewTree() string {
 		answer := ""
 		if d.Answer != nil {
 			answer = "→ " + trunc(*d.Answer, ansW)
+		} else {
+			answer = DimStyle.Render("(pending)")
 		}
 
 		idStr := pad(d.ID, idW)
 		qStr := trunc(d.Question, qW)
 
+		var row string
 		if isCur {
-			b.WriteString(fmt.Sprintf("  %s%s %s %s  %s\n",
+			row = fmt.Sprintf("  %s%s %s %s  %s",
 				cursor,
 				iconStyle.Render(icon),
 				BoldWhite.Render(idStr),
 				BoldWhite.Render(qStr),
 				DimStyle.Render(answer),
-			))
+			)
 		} else {
-			b.WriteString(fmt.Sprintf("  %s%s %s %s  %s\n",
+			row = fmt.Sprintf("  %s%s %s %s  %s",
 				cursor,
 				iconStyle.Render(icon),
 				idStr,
 				qStr,
 				DimStyle.Render(answer),
-			))
+			)
 		}
+		lines = append(lines, row)
 		rendered++
 	}
 
+	// Fill remaining tree space
 	for rendered < treeH {
-		b.WriteString("\n")
+		lines = append(lines, "")
 		rendered++
 	}
 
-	b.WriteString("  " + Separator(w-4) + "\n")
-	b.WriteString("  " + AccentStyle.Render("↑↓") + DimStyle.Render(" navigate  "))
-	b.WriteString(AccentStyle.Render("enter") + DimStyle.Render(" inspect  "))
-	b.WriteString(AccentStyle.Render("tab") + DimStyle.Render(" feed  "))
-	b.WriteString(DimStyle.Render("ctrl+c×2 quit"))
+	// Activity bar divider + content
+	lines = append(lines, buildMiddleBorder(innerWidth))
+	if len(activityContent) > 0 {
+		for _, al := range activityContent {
+			lines = append(lines, "  "+al)
+		}
+	} else {
+		lines = append(lines, "  "+DimStyle.Render("Waiting for activity..."))
+	}
 
-	return b.String()
+	// Footer divider + keybindings
+	lines = append(lines, buildMiddleBorder(innerWidth))
+	footer := "  " + AccentStyle.Render("↑↓") + DimStyle.Render(" navigate  ") +
+		AccentStyle.Render("enter") + DimStyle.Render(" inspect  ") +
+		AccentStyle.Render("tab") + DimStyle.Render(" feed  ") +
+		DimStyle.Render("ctrl+c×2 quit")
+	lines = append(lines, footer)
+
+	content := strings.Join(lines, "\n")
+	return buildBorderedBox(content, innerWidth, "defer", rightStatus)
 }
 
 // ========== DETAIL VIEW ==========
@@ -506,22 +552,40 @@ func (m TreeModel) viewDetail() string {
 	}
 
 	w := m.width
-	var b strings.Builder
+	if w < 40 {
+		w = 80
+	}
+	h := m.height
+	if h < 10 {
+		h = 24
+	}
 
-	b.WriteString("  " + BoldAccent.Render(sel.ID) + "  " + DimStyle.Render(sel.Category))
+	innerWidth := w - 4
+	if innerWidth < 20 {
+		innerWidth = 20
+	}
+
+	var lines []string
+	lines = append(lines, "")
+
+	// Header: ID + category + tags
+	header := "  " + DetailTitleStyle.Render(sel.ID) + "  " + DimStyle.Render(sel.Category)
 	if sel.Delegated {
-		b.WriteString(MagentaStyle.Render("  auto-decided"))
+		header += "  " + MagentaStyle.Render("auto-decided")
 	} else if sel.Implicit {
-		b.WriteString(DimStyle.Render("  implicit"))
+		header += "  " + DimStyle.Render("implicit")
 	}
-	b.WriteString("\n\n")
+	lines = append(lines, header)
+	lines = append(lines, "")
 
-	b.WriteString("  " + BoldWhite.Render(sel.Question) + "\n")
+	// Question + context
+	lines = append(lines, "  "+DetailQuestionStyle.Render(sel.Question))
 	if sel.Context != "" {
-		b.WriteString("  " + DimStyle.Render(sel.Context) + "\n")
+		lines = append(lines, "  "+DetailContextStyle.Render(sel.Context))
 	}
-	b.WriteString("\n")
+	lines = append(lines, "")
 
+	// Current answer
 	if sel.Answer != nil {
 		style := GreenStyle
 		prefix := "✓ "
@@ -532,15 +596,15 @@ func (m TreeModel) viewDetail() string {
 			style = DimStyle
 			prefix = "▪ "
 		}
-		b.WriteString("  " + style.Render(prefix+*sel.Answer) + "\n")
+		lines = append(lines, "  "+style.Render(prefix+*sel.Answer))
 	} else {
-		b.WriteString("  " + YellowStyle.Render("○ pending") + "\n")
+		lines = append(lines, "  "+YellowStyle.Render("○ pending"))
 	}
 
 	if sel.Reasoning != "" {
-		b.WriteString("  " + DimStyle.Render(sel.Reasoning) + "\n")
+		lines = append(lines, "  "+DimStyle.Render(sel.Reasoning))
 	}
-	b.WriteString("\n")
+	lines = append(lines, "")
 
 	// Options (navigable for ALL decisions, not just pending)
 	if len(sel.Options) > 0 {
@@ -548,7 +612,7 @@ func (m TreeModel) viewDetail() string {
 		if sel.Answer != nil && !sel.IsPending() {
 			label = "Change to:"
 		}
-		b.WriteString("  " + DimStyle.Render(label) + "\n")
+		lines = append(lines, "  "+DimStyle.Render(label))
 		for i, opt := range sel.Options {
 			isSel := i == m.optCursor
 			isChosen := sel.Answer != nil && opt.Label == *sel.Answer
@@ -556,45 +620,64 @@ func (m TreeModel) viewDetail() string {
 			if isSel {
 				cur = "  " + AccentStyle.Render("> ")
 			}
-			style := DimStyle
+			style := lipgloss.NewStyle().Foreground(DimGray)
 			if isChosen {
 				style = GreenStyle
 			} else if isSel {
 				style = BoldWhite
 			}
-			b.WriteString(cur + style.Render(fmt.Sprintf("%s) %s", opt.Key, opt.Label)) + "\n")
+			lines = append(lines, cur+style.Render(fmt.Sprintf("%s) %s", opt.Key, opt.Label)))
 		}
-		b.WriteString("\n")
+		lines = append(lines, "")
 	}
 
+	// Why text / loading indicator
 	if m.whyText != "" && m.whyText != "..." && m.whyText != "Shuffling options..." && m.whyText != "Generating..." {
-		b.WriteString("  " + DimStyle.Render(trunc(m.whyText, 500)) + "\n\n")
+		lines = append(lines, "  "+DimStyle.Render(trunc(m.whyText, 500)))
+		lines = append(lines, "")
 	} else if m.whyText == "..." || m.whyText == "Shuffling options..." || m.whyText == "Generating..." {
-		b.WriteString("  " + AccentStyle.Render(m.whyText) + "\n\n")
+		lines = append(lines, "  "+AccentStyle.Render(m.whyText))
+		lines = append(lines, "")
 	}
 
+	// Text input field
 	if m.mode == tmRevise || m.mode == tmAsk {
 		label := "Override:"
 		if m.mode == tmAsk {
 			label = "Ask:"
 		}
-		b.WriteString("  " + AccentStyle.Render(label) + "\n")
-		b.WriteString("  " + AccentStyle.Render("> ") + m.textBuf + AccentStyle.Render("_") + "\n\n")
+		lines = append(lines, "  "+AccentStyle.Render(label))
+		lines = append(lines, "  "+AccentStyle.Render("> ")+m.textBuf+AccentStyle.Render("_"))
+		lines = append(lines, "")
 	}
 
-	b.WriteString("  " + Separator(w-4) + "\n")
+	// Fill remaining vertical space
+	usedLines := len(lines) + 4 // divider + footer + borders
+	remaining := h - usedLines - 4
+	for i := 0; i < remaining; i++ {
+		lines = append(lines, "")
+	}
+
+	// Footer divider + keybindings
+	lines = append(lines, buildMiddleBorder(innerWidth))
 	if m.mode == tmRevise || m.mode == tmAsk {
-		b.WriteString("  " + AccentStyle.Render("enter") + DimStyle.Render(" submit  "))
-		b.WriteString(AccentStyle.Render("esc") + DimStyle.Render(" cancel"))
+		footer := "  " + AccentStyle.Render("enter") + DimStyle.Render(" submit  ") +
+			AccentStyle.Render("esc") + DimStyle.Render(" cancel")
+		lines = append(lines, footer)
 	} else {
-		b.WriteString("  " + AccentStyle.Render("↑↓") + DimStyle.Render(" pick  "))
-		b.WriteString(AccentStyle.Render("enter") + DimStyle.Render(" confirm  "))
-		b.WriteString(AccentStyle.Render("c") + DimStyle.Render(" custom  "))
-		b.WriteString(AccentStyle.Render("s") + DimStyle.Render(" shuffle  "))
-		b.WriteString(AccentStyle.Render("w") + DimStyle.Render(" why  "))
-		b.WriteString(AccentStyle.Render("a") + DimStyle.Render(" ask  "))
-		b.WriteString(AccentStyle.Render("q") + DimStyle.Render(" back"))
+		footer := "  " + AccentStyle.Render("↑↓") + DimStyle.Render(" pick  ") +
+			AccentStyle.Render("enter") + DimStyle.Render(" confirm  ") +
+			AccentStyle.Render("c") + DimStyle.Render(" custom  ") +
+			AccentStyle.Render("s") + DimStyle.Render(" shuffle  ") +
+			AccentStyle.Render("w") + DimStyle.Render(" why  ") +
+			AccentStyle.Render("a") + DimStyle.Render(" ask  ") +
+			AccentStyle.Render("q") + DimStyle.Render(" back")
+		lines = append(lines, footer)
 	}
 
-	return b.String()
+	// Build title for detail border
+	detailTitle := sel.ID
+
+	content := strings.Join(lines, "\n")
+	return buildBorderedBox(content, innerWidth, detailTitle, sel.Category)
 }

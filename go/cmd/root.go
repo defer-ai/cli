@@ -34,8 +34,7 @@ Providers (auto-detected from environment):
   Ollama                  --provider ollama (local, no key)
   Any OpenAI-compatible   --provider <url> --api-key <key>
 
-Shell completion:
-  defer completion bash|zsh|fish|powershell`,
+`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := api.ResolveProvider(provider, apiKey, model)
@@ -69,6 +68,7 @@ Shell completion:
 }
 
 func init() {
+	rootCmd.CompletionOptions.DisableDefaultCmd = true // no shell completion command
 	rootCmd.PersistentFlags().StringVar(&model, "model", "sonnet", "Model to use (sonnet, opus, haiku, or provider-specific ID)")
 	rootCmd.PersistentFlags().StringVar(&provider, "provider", "", "AI provider (openai, groq, mistral, together, ollama, or URL)")
 	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "API key (overrides environment variable)")

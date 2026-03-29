@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // WelcomeModel is the initial screen where the user describes their project.
@@ -46,49 +47,79 @@ func (m WelcomeModel) View() string {
 	if w < 40 {
 		w = 80
 	}
+	h := m.height
+	if h < 10 {
+		h = 24
+	}
+
+	innerWidth := w - 4 // 2 for border chars + 2 for padding
+	if innerWidth < 20 {
+		innerWidth = 20
+	}
 
 	mascot := RenderMascot(MoodIdle, m.mascotTick)
-	mascotLines := strings.Split(mascot, "\n")
-
-	info := BoldAccent.Render("defer") + "\n"
-	info += DimStyle.Render("Zero-autonomy AI. Every decision is yours.") + "\n\n"
 
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
 	if home != "" {
 		cwd = strings.Replace(cwd, home, "~", 1)
 	}
-	info += DimStyle.Render("cwd "+cwd) + "\n\n"
-	info += DimStyle.Render("Describe your project to start.")
 
-	infoLines := strings.Split(info, "\n")
+	// Build content lines
+	var lines []string
 
-	var b strings.Builder
-	mascotW := 36
-	maxLines := len(mascotLines)
-	if len(infoLines) > maxLines {
-		maxLines = len(infoLines)
+	// Empty line for spacing
+	lines = append(lines, "")
+
+	// Center the mascot
+	mascotLines := strings.Split(mascot, "\n")
+	for _, ml := range mascotLines {
+		lines = append(lines, "     "+ml)
 	}
-	for i := 0; i < maxLines; i++ {
-		ml := ""
-		if i < len(mascotLines) {
-			ml = mascotLines[i]
-		}
-		il := ""
-		if i < len(infoLines) {
-			il = infoLines[i]
-		}
-		b.WriteString(fmt.Sprintf("  %-*s  %s\n", mascotW, ml, il))
+	lines = append(lines, "")
+
+	// Title and tagline
+	lines = append(lines, "     "+BoldAccent.Render("defer"))
+	lines = append(lines, "     "+DimStyle.Render("Zero-autonomy AI. Every decision is yours."))
+	lines = append(lines, "")
+	lines = append(lines, "     "+DimStyle.Render("cwd "+cwd))
+	lines = append(lines, "")
+
+	// Input box (bordered)
+	inputContent := AccentStyle.Render("> ") + m.input + AccentStyle.Render("_")
+	inputBoxWidth := innerWidth - 6
+	if inputBoxWidth < 10 {
+		inputBoxWidth = 10
+	}
+	inputPad := inputBoxWidth - lipgloss.Width(inputContent)
+	if inputPad < 0 {
+		inputPad = 0
 	}
 
-	// Fill remaining space
-	for i := 0; i < m.height-maxLines-3; i++ {
-		b.WriteString("\n")
+	border := lipgloss.RoundedBorder()
+	bStyle := lipgloss.NewStyle().Foreground(BorderColor)
+	inputTop := "  " + bStyle.Render(border.TopLeft) + bStyle.Render(strings.Repeat(border.Top, inputBoxWidth+2)) + bStyle.Render(border.TopRight)
+	inputMid := "  " + bStyle.Render(border.Left) + " " + inputContent + strings.Repeat(" ", inputPad) + " " + bStyle.Render(border.Right)
+	inputBot := "  " + bStyle.Render(border.BottomLeft) + bStyle.Render(strings.Repeat(border.Bottom, inputBoxWidth+2)) + bStyle.Render(border.BottomRight)
+
+	lines = append(lines, inputTop)
+	lines = append(lines, inputMid)
+	lines = append(lines, inputBot)
+
+	// Fill remaining vertical space
+	usedLines := len(lines) + 2 // +2 for footer + border overhead
+	remaining := h - usedLines - 4
+	for i := 0; i < remaining; i++ {
+		lines = append(lines, "")
 	}
 
-	// Input
-	b.WriteString("  " + Separator(w-4) + "\n")
-	b.WriteString("  " + AccentStyle.Render("> ") + m.input + AccentStyle.Render("_"))
+	// Footer
+	footer := AccentStyle.Render("/help") + "  " + DimStyle.Render("ctrl+c quit")
+	lines = append(lines, footer)
 
-	return b.String()
+	content := strings.Join(lines, "\n")
+	return buildBorderedBox(content, innerWidth, "", "")
 }
+
+// Ensure fmt is used
+var _ = fmt.Sprintf
