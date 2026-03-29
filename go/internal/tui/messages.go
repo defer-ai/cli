@@ -30,6 +30,8 @@ type AskDecisionMsg struct{ ID, Question string }
 type WhyDecisionMsg struct{ ID, Label string }
 type SuggestDecisionMsg struct{ ID string }
 type WhyResponseMsg struct{ Text string }
+type ChatMessageMsg struct{ Text string }
+type ChatResponseMsg struct{ Text string }
 type SuggestResponseMsg struct {
 	ID      string
 	Options []decision.DecisionOption

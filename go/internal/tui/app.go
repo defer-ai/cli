@@ -453,7 +453,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.tree.feedLines) > 200 {
 			m.tree.feedLines = m.tree.feedLines[len(m.tree.feedLines)-200:]
 		}
-		// Also update reasoning with latest tool activity
+		// Add to chat log as tool activity
+		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "tool", Text: msg.Description})
+		if len(m.tree.chatLog) > 100 {
+			m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-100:]
+		}
 		m.reasoningLines = append(m.reasoningLines, msg.Description)
 		if len(m.reasoningLines) > 20 {
 			m.reasoningLines = m.reasoningLines[len(m.reasoningLines)-20:]
@@ -566,8 +570,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case TogglePermissionsMsg:
-		// permissions bypass is implicit, no toggle needed
 		return m, nil
+
+	case ChatMessageMsg:
+		// Parse @DECISION-ID references and route
+		text := msg.Text
+		if m.provider != nil {
+			ch := m.eventChan
+			// Build context from all decisions
+			var decContext strings.Builder
+			for _, d := range m.tree.decisions {
+				answer := "(pending)"
+				if d.Answer != nil {
+					answer = *d.Answer
+				}
+				decContext.WriteString(fmt.Sprintf("%s [%s]: %s → %s\n", d.ID, d.Category, d.Question, answer))
+			}
+			go func() {
+				events := make(chan api.Event, 100)
+				sysPrompt := "You are the defer assistant. You help the user understand and manage project decisions. " +
+					"When the user references a decision ID (like @STACK-001), answer in the context of that specific decision. " +
+					"Be concise and helpful.\n\nCurrent decisions:\n" + decContext.String()
+				go m.provider.RunCompletion(m.ctx, sysPrompt, text, events)
+				var resp string
+				for ev := range events {
+					if ev.Type == api.EventTextDelta {
+						resp += ev.Text
+					}
+					if ev.Type == api.EventDone || ev.Type == api.EventError {
+						break
+					}
+				}
+				if resp == "" {
+					resp = "(no response)"
+				}
+				ch <- ChatResponseMsg{Text: resp}
+			}()
+			cmds = append(cmds, ListenForEvents(m.eventChan))
+		}
+		return m, tea.Batch(cmds...)
+
+	case ChatResponseMsg:
+		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: msg.Text})
+		if len(m.tree.chatLog) > 100 {
+			m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-100:]
+		}
+		cmds = append(cmds, ListenForEvents(m.eventChan))
+		return m, tea.Batch(cmds...)
 
 	case WhyDecisionMsg:
 		// Launch async completion via subprocess

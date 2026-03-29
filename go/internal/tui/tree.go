@@ -21,6 +21,12 @@ const (
 	tmFeed // live agent feed
 )
 
+// ChatEntry is a line in the conversation panel.
+type ChatEntry struct {
+	Type string // "tool", "agent", "user", "system"
+	Text string
+}
+
 // TreeModel is the main decision tree view.
 type TreeModel struct {
 	decisions      []decision.Decision
@@ -33,7 +39,10 @@ type TreeModel struct {
 	whyText        string
 	width, height  int
 	mascotTick     int
-	feedLines      []string // live agent output
+	feedLines      []string    // legacy feed (for tab view)
+	chatLog        []ChatEntry // conversation panel
+	chatInput      string      // current chat input
+	chatFocused    bool        // true = keys go to chat, false = keys go to tree
 }
 
 func NewTreeModel() TreeModel {
@@ -51,20 +60,51 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	key := msg.String()
 
-	// Global: tab switches to feed, shift+tab toggles permissions
-	if key == "tab" {
-		if m.mode == tmFeed {
-			m.mode = tmTree
-		} else {
-			m.mode = tmFeed
-		}
+	// Global: tab toggles chat focus (in tree mode)
+	if key == "tab" && m.mode == tmTree {
+		m.chatFocused = !m.chatFocused
 		return m, nil
 	}
-	// shift+tab reserved for future use
 
-	// --- Feed mode ---
+	// --- Chat input mode ---
+	if m.chatFocused && m.mode == tmTree {
+		switch key {
+		case "esc":
+			m.chatFocused = false
+			m.chatInput = ""
+			return m, nil
+		case "enter":
+			if strings.TrimSpace(m.chatInput) != "" {
+				input := strings.TrimSpace(m.chatInput)
+				m.chatLog = append(m.chatLog, ChatEntry{Type: "user", Text: input})
+				m.chatInput = ""
+
+				// Check for @DECISION-ID references
+				// Parse: "@STACK-001 change to Go" → ReviseDecisionMsg
+				// Parse: "@STACK-001 why?" → WhyDecisionMsg
+				// Otherwise: general chat message
+				return m, func() tea.Msg { return ChatMessageMsg{Text: input} }
+			}
+			return m, nil
+		case "backspace":
+			if len(m.chatInput) > 0 {
+				m.chatInput = m.chatInput[:len(m.chatInput)-1]
+			}
+			return m, nil
+		default:
+			if len(key) == 1 {
+				m.chatInput += key
+			}
+			return m, nil
+		}
+	}
+
+	// --- Feed mode (legacy, still accessible) ---
 	if m.mode == tmFeed {
-		// Only tab (handled above) and ctrl+c exit feed
+		if key == "tab" {
+			m.mode = tmTree
+			return m, nil
+		}
 		return m, nil
 	}
 
@@ -412,22 +452,19 @@ func (m TreeModel) viewTree() string {
 		}
 	}
 
-	// Activity bar: last 2-3 feed lines
-	activityLines := 2
-	activityContent := make([]string, 0, activityLines)
-	if len(m.feedLines) > 0 {
-		start := len(m.feedLines) - activityLines
-		if start < 0 {
-			start = 0
-		}
-		for _, fl := range m.feedLines[start:] {
-			activityContent = append(activityContent, DimStyle.Render(trunc(fl, innerWidth-4)))
-		}
+	// Conversation panel height: scales with terminal height
+	chatPanelH := h / 4 // 25% of terminal for conversation
+	if chatPanelH < 5 {
+		chatPanelH = 5
 	}
+	if chatPanelH > 12 {
+		chatPanelH = 12
+	}
+	activityLines := chatPanelH // used by conversation panel renderer
 
 	// Calculate available tree height:
-	// total = h - borders(2) - empty(1) - activity divider(1) - activity(activityLines) - footer divider(1) - footer(1) - border padding
-	fixedLines := 2 + 1 + 1 + len(activityContent) + 1 + 1 + 2
+	// total = h - borders(2) - empty(1) - chat divider(1) - chat(chatPanelH) - footer divider(1) - footer(1) - padding(1)
+	fixedLines := 2 + 1 + 1 + chatPanelH + 1 + 1 + 1
 	treeH := h - fixedLines
 	if treeH < 3 {
 		treeH = 3
@@ -522,22 +559,77 @@ func (m TreeModel) viewTree() string {
 		rendered++
 	}
 
-	// Activity bar divider + content
+	// Conversation panel divider
 	lines = append(lines, buildMiddleBorder(innerWidth))
-	if len(activityContent) > 0 {
-		for _, al := range activityContent {
-			lines = append(lines, "  "+al)
+
+	// Conversation: show last N chat entries + input
+	chatH := activityLines + 2 // activity lines + input + padding
+	if chatH < 4 {
+		chatH = 4
+	}
+
+	// Render chat entries
+	chatRendered := 0
+	if len(m.chatLog) > 0 {
+		start := len(m.chatLog) - (chatH - 1) // leave room for input
+		if start < 0 {
+			start = 0
 		}
+		for _, entry := range m.chatLog[start:] {
+			if chatRendered >= chatH-1 {
+				break
+			}
+			prefix := "  "
+			style := DimStyle
+			switch entry.Type {
+			case "tool":
+				prefix = "  " + DimStyle.Render("●") + " "
+			case "agent":
+				prefix = "  " + AccentStyle.Render("●") + " "
+				style = lipgloss.NewStyle()
+			case "user":
+				prefix = "  " + BoldWhite.Render(">") + " "
+				style = BoldWhite
+			case "system":
+				prefix = "  "
+			}
+			lines = append(lines, prefix+style.Render(trunc(entry.Text, innerWidth-6)))
+			chatRendered++
+		}
+	}
+
+	// Fill remaining chat space
+	for chatRendered < chatH-1 {
+		if chatRendered == 0 {
+			lines = append(lines, "  "+DimStyle.Render("Press tab to chat, @ID to reference a decision"))
+		} else {
+			lines = append(lines, "")
+		}
+		chatRendered++
+	}
+
+	// Chat input line
+	if m.chatFocused {
+		inputLine := "  " + AccentStyle.Render("> ") + m.chatInput + AccentStyle.Render("▎")
+		lines = append(lines, inputLine)
 	} else {
-		lines = append(lines, "  "+DimStyle.Render("Waiting for activity..."))
+		lines = append(lines, "  "+DimStyle.Render("tab to chat..."))
 	}
 
 	// Footer divider + keybindings
 	lines = append(lines, buildMiddleBorder(innerWidth))
-	footer := "  " + AccentStyle.Render("↑↓") + DimStyle.Render(" navigate  ") +
-		AccentStyle.Render("enter") + DimStyle.Render(" inspect  ") +
-		AccentStyle.Render("tab") + DimStyle.Render(" feed  ") +
-		DimStyle.Render("ctrl+c×2 quit")
+	var footer string
+	if m.chatFocused {
+		footer = "  " + AccentStyle.Render("enter") + DimStyle.Render(" send  ") +
+			AccentStyle.Render("@ID") + DimStyle.Render(" reference  ") +
+			AccentStyle.Render("esc") + DimStyle.Render(" back to tree  ") +
+			DimStyle.Render("ctrl+c×2 quit")
+	} else {
+		footer = "  " + AccentStyle.Render("↑↓") + DimStyle.Render(" navigate  ") +
+			AccentStyle.Render("enter") + DimStyle.Render(" inspect  ") +
+			AccentStyle.Render("tab") + DimStyle.Render(" chat  ") +
+			DimStyle.Render("ctrl+c×2 quit")
+	}
 	lines = append(lines, footer)
 
 	content := strings.Join(lines, "\n")

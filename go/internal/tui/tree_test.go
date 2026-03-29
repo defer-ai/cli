@@ -361,31 +361,33 @@ func TestDetailShuffle(t *testing.T) {
 	}
 }
 
-func TestTabTogglesFeed(t *testing.T) {
+func TestTabTogglesChatFocus(t *testing.T) {
 	tm := newTree(fiveDecisions())
 
-	if tm.mode != tmTree {
-		t.Fatalf("initial mode = %d, want tmTree", tm.mode)
+	if tm.chatFocused {
+		t.Fatal("chat should not be focused initially")
 	}
 
 	tm, _ = updateTree(t, tm, keyTab())
-	if tm.mode != tmFeed {
-		t.Errorf("mode after tab = %d, want tmFeed (%d)", tm.mode, tmFeed)
+	if !tm.chatFocused {
+		t.Error("chat should be focused after tab")
 	}
 
 	tm, _ = updateTree(t, tm, keyTab())
-	if tm.mode != tmTree {
-		t.Errorf("mode after second tab = %d, want tmTree (%d)", tm.mode, tmTree)
+	if tm.chatFocused {
+		t.Error("chat should not be focused after second tab")
 	}
 }
 
-func TestTabFromDetailGoesToFeed(t *testing.T) {
+func TestChatInputEscUnfocuses(t *testing.T) {
 	tm := newTree(fiveDecisions())
-	tm, _ = updateTree(t, tm, keyEnter()) // detail
-	tm, _ = updateTree(t, tm, keyTab())
-
-	if tm.mode != tmFeed {
-		t.Errorf("mode = %d, want tmFeed from detail", tm.mode)
+	tm, _ = updateTree(t, tm, keyTab()) // focus chat
+	if !tm.chatFocused {
+		t.Fatal("chat should be focused")
+	}
+	tm, _ = updateTree(t, tm, keyEsc()) // unfocus
+	if tm.chatFocused {
+		t.Error("esc should unfocus chat")
 	}
 }
 
