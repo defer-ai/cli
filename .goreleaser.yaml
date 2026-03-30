@@ -4,8 +4,10 @@ project_name: defer
 
 before:
   hooks:
-    - go mod tidy
-    - go test ./... -count=1
+    - cmd: go mod tidy
+      dir: go
+    - cmd: go test ./... -count=1
+      dir: go
 
 builds:
   - id: defer
