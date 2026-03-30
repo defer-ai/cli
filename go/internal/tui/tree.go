@@ -20,7 +20,8 @@ const (
 	tmDetail
 	tmRevise
 	tmAsk
-	tmFeed // live agent feed
+	tmFeed // legacy feed
+	tmChat // full-screen conversation
 )
 
 // ChatEntry is a line in the conversation panel.
@@ -69,16 +70,23 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	key := msg.String()
 
-	// Global: tab toggles chat focus (in tree mode)
-	if key == "tab" && m.mode == tmTree {
-		m.chatFocused = !m.chatFocused
+	// Tab toggles between tree view and full-screen conversation
+	if key == "tab" {
+		if m.mode == tmChat {
+			m.mode = tmTree
+			m.chatFocused = false
+		} else if m.mode == tmTree {
+			m.mode = tmChat
+			m.chatFocused = true
+		}
 		return m, nil
 	}
 
-	// --- Chat input mode ---
-	if m.chatFocused && m.mode == tmTree {
+	// --- Chat input mode (full screen chat via tmChat) ---
+	if m.mode == tmChat {
 		switch key {
 		case "esc":
+			m.mode = tmTree
 			m.chatFocused = false
 			m.chatInput = ""
 			return m, nil
@@ -330,6 +338,10 @@ func pad(s string, n int) string {
 }
 
 func (m TreeModel) View() string {
+	if m.mode == tmChat {
+		return m.viewChat()
+	}
+
 	w := m.width
 	if w < 40 {
 		w = 80
@@ -393,6 +405,117 @@ func (m TreeModel) viewFeed() string {
 
 	content := strings.Join(lines, "\n")
 	return buildBorderedBox(content, innerWidth, "Live Agent Feed", "")
+}
+
+// ========== FULL-SCREEN CHAT VIEW ==========
+func (m TreeModel) viewChat() string {
+	w := m.width
+	if w < 40 {
+		w = 80
+	}
+	h := m.height
+	if h < 10 {
+		h = 24
+	}
+
+	innerWidth := w - 4
+	if innerWidth < 20 {
+		innerWidth = 20
+	}
+
+	// Status for title bar
+	rightStatus := m.overallStatus
+	if m.chatThinking {
+		elapsed := time.Since(m.chatThinkStart)
+		if elapsed < time.Minute {
+			rightStatus = fmt.Sprintf("Thinking... (%.0fs)", elapsed.Seconds())
+		} else {
+			rightStatus = fmt.Sprintf("Thinking... (%dm%ds)", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
+		}
+	}
+
+	var lines []string
+	lines = append(lines, "")
+
+	// Chat content area
+	chatContentH := h - 8 // borders + empty + divider + input + footer
+	if chatContentH < 3 {
+		chatContentH = 3
+	}
+
+	// Render chat entries with markdown
+	var chatLines []string
+	for _, entry := range m.chatLog {
+		switch entry.Type {
+		case "tool":
+			chatLines = append(chatLines, "  "+DimStyle.Render("  "+entry.Text))
+		case "agent":
+			// Render markdown
+			if m.mdRenderer != nil {
+				if md, err := m.mdRenderer.Render(entry.Text); err == nil {
+					for _, ml := range strings.Split(strings.TrimRight(md, "\n"), "\n") {
+						chatLines = append(chatLines, "  "+ml)
+					}
+					continue
+				}
+			}
+			chatLines = append(chatLines, "  "+AccentStyle.Render("● ")+entry.Text)
+		case "user":
+			chatLines = append(chatLines, "")
+			chatLines = append(chatLines, "  "+BoldWhite.Render("> ")+highlightDecisionRefs(entry.Text))
+			chatLines = append(chatLines, "")
+		default:
+			chatLines = append(chatLines, "  "+DimStyle.Render(entry.Text))
+		}
+	}
+
+	// Thinking indicator
+	if m.chatThinking {
+		elapsed := time.Since(m.chatThinkStart)
+		var timeStr string
+		if elapsed < time.Minute {
+			timeStr = fmt.Sprintf("%.0fs", elapsed.Seconds())
+		} else {
+			timeStr = fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
+		}
+		chatLines = append(chatLines, "")
+		chatLines = append(chatLines, "  "+AccentStyle.Render("● Thinking... ")+DimStyle.Render("("+timeStr+")"))
+	}
+
+	// Scroll to bottom
+	start := 0
+	if len(chatLines) > chatContentH {
+		start = len(chatLines) - chatContentH
+	}
+	visible := chatLines[start:]
+
+	for _, cl := range visible {
+		lines = append(lines, cl)
+	}
+	// Fill remaining
+	for i := len(visible); i < chatContentH; i++ {
+		if len(m.chatLog) == 0 && i == 0 {
+			lines = append(lines, "  "+DimStyle.Render("Ask anything. Use @DECISION-ID to reference a specific decision."))
+		} else {
+			lines = append(lines, "")
+		}
+	}
+
+	// Input divider + input
+	lines = append(lines, buildMiddleBorder(innerWidth))
+	inputLine := "  " + AccentStyle.Render("> ") + highlightDecisionRefs(m.chatInput) + AccentStyle.Render("▎")
+	lines = append(lines, inputLine)
+
+	// Footer
+	lines = append(lines, buildMiddleBorder(innerWidth))
+	footer := "  " + AccentStyle.Render("enter") + DimStyle.Render(" send  ") +
+		AccentStyle.Render("@ID") + DimStyle.Render(" reference  ") +
+		AccentStyle.Render("tab") + DimStyle.Render(" back to tree  ") +
+		DimStyle.Render("ctrl+c×2 quit")
+	lines = append(lines, footer)
+
+	content := strings.Join(lines, "\n")
+	return buildBorderedBox(content, innerWidth, "defer", rightStatus)
 }
 
 // ========== TREE VIEW ==========
@@ -477,19 +600,9 @@ func (m TreeModel) viewTree() string {
 		}
 	}
 
-	// Conversation panel height: scales with terminal height
-	chatPanelH := h / 4 // 25% of terminal for conversation
-	if chatPanelH < 5 {
-		chatPanelH = 5
-	}
-	if chatPanelH > 12 {
-		chatPanelH = 12
-	}
-	activityLines := chatPanelH // used by conversation panel renderer
-
 	// Calculate available tree height:
-	// total = h - borders(2) - empty(1) - chat divider(1) - chat(chatPanelH) - footer divider(1) - footer(1) - padding(1)
-	fixedLines := 2 + 1 + 1 + chatPanelH + 1 + 1 + 1
+	// total = h - borders(2) - empty(1) - activity(1) - footer divider(1) - footer(1) - padding(1)
+	fixedLines := 2 + 1 + 1 + 1 + 1 + 1
 	treeH := h - fixedLines
 	if treeH < 3 {
 		treeH = 3
@@ -599,104 +712,28 @@ func (m TreeModel) viewTree() string {
 		rendered++
 	}
 
-	// Conversation panel divider
+	// Activity line (single line, not a panel -- full chat is tab)
 	lines = append(lines, buildMiddleBorder(innerWidth))
-
-	// Conversation: show last N chat entries + input
-	chatH := activityLines + 2 // activity lines + input + padding
-	if chatH < 4 {
-		chatH = 4
-	}
-
-	// Render chat entries
-	chatRendered := 0
-	if len(m.chatLog) > 0 {
-		start := len(m.chatLog) - (chatH - 1)
-		if start < 0 {
-			start = 0
-		}
-		for _, entry := range m.chatLog[start:] {
-			if chatRendered >= chatH-1 {
-				break
-			}
-			switch entry.Type {
-			case "tool":
-				lines = append(lines, "  "+DimStyle.Render("  "+entry.Text))
-				chatRendered++
-			case "agent":
-				// Render markdown for agent responses
-				rendered := entry.Text
-				if m.mdRenderer != nil {
-					if md, err := m.mdRenderer.Render(entry.Text); err == nil {
-						// Glamour adds newlines, take first few lines that fit
-						mdLines := strings.Split(strings.TrimRight(md, "\n"), "\n")
-						for _, ml := range mdLines {
-							if chatRendered >= chatH-1 {
-								break
-							}
-							lines = append(lines, "  "+ml)
-							chatRendered++
-						}
-						continue
-					}
-				}
-				lines = append(lines, "  "+AccentStyle.Render("● ")+rendered)
-				chatRendered++
-			case "user":
-				lines = append(lines, "  "+BoldWhite.Render("> ")+highlightDecisionRefs(entry.Text))
-				chatRendered++
-			default:
-				lines = append(lines, "  "+DimStyle.Render(entry.Text))
-				chatRendered++
-			}
-		}
-	}
-
-	// Thinking indicator
-	if m.chatThinking {
+	if len(m.feedLines) > 0 {
+		lastActivity := m.feedLines[len(m.feedLines)-1]
+		lines = append(lines, "  "+DimStyle.Render(trunc(lastActivity, innerWidth-4)))
+	} else if m.chatThinking {
 		elapsed := time.Since(m.chatThinkStart)
-		var timeStr string
-		if elapsed < time.Minute {
-			timeStr = fmt.Sprintf("%.0fs", elapsed.Seconds())
-		} else {
+		timeStr := fmt.Sprintf("%.0fs", elapsed.Seconds())
+		if elapsed >= time.Minute {
 			timeStr = fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
 		}
 		lines = append(lines, "  "+AccentStyle.Render("● Thinking... ")+DimStyle.Render("("+timeStr+")"))
-		chatRendered++
-	}
-
-	// Fill remaining chat space
-	for chatRendered < chatH-1 {
-		if chatRendered == 0 {
-			lines = append(lines, "  "+DimStyle.Render("Press tab to chat, @ID to reference a decision"))
-		} else {
-			lines = append(lines, "")
-		}
-		chatRendered++
-	}
-
-	// Chat input line
-	if m.chatFocused {
-		inputLine := "  " + AccentStyle.Render("> ") + m.chatInput + AccentStyle.Render("▎")
-		lines = append(lines, inputLine)
 	} else {
-		lines = append(lines, "  "+DimStyle.Render("tab to chat..."))
+		lines = append(lines, "  "+DimStyle.Render("tab to open conversation"))
 	}
 
-	// Footer divider + keybindings
+	// Footer
 	lines = append(lines, buildMiddleBorder(innerWidth))
-	var footer string
-	if m.chatFocused {
-		footer = "  " + AccentStyle.Render("enter") + DimStyle.Render(" send  ") +
-			AccentStyle.Render("@ID") + DimStyle.Render(" reference  ") +
-			AccentStyle.Render("esc") + DimStyle.Render(" back to tree  ") +
-			DimStyle.Render("ctrl+c×2 quit")
-	} else {
-		footer = "  " + AccentStyle.Render("↑↓") + DimStyle.Render(" navigate  ") +
-			AccentStyle.Render("enter") + DimStyle.Render(" inspect  ") +
-			AccentStyle.Render("tab") + DimStyle.Render(" chat  ") +
-			DimStyle.Render("ctrl+c×2 quit")
-	}
+	footer := "  " + AccentStyle.Render("↑↓") + DimStyle.Render(" navigate  ") +
+		AccentStyle.Render("enter") + DimStyle.Render(" inspect  ") +
+		AccentStyle.Render("tab") + DimStyle.Render(" conversation  ") +
+		DimStyle.Render("ctrl+c×2 quit")
 	lines = append(lines, footer)
 
 	content := strings.Join(lines, "\n")

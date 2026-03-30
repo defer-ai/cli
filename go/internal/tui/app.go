@@ -573,11 +573,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ChatMessageMsg:
-		// Parse @DECISION-ID references and route
 		text := msg.Text
+
+		// Check for direct change commands: "@STACK-001 change to Go with Gin"
+		if changed := m.tryParseChangeCommand(text); changed {
+			return m, nil
+		}
+
+		// Otherwise send to agent as a question
 		if m.provider != nil {
 			ch := m.eventChan
-			// Build context from all decisions
 			var decContext strings.Builder
 			for _, d := range m.tree.decisions {
 				answer := "(pending)"
@@ -588,9 +593,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			go func() {
 				events := make(chan api.Event, 100)
-				sysPrompt := "You are the defer assistant. You help the user understand and manage project decisions. " +
-					"When the user references a decision ID (like @STACK-001), answer in the context of that specific decision. " +
-					"Be concise and helpful.\n\nCurrent decisions:\n" + decContext.String()
+				sysPrompt := "You are the defer assistant. Help the user understand and manage project decisions. " +
+					"When the user references @DECISION-ID, answer about that specific decision. " +
+					"If the user wants to CHANGE a decision, respond with the new value clearly. " +
+					"Be concise.\n\nCurrent decisions:\n" + decContext.String()
 				go m.provider.RunCompletion(m.ctx, sysPrompt, text, events)
 				var resp string
 				for ev := range events {
@@ -833,6 +839,76 @@ func (m Model) viewDecomposing() string {
 
 	content := strings.Join(lines, "\n")
 	return buildBorderedBox(content, innerWidth, "defer", "decomposing")
+}
+
+// tryParseChangeCommand detects "@ID change to X" or "@ID = X" patterns and updates the decision.
+// Returns true if a change was made.
+func (m *Model) tryParseChangeCommand(text string) bool {
+	// Look for @ID patterns
+	words := strings.Fields(text)
+	if len(words) < 3 {
+		return false
+	}
+
+	// Find the @ID
+	var targetID string
+	var restIdx int
+	for i, word := range words {
+		if strings.HasPrefix(word, "@") && len(word) > 1 {
+			targetID = strings.TrimPrefix(word, "@")
+			restIdx = i + 1
+			break
+		}
+	}
+	if targetID == "" || restIdx >= len(words) {
+		return false
+	}
+
+	rest := strings.Join(words[restIdx:], " ")
+	restLower := strings.ToLower(rest)
+
+	// Detect change intent: "change to X", "= X", "switch to X", "use X", "set to X"
+	var newAnswer string
+	for _, prefix := range []string{"change to ", "switch to ", "set to ", "use ", "= "} {
+		if strings.HasPrefix(restLower, prefix) {
+			newAnswer = strings.TrimSpace(rest[len(prefix):])
+			break
+		}
+	}
+	if newAnswer == "" {
+		return false
+	}
+
+	// Find and update the decision
+	for i := range m.tree.decisions {
+		if strings.EqualFold(m.tree.decisions[i].ID, targetID) {
+			m.tree.decisions[i].Answer = &newAnswer
+			m.tree.decisions[i].Delegated = false
+			m.tree.decisions[i].Source = "user"
+
+			// Add confirmation to chat
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+				Type: "system",
+				Text: fmt.Sprintf("Updated %s → %s", targetID, newAnswer),
+			})
+
+			// Persist
+			if store, _ := decision.LoadStore(m.cwd); store != nil {
+				store.Decisions = m.tree.decisions
+				_ = decision.SaveStore(m.cwd, store)
+			}
+			if m.manager != nil {
+				m.manager.SyncDecisions(m.tree.decisions)
+			}
+			return true
+		}
+	}
+
+	m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+		Type: "system",
+		Text: fmt.Sprintf("Decision %s not found", targetID),
+	})
+	return true
 }
 
 func (m Model) computeOverallStatus() string {
