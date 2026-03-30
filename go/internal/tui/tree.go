@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/defer-ai/cli/internal/agent"
 	"github.com/defer-ai/cli/internal/decision"
@@ -43,10 +45,17 @@ type TreeModel struct {
 	chatLog        []ChatEntry // conversation panel
 	chatInput      string      // current chat input
 	chatFocused    bool        // true = keys go to chat, false = keys go to tree
+	chatThinking   bool        // true while waiting for agent response
+	chatThinkStart time.Time   // when thinking started
+	mdRenderer     *glamour.TermRenderer
 }
 
 func NewTreeModel() TreeModel {
-	return TreeModel{mode: tmTree}
+	r, _ := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(0), // we handle wrapping ourselves
+	)
+	return TreeModel{mode: tmTree, mdRenderer: r}
 }
 
 func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
@@ -78,6 +87,8 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 				input := strings.TrimSpace(m.chatInput)
 				m.chatLog = append(m.chatLog, ChatEntry{Type: "user", Text: input})
 				m.chatInput = ""
+				m.chatThinking = true
+				m.chatThinkStart = time.Now()
 
 				// Check for @DECISION-ID references
 				// Parse: "@STACK-001 change to Go" → ReviseDecisionMsg
@@ -583,7 +594,7 @@ func (m TreeModel) viewTree() string {
 	// Render chat entries
 	chatRendered := 0
 	if len(m.chatLog) > 0 {
-		start := len(m.chatLog) - (chatH - 1) // leave room for input
+		start := len(m.chatLog) - (chatH - 1)
 		if start < 0 {
 			start = 0
 		}
@@ -591,23 +602,50 @@ func (m TreeModel) viewTree() string {
 			if chatRendered >= chatH-1 {
 				break
 			}
-			prefix := "  "
-			style := DimStyle
 			switch entry.Type {
 			case "tool":
-				prefix = "  " + DimStyle.Render("●") + " "
+				lines = append(lines, "  "+DimStyle.Render("  "+entry.Text))
+				chatRendered++
 			case "agent":
-				prefix = "  " + AccentStyle.Render("●") + " "
-				style = lipgloss.NewStyle()
+				// Render markdown for agent responses
+				rendered := entry.Text
+				if m.mdRenderer != nil {
+					if md, err := m.mdRenderer.Render(entry.Text); err == nil {
+						// Glamour adds newlines, take first few lines that fit
+						mdLines := strings.Split(strings.TrimRight(md, "\n"), "\n")
+						for _, ml := range mdLines {
+							if chatRendered >= chatH-1 {
+								break
+							}
+							lines = append(lines, "  "+ml)
+							chatRendered++
+						}
+						continue
+					}
+				}
+				lines = append(lines, "  "+AccentStyle.Render("● ")+rendered)
+				chatRendered++
 			case "user":
-				prefix = "  " + BoldWhite.Render(">") + " "
-				style = BoldWhite
-			case "system":
-				prefix = "  "
+				lines = append(lines, "  "+BoldWhite.Render("> "+entry.Text))
+				chatRendered++
+			default:
+				lines = append(lines, "  "+DimStyle.Render(entry.Text))
+				chatRendered++
 			}
-			lines = append(lines, prefix+style.Render(trunc(entry.Text, innerWidth-6)))
-			chatRendered++
 		}
+	}
+
+	// Thinking indicator
+	if m.chatThinking {
+		elapsed := time.Since(m.chatThinkStart)
+		var timeStr string
+		if elapsed < time.Minute {
+			timeStr = fmt.Sprintf("%.0fs", elapsed.Seconds())
+		} else {
+			timeStr = fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
+		}
+		lines = append(lines, "  "+AccentStyle.Render("● Thinking... ")+DimStyle.Render("("+timeStr+")"))
+		chatRendered++
 	}
 
 	// Fill remaining chat space

@@ -611,6 +611,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case ChatResponseMsg:
+		m.tree.chatThinking = false
 		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: msg.Text})
 		if len(m.tree.chatLog) > 100 {
 			m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-100:]
