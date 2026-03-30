@@ -998,12 +998,3 @@ func parseSuggestedOptions(text string) []decision.DecisionOption {
 	return opts
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-// Ensure fmt is used
-var _ = fmt.Sprintf

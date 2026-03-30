@@ -298,6 +298,20 @@ func (m TreeModel) decisionCount() int {
 	return len(m.decisionItems())
 }
 
+// highlightDecisionRefs highlights @ID patterns (e.g. @STACK-001) in text using AccentStyle.
+func highlightDecisionRefs(text string) string {
+	result := text
+	words := strings.Fields(text)
+	for _, word := range words {
+		if strings.HasPrefix(word, "@") && len(word) > 1 {
+			ref := word
+			highlighted := AccentStyle.Render(ref)
+			result = strings.Replace(result, ref, highlighted, 1)
+		}
+	}
+	return result
+}
+
 func trunc(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -494,10 +508,13 @@ func (m TreeModel) viewTree() string {
 	}
 
 	idW := 12
-	ansW := 30
-	qW := innerWidth - idW - ansW - 12
+	ansW := (innerWidth - idW - 14) / 2 // split remaining space between question and answer
+	qW := innerWidth - idW - ansW - 10
 	if qW < 10 {
 		qW = 10
+	}
+	if ansW < 10 {
+		ansW = 10
 	}
 
 	rendered := 0
@@ -626,7 +643,7 @@ func (m TreeModel) viewTree() string {
 				lines = append(lines, "  "+AccentStyle.Render("● ")+rendered)
 				chatRendered++
 			case "user":
-				lines = append(lines, "  "+BoldWhite.Render("> "+entry.Text))
+				lines = append(lines, "  "+BoldWhite.Render("> ")+highlightDecisionRefs(entry.Text))
 				chatRendered++
 			default:
 				lines = append(lines, "  "+DimStyle.Render(entry.Text))

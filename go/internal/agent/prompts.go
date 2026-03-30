@@ -77,7 +77,7 @@ const ExtractPrompt = `Review this implementation and extract every decision tha
 For EACH decision, include what was chosen AND what the alternatives were.
 
 Output ONLY a JSON array:
-[{"category": "...", "question": "what was the choice about", "options": [{"key": "A", "label": "what was chosen"}, {"key": "B", "label": "alternative 1"}, {"key": "C", "label": "alternative 2"}], "answer": "A", "reasoning": "why this was chosen"}]
+[{"category": "...", "question": "what was the choice about", "options": [{"key": "A", "label": "what was chosen"}, {"key": "B", "label": "alternative 1"}, {"key": "C", "label": "alternative 2"}], "answer": "A", "reasoning": "why this was chosen", "impact": 0-10 (how foundational was this choice)}]
 
 The first option (A) should always be what was actually chosen. Other options are what COULD have been chosen instead.`
 
@@ -122,6 +122,6 @@ const PlanPrompt = `You are a software architect. Given the task and existing de
 For EACH decision, provide 3-4 concrete options to choose from.
 
 Output ONLY a JSON array:
-[{"category": "...", "question": "what needs to be decided", "options": [{"key": "A", "label": "option 1"}, {"key": "B", "label": "option 2"}, {"key": "C", "label": "option 3"}], "answer": "A", "reasoning": "why you recommend this option"}]
+[{"category": "...", "question": "what needs to be decided", "options": [{"key": "A", "label": "option 1"}, {"key": "B", "label": "option 2"}, {"key": "C", "label": "option 3"}], "answer": "A", "reasoning": "why you recommend this option", "impact": 0-10 (how many other decisions this affects)}]
 
 The "answer" field is the KEY (A, B, C) of your recommended option. Always provide real alternatives, not just your recommendation.`

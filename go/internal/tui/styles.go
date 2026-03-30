@@ -29,22 +29,13 @@ var (
 			Foreground(Accent).
 			Bold(true)
 
-	// Activity bar style
-	ActivityBarStyle = lipgloss.NewStyle().
-				Foreground(DimGray)
-
 	// Detail view styles
 	DetailTitleStyle    = lipgloss.NewStyle().Foreground(Accent).Bold(true)
 	DetailQuestionStyle = lipgloss.NewStyle().Bold(true)
 	DetailContextStyle  = lipgloss.NewStyle().Foreground(DimGray).Italic(true)
-	OptionSelectedStyle = lipgloss.NewStyle().Foreground(Accent).Bold(true)
-	OptionDefaultStyle  = lipgloss.NewStyle().Foreground(DimGray)
 
 	// Category header in tree
 	CategoryStyle = lipgloss.NewStyle().Foreground(Accent).Bold(true)
-
-	// Decision ID column
-	DecisionIDStyle = lipgloss.NewStyle().Width(12)
 )
 
 // Separator returns a horizontal rule of the given width.
@@ -148,15 +139,3 @@ func buildMiddleBorder(innerWidth int) string {
 		bStyle.Render("┤")
 }
 
-// truncLine truncates a string to fit within maxWidth visible characters.
-func truncLine(s string, maxWidth int) string {
-	if lipgloss.Width(s) <= maxWidth {
-		return s
-	}
-	// Simple truncation: trim runes until it fits
-	runes := []rune(s)
-	for len(runes) > 0 && lipgloss.Width(string(runes)) > maxWidth {
-		runes = runes[:len(runes)-1]
-	}
-	return string(runes)
-}

@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -120,6 +119,3 @@ func (m WelcomeModel) View() string {
 	content := strings.Join(lines, "\n")
 	return buildBorderedBox(content, innerWidth, "", "")
 }
-
-// Ensure fmt is used
-var _ = fmt.Sprintf

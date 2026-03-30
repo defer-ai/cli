@@ -552,19 +552,6 @@ func (e *Executor) storeDecisions(decs []decision.Decision) {
 	}
 }
 
-func (e *Executor) normalizeCategory(cat string) string {
-	lower := strings.ToLower(strings.TrimSpace(cat))
-	for _, d := range *e.allDecisions {
-		if strings.EqualFold(strings.TrimSpace(d.Category), lower) {
-			return d.Category
-		}
-	}
-	if strings.EqualFold(strings.TrimSpace(e.domain), lower) {
-		return e.domain
-	}
-	return "Misc"
-}
-
 func (e *Executor) parseImplicitChoices(text string) []decision.Decision {
 	var result []decision.Decision
 	today := time.Now().Format("2006-01-02")
@@ -582,6 +569,7 @@ func (e *Executor) parseImplicitChoices(text string) []decision.Decision {
 			} `json:"options"`
 			Answer    string `json:"answer"`
 			Reasoning string `json:"reasoning"`
+			Impact    int    `json:"impact"`
 		}
 		if err := json.Unmarshal([]byte(text[start:end+1]), &raw); err == nil {
 			for _, item := range raw {
@@ -635,6 +623,7 @@ func (e *Executor) parseImplicitChoices(text string) []decision.Decision {
 					Implicit:  true,
 					Source:    "agent",
 					Reasoning: item.Reasoning,
+					Impact:    item.Impact,
 					Date:      today,
 				}
 				result = append(result, d)
