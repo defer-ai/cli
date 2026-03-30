@@ -4,12 +4,26 @@ Zero-autonomy AI. Every decision is yours.
 
 Defer decomposes your task into a tree of decisions, lets you set care levels per domain (skip through paranoid), auto-decides the rest, then implements everything while you watch, chat, and challenge in real-time. Every choice -- from framework to variable name -- is tracked, reversible, and exportable.
 
+## Install
+
+**From release (recommended):**
+```bash
+# macOS / Linux
+curl -sSL https://github.com/defer-ai/cli/releases/latest/download/defer_$(uname -s)_$(uname -m).tar.gz | tar xz
+sudo mv defer /usr/local/bin/
+```
+
+**From source:**
+```bash
+cd go && go build -ldflags "-s -w" -o defer .
+sudo mv defer /usr/local/bin/
+```
+
 ## Quick Start
 
 ```bash
-cd go && go build -o defer .
-./defer "build a secret sharing tool"
-./defer scan   # onboard an existing project
+defer "build a secret sharing tool"
+defer scan   # onboard an existing project
 ```
 
 ## How It Works

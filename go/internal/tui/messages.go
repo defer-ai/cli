@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -62,10 +63,19 @@ func BridgeAgentEvent(ev agent.Event) tea.Msg {
 func ListenForEvents(ch <-chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		msg, ok := <-ch
-		if !ok {
+		if !ok || msg == nil {
 			return nil
 		}
 		return msg
+	}
+}
+
+// safeSend sends a message to the event channel without panicking on closed channel or cancelled context.
+func safeSend(ctx context.Context, ch chan<- tea.Msg, msg tea.Msg) {
+	select {
+	case <-ctx.Done():
+		return
+	case ch <- msg:
 	}
 }
 

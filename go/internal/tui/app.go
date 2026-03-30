@@ -51,6 +51,7 @@ type Model struct {
 	reasoningLines  []string
 	executorsLaunched bool
 	lastCtrlC       time.Time
+	quitting        bool // set on double ctrl+c, prevents new goroutine spawns
 
 	// Priorities (persisted)
 	domainPriorities map[string]agent.CareLevel
@@ -171,17 +172,18 @@ func NewScanModel(provider api.Provider, cwd string) Model {
 
 	// Start scan in background
 	ch := m.eventChan
+	scanCtx := ctx
 	go func() {
 		events := make(chan api.Event, 100)
 		scanUserPrompt := fmt.Sprintf("Scan the project at %s. Start by using Glob to find all files, then Read the key config files (go.mod, package.json, tsconfig.json, Dockerfile, etc.), then Read source files to understand the architecture. Output ALL discovered decisions.", cwd)
-		go provider.RunCompletion(ctx, agent.ScanPrompt, scanUserPrompt, events)
+		go provider.RunCompletion(scanCtx, agent.ScanPrompt, scanUserPrompt, events)
 
 		var fullText string
 		for ev := range events {
 			switch ev.Type {
 			case api.EventTextDelta:
 				fullText += ev.Text
-				ch <- AgentStateChangedMsg{}
+				safeSend(scanCtx, ch, AgentStateChangedMsg{})
 			case api.EventDone:
 				decs := agent.ParseScanDecisions(fullText)
 				// Mark all as discovered
@@ -203,10 +205,10 @@ func NewScanModel(provider api.Provider, cwd string) Model {
 					store.Decisions = decs
 					_ = decision.SaveStore(cwd, store)
 				}
-				ch <- AgentDecisionsReadyMsg{Decisions: decs}
+				safeSend(scanCtx, ch, AgentDecisionsReadyMsg{Decisions: decs})
 				return
 			case api.EventError:
-				ch <- AgentDecisionsReadyMsg{Decisions: nil}
+				safeSend(scanCtx, ch, AgentDecisionsReadyMsg{Decisions: nil})
 				return
 			}
 		}
@@ -256,8 +258,9 @@ func (m Model) Init() tea.Cmd {
 		// Manager already created in NewModel, just start decomposition
 		if m.manager != nil {
 			ch := m.eventChan
-			m.manager.StartDecomposition(m.ctx, m.task, func(ev agent.Event) {
-				ch <- BridgeAgentEvent(ev)
+			ctx := m.ctx
+			m.manager.StartDecomposition(ctx, m.task, func(ev agent.Event) {
+				safeSend(ctx, ch, BridgeAgentEvent(ev))
 			})
 			cmds = append(cmds, ListenForEvents(m.eventChan))
 		}
@@ -286,7 +289,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			now := time.Now()
 			if now.Sub(m.lastCtrlC) < 1500*time.Millisecond {
-				m.cancel()
+				m.quitting = true
+				m.cancel() // cancel context → all goroutines using m.ctx will stop
 				return m, tea.Quit
 			}
 			m.lastCtrlC = now
@@ -308,8 +312,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.view = ViewDecomposing
 		m.manager = agent.NewManager(m.provider, m.cwd)
 		ch := m.eventChan
-		m.manager.StartDecomposition(m.ctx, m.task, func(ev agent.Event) {
-			ch <- BridgeAgentEvent(ev)
+		ctx := m.ctx
+		m.manager.StartDecomposition(ctx, m.task, func(ev agent.Event) {
+			safeSend(ctx, ch, BridgeAgentEvent(ev))
 		})
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
@@ -413,8 +418,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if allAnswered && !isScanOnly {
 			ch := m.eventChan
-			m.manager.LaunchExecutors(m.ctx, m.task, m.tree.decisions, msg.Priorities, func(ev agent.Event) {
-				ch <- BridgeAgentEvent(ev)
+			ctx := m.ctx
+			m.manager.LaunchExecutors(ctx, m.task, m.tree.decisions, msg.Priorities, func(ev agent.Event) {
+				safeSend(ctx, ch, BridgeAgentEvent(ev))
 			})
 			m.executorsLaunched = true
 			m.tree.overallStatus = "executing"
@@ -448,11 +454,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case ToolActivityMsg:
-		// Add tool activity to the live feed
-		m.tree.feedLines = append(m.tree.feedLines, msg.Description)
-		if len(m.tree.feedLines) > 200 {
-			m.tree.feedLines = m.tree.feedLines[len(m.tree.feedLines)-200:]
-		}
+		// Update activity line for tree status bar
+		m.tree.activityLine = msg.Description
 		// Add to chat log as tool activity
 		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "tool", Text: msg.Description})
 		if len(m.tree.chatLog) > 100 {
@@ -522,8 +525,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.reasoningLines = append(m.reasoningLines, fmt.Sprintf("Decision changed: %s. Re-implementing...", trunc(changedDecision, 40)))
 			// Re-launch executor with updated decisions
 			ch := m.eventChan
-			m.manager.LaunchExecutors(m.ctx, m.task, m.tree.decisions, m.domainPriorities, func(ev agent.Event) {
-				ch <- BridgeAgentEvent(ev)
+			ctx := m.ctx
+			m.manager.LaunchExecutors(ctx, m.task, m.tree.decisions, m.domainPriorities, func(ev agent.Event) {
+				safeSend(ctx, ch, BridgeAgentEvent(ev))
 			})
 			m.executorsLaunched = true
 			cmds = append(cmds, ListenForEvents(m.eventChan))
@@ -543,8 +547,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if allAnswered && len(m.tree.decisions) > 0 {
 				ch := m.eventChan
-				m.manager.LaunchExecutors(m.ctx, m.task, m.tree.decisions, m.domainPriorities, func(ev agent.Event) {
-					ch <- BridgeAgentEvent(ev)
+				ctx := m.ctx
+				m.manager.LaunchExecutors(ctx, m.task, m.tree.decisions, m.domainPriorities, func(ev agent.Event) {
+					safeSend(ctx, ch, BridgeAgentEvent(ev))
 				})
 				m.executorsLaunched = true
 				m.tree.overallStatus = "executing"
@@ -581,8 +586,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Otherwise send to agent as a question
-		if m.provider != nil {
+		if m.provider != nil && !m.quitting {
 			ch := m.eventChan
+			ctx := m.ctx
 			var decContext strings.Builder
 			for _, d := range m.tree.decisions {
 				answer := "(pending)"
@@ -592,25 +598,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				decContext.WriteString(fmt.Sprintf("%s [%s]: %s → %s\n", d.ID, d.Category, d.Question, answer))
 			}
 			go func() {
-				events := make(chan api.Event, 100)
-				sysPrompt := "You are the defer assistant. Help the user understand and manage project decisions. " +
-					"When the user references @DECISION-ID, answer about that specific decision. " +
-					"If the user wants to CHANGE a decision, respond with the new value clearly. " +
-					"Be concise.\n\nCurrent decisions:\n" + decContext.String()
-				go m.provider.RunCompletion(m.ctx, sysPrompt, text, events)
-				var resp string
-				for ev := range events {
-					if ev.Type == api.EventTextDelta {
-						resp += ev.Text
-					}
-					if ev.Type == api.EventDone || ev.Type == api.EventError {
-						break
-					}
-				}
-				if resp == "" {
-					resp = "(no response)"
-				}
-				ch <- ChatResponseMsg{Text: resp}
+				resp := runSimpleChat(ctx, m.provider, "You are the defer assistant. Help the user understand and manage project decisions. "+
+					"When the user references @DECISION-ID, answer about that specific decision. "+
+					"If the user wants to CHANGE a decision, respond with the new value clearly. "+
+					"Be concise.\n\nCurrent decisions:\n"+decContext.String(), text)
+				safeSend(ctx, ch, ChatResponseMsg{Text: resp})
 			}()
 			cmds = append(cmds, ListenForEvents(m.eventChan))
 		}
@@ -626,110 +618,66 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case WhyDecisionMsg:
-		// Launch async completion via subprocess
-		ch := m.eventChan
-		if m.provider != nil {
+		if m.provider != nil && !m.quitting {
+			ch := m.eventChan
+			ctx := m.ctx
 			go func() {
-				events := make(chan api.Event, 100)
-				go m.provider.RunCompletion(m.ctx,
+				resp := runSimpleChat(ctx, m.provider,
 					"Explain tradeoffs concisely.",
-					"Explain tradeoffs of choosing \""+msg.Label+"\" for decision "+msg.ID,
-					events)
-				var text string
-				for ev := range events {
-					if ev.Type == api.EventTextDelta {
-						text += ev.Text
-					}
-					if ev.Type == api.EventDone || ev.Type == api.EventError {
-						break
-					}
-				}
-				if text == "" {
-					text = "No response."
-				}
-				ch <- WhyResponseMsg{Text: text}
+					"Explain tradeoffs of choosing \""+msg.Label+"\" for decision "+msg.ID)
+				safeSend(ctx, ch, WhyResponseMsg{Text: resp})
 			}()
 		}
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 
 	case AskDecisionMsg:
-		ch := m.eventChan
-		if m.provider != nil {
+		if m.provider != nil && !m.quitting {
+			ch := m.eventChan
+			ctx := m.ctx
 			go func() {
-				events := make(chan api.Event, 100)
-				go m.provider.RunCompletion(m.ctx,
+				resp := runSimpleChat(ctx, m.provider,
 					"Answer concisely.",
-					"Question about decision "+msg.ID+": "+msg.Question,
-					events)
-				var text string
-				for ev := range events {
-					if ev.Type == api.EventTextDelta {
-						text += ev.Text
-					}
-					if ev.Type == api.EventDone || ev.Type == api.EventError {
-						break
-					}
-				}
-				if text == "" {
-					text = "No response."
-				}
-				ch <- WhyResponseMsg{Text: text}
+					"Question about decision "+msg.ID+": "+msg.Question)
+				safeSend(ctx, ch, WhyResponseMsg{Text: resp})
 			}()
 		}
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 
 	case SuggestDecisionMsg:
-		ch := m.eventChan
-		var question string
-		var currentOpts []string
-		for _, d := range m.tree.decisions {
-			if d.ID == msg.ID {
-				question = d.Question
-				for _, o := range d.Options {
-					currentOpts = append(currentOpts, o.Label)
+		if m.provider != nil && !m.quitting {
+			ch := m.eventChan
+			ctx := m.ctx
+			var question string
+			var currentOpts []string
+			for _, d := range m.tree.decisions {
+				if d.ID == msg.ID {
+					question = d.Question
+					for _, o := range d.Options {
+						currentOpts = append(currentOpts, o.Label)
+					}
+					break
 				}
-				break
 			}
-		}
-		prompt := fmt.Sprintf(`For the decision "%s", suggest exactly 4 COMPLETELY DIFFERENT alternatives.
+			prompt := fmt.Sprintf(`For the decision "%s", suggest exactly 4 COMPLETELY DIFFERENT alternatives.
 
 Current options (do NOT repeat these): %s
 
 Output ONLY a JSON array with 4 new, creative alternatives:
 [{"key": "A", "label": "new option 1"}, {"key": "B", "label": "new option 2"}, {"key": "C", "label": "new option 3"}, {"key": "D", "label": "new option 4"}]`, question, strings.Join(currentOpts, ", "))
 
-		suggestID := msg.ID
-		doSuggest := func(text string) {
-			opts := parseSuggestedOptions(text)
-			if len(opts) > 0 {
-				ch <- SuggestResponseMsg{ID: suggestID, Options: opts}
-			} else {
-				ch <- WhyResponseMsg{Text: text}
-			}
-		}
-
-		if m.provider != nil {
+			suggestID := msg.ID
 			go func() {
-				events := make(chan api.Event, 100)
-				go m.provider.RunCompletion(m.ctx,
+				resp := runSimpleChat(ctx, m.provider,
 					"You output JSON arrays of options. Nothing else.",
-					prompt,
-					events)
-				var text string
-				for ev := range events {
-					if ev.Type == api.EventTextDelta {
-						text += ev.Text
-					}
-					if ev.Type == api.EventDone || ev.Type == api.EventError {
-						break
-					}
+					prompt)
+				opts := parseSuggestedOptions(resp)
+				if len(opts) > 0 {
+					safeSend(ctx, ch, SuggestResponseMsg{ID: suggestID, Options: opts})
+				} else {
+					safeSend(ctx, ch, WhyResponseMsg{Text: resp})
 				}
-				if text == "" {
-					text = "No response."
-				}
-				doSuggest(text)
 			}()
 		}
 		cmds = append(cmds, ListenForEvents(m.eventChan))
@@ -1023,6 +971,26 @@ func stripJSONBlocks(text string) string {
 		}
 	}
 	return strings.Join(result, "\n")
+}
+
+// runSimpleChat runs a one-shot completion and returns the text response.
+// Blocks until done. Safe to call from goroutines — respects context cancellation.
+func runSimpleChat(ctx context.Context, provider api.Provider, systemPrompt, userPrompt string) string {
+	events := make(chan api.Event, 100)
+	go provider.RunCompletion(ctx, systemPrompt, userPrompt, events)
+	var text string
+	for ev := range events {
+		if ev.Type == api.EventTextDelta {
+			text += ev.Text
+		}
+		if ev.Type == api.EventDone || ev.Type == api.EventError {
+			break
+		}
+	}
+	if text == "" {
+		return "(no response)"
+	}
+	return text
 }
 
 func parseSuggestedOptions(text string) []decision.DecisionOption {

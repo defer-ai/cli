@@ -7,3 +7,7 @@ out/
 .env.local
 .env.production
 .DS_Store
+
+# Go
+go/defer
+dist/

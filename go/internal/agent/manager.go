@@ -11,12 +11,13 @@ import (
 
 // Manager coordinates decomposition and domain execution.
 type Manager struct {
-	provider  api.Provider
-	cwd       string
-	agent     *Agent
-	executors []*Executor
-	allDecs   []decision.Decision
-	store     *decision.DecisionStore
+	provider    api.Provider
+	cwd         string
+	agent       *Agent
+	executors   []*Executor
+	allDecs     []decision.Decision
+	store       *decision.DecisionStore
+	execCancel  context.CancelFunc // cancels the current executor run
 }
 
 // NewManager creates a manager.
@@ -44,7 +45,15 @@ func (m *Manager) Executors() []*Executor {
 }
 
 // LaunchExecutors starts per-domain execution. Runs sequentially in a goroutine.
+// Cancels any previously running executor before starting.
 func (m *Manager) LaunchExecutors(ctx context.Context, task string, decisions []decision.Decision, priorities map[string]CareLevel, onEvent func(Event)) {
+	// Cancel previous executor run if still active
+	if m.execCancel != nil {
+		m.execCancel()
+	}
+	execCtx, cancel := context.WithCancel(ctx)
+	m.execCancel = cancel
+
 	m.allDecs = make([]decision.Decision, len(decisions))
 	copy(m.allDecs, decisions)
 
@@ -91,9 +100,12 @@ func (m *Manager) LaunchExecutors(ctx context.Context, task string, decisions []
 			}
 		}()
 
-		unified.Execute(ctx)
-		m.persistDecisions(task)
-		onEvent(Event{Type: AllExecutorsDone})
+		unified.Execute(execCtx)
+		// Only report done if not cancelled (i.e., not replaced by a new launch)
+		if execCtx.Err() == nil {
+			m.persistDecisions(task)
+			onEvent(Event{Type: AllExecutorsDone})
+		}
 	}()
 }
 
@@ -187,15 +199,18 @@ func (m *Manager) SyncDecisions(treeDecs []decision.Decision) {
 }
 
 func (m *Manager) persistDecisions(task string) {
-	store, _ := decision.LoadStore(m.cwd)
-	if store == nil {
-		store, _ = decision.CreateStore(m.cwd, task)
+	store, err := decision.LoadStore(m.cwd)
+	if err != nil {
+		return // disk error, skip persistence
 	}
 	if store == nil {
-		return
+		store, err = decision.CreateStore(m.cwd, task)
+		if err != nil {
+			return
+		}
 	}
 	store.Decisions = m.AllDecisions()
-	decision.SaveStore(m.cwd, store)
+	_ = decision.SaveStore(m.cwd, store) // best-effort write
 }
 
 // GroupByCategory groups decisions by their category.

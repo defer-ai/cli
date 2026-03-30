@@ -10,6 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Version is set at build time via ldflags.
+var Version = "dev"
+
 var (
 	model    string
 	provider string
@@ -78,6 +81,7 @@ func init() {
 }
 
 func Execute() {
+	rootCmd.Version = Version
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

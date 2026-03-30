@@ -487,28 +487,6 @@ func TestOptionCursorBoundary(t *testing.T) {
 	}
 }
 
-func TestFeedModeIgnoresKeys(t *testing.T) {
-	tm := newTree(fiveDecisions())
-	tm.mode = tmFeed
-	cursorBefore := tm.cursor
-
-	// j/k should not change cursor in feed mode
-	tm, _ = updateTree(t, tm, keyRunes("j"))
-	if tm.cursor != cursorBefore {
-		t.Error("j in feed mode should not move cursor")
-	}
-
-	tm, _ = updateTree(t, tm, keyRunes("k"))
-	if tm.cursor != cursorBefore {
-		t.Error("k in feed mode should not move cursor")
-	}
-
-	tm, _ = updateTree(t, tm, keyEnter())
-	if tm.mode != tmFeed {
-		t.Error("enter in feed mode should not change mode")
-	}
-}
-
 func TestViewRendersAllModes(t *testing.T) {
 	modes := []struct {
 		name string
@@ -518,7 +496,7 @@ func TestViewRendersAllModes(t *testing.T) {
 		{"detail", tmDetail},
 		{"revise", tmRevise},
 		{"ask", tmAsk},
-		{"feed", tmFeed},
+		{"chat", tmChat},
 	}
 
 	for _, mm := range modes {

@@ -83,7 +83,11 @@ func (p *OpenAIProvider) RunCompletion(ctx context.Context, systemPrompt, userPr
 		Stream:      false,
 	}
 
-	body, _ := json.Marshal(req)
+	body, err := json.Marshal(req)
+	if err != nil {
+		events <- Event{Type: EventError, Error: fmt.Errorf("marshal request: %w", err)}
+		return
+	}
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.BaseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		events <- Event{Type: EventError, Error: err}
@@ -102,7 +106,11 @@ func (p *OpenAIProvider) RunCompletion(ctx context.Context, systemPrompt, userPr
 	}
 	defer resp.Body.Close()
 
-	data, _ := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		events <- Event{Type: EventError, Error: fmt.Errorf("read response: %w", err)}
+		return
+	}
 	if resp.StatusCode != 200 {
 		events <- Event{Type: EventError, Error: fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(data))}
 		return

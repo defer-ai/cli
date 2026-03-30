@@ -20,7 +20,6 @@ const (
 	tmDetail
 	tmRevise
 	tmAsk
-	tmFeed // legacy feed
 	tmChat // full-screen conversation
 )
 
@@ -42,12 +41,12 @@ type TreeModel struct {
 	whyText        string
 	width, height  int
 	mascotTick     int
-	feedLines      []string    // legacy feed (for tab view)
 	chatLog        []ChatEntry // conversation panel
 	chatInput      string      // current chat input
 	chatFocused    bool        // true = keys go to chat, false = keys go to tree
 	chatThinking   bool        // true while waiting for agent response
 	chatThinkStart time.Time   // when thinking started
+	activityLine   string      // last tool activity for status bar
 	mdRenderer     *glamour.TermRenderer
 }
 
@@ -116,15 +115,6 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 			}
 			return m, nil
 		}
-	}
-
-	// --- Feed mode (legacy, still accessible) ---
-	if m.mode == tmFeed {
-		if key == "tab" {
-			m.mode = tmTree
-			return m, nil
-		}
-		return m, nil
 	}
 
 	// --- Text input ---
@@ -351,60 +341,10 @@ func (m TreeModel) View() string {
 		h = 24
 	}
 
-	if m.mode == tmFeed {
-		return m.viewFeed()
-	}
 	if m.mode == tmDetail || m.mode == tmRevise || m.mode == tmAsk {
 		return m.viewDetail()
 	}
 	return m.viewTree()
-}
-
-// ========== FEED VIEW ==========
-func (m TreeModel) viewFeed() string {
-	w := m.width
-	if w < 40 {
-		w = 80
-	}
-	h := m.height
-	if h < 10 {
-		h = 24
-	}
-
-	innerWidth := w - 4
-	if innerWidth < 20 {
-		innerWidth = 20
-	}
-
-	var lines []string
-	lines = append(lines, "")
-
-	// Feed content area
-	feedH := h - 8 // top border + empty line + divider + footer + bottom border + buffer
-	if feedH < 3 {
-		feedH = 3
-	}
-
-	start := 0
-	if len(m.feedLines) > feedH {
-		start = len(m.feedLines) - feedH
-	}
-	visible := m.feedLines[start:]
-
-	for _, line := range visible {
-		lines = append(lines, "  "+DimStyle.Render(trunc(line, innerWidth-4)))
-	}
-	for i := len(visible); i < feedH; i++ {
-		lines = append(lines, "")
-	}
-
-	// Divider + footer
-	lines = append(lines, buildMiddleBorder(innerWidth))
-	footer := "  " + AccentStyle.Render("tab") + DimStyle.Render(" back to tree")
-	lines = append(lines, footer)
-
-	content := strings.Join(lines, "\n")
-	return buildBorderedBox(content, innerWidth, "Live Agent Feed", "")
 }
 
 // ========== FULL-SCREEN CHAT VIEW ==========
@@ -714,9 +654,8 @@ func (m TreeModel) viewTree() string {
 
 	// Activity line (single line, not a panel -- full chat is tab)
 	lines = append(lines, buildMiddleBorder(innerWidth))
-	if len(m.feedLines) > 0 {
-		lastActivity := m.feedLines[len(m.feedLines)-1]
-		lines = append(lines, "  "+DimStyle.Render(trunc(lastActivity, innerWidth-4)))
+	if m.activityLine != "" {
+		lines = append(lines, "  "+DimStyle.Render(trunc(m.activityLine, innerWidth-4)))
 	} else if m.chatThinking {
 		elapsed := time.Since(m.chatThinkStart)
 		timeStr := fmt.Sprintf("%.0fs", elapsed.Seconds())

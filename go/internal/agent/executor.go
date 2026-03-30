@@ -432,11 +432,9 @@ func (e *Executor) storeDecision(d decision.Decision) {
 		if existQ == newQ {
 			return
 		}
-		// Also check if one contains the other (catches rephrased duplicates)
-		if len(existQ) > 20 && len(newQ) > 20 {
-			if strings.Contains(newQ, existQ[:20]) || strings.Contains(existQ, newQ[:20]) {
-				return
-			}
+		// Word-level similarity: if 70%+ of words overlap, treat as duplicate
+		if questionsOverlap(newQ, existQ) {
+			return
 		}
 	}
 
@@ -543,7 +541,63 @@ func normalizeQuestion(q string) string {
 			break
 		}
 	}
+	// Collapse multiple spaces into one
+	for strings.Contains(result, "  ") {
+		result = strings.ReplaceAll(result, "  ", " ")
+	}
+	// Remove space before trailing punctuation
+	result = strings.TrimSpace(result)
+	for _, p := range []string{" ?", " !", " ."} {
+		result = strings.ReplaceAll(result, p, strings.TrimSpace(p))
+	}
 	return strings.ToLower(strings.TrimSpace(result))
+}
+
+// questionsOverlap returns true if two normalized questions share 70%+ of their significant words.
+// Ignores common stop words to focus on meaningful terms.
+func questionsOverlap(a, b string) bool {
+	stopWords := map[string]bool{
+		"a": true, "an": true, "the": true, "for": true, "to": true,
+		"of": true, "in": true, "on": true, "is": true, "be": true,
+		"and": true, "or": true, "what": true, "which": true, "how": true,
+		"should": true, "we": true, "use": true, "with": true, "this": true,
+	}
+
+	wordsA := significantWords(a, stopWords)
+	wordsB := significantWords(b, stopWords)
+	if len(wordsA) == 0 || len(wordsB) == 0 {
+		return false
+	}
+
+	// Count overlapping words
+	setB := make(map[string]bool, len(wordsB))
+	for _, w := range wordsB {
+		setB[w] = true
+	}
+	overlap := 0
+	for _, w := range wordsA {
+		if setB[w] {
+			overlap++
+		}
+	}
+
+	// Check overlap ratio against the smaller set
+	smaller := len(wordsA)
+	if len(wordsB) < smaller {
+		smaller = len(wordsB)
+	}
+	return float64(overlap)/float64(smaller) >= 0.7
+}
+
+func significantWords(s string, stop map[string]bool) []string {
+	var words []string
+	for _, w := range strings.Fields(s) {
+		w = strings.Trim(w, "?.,!:;\"'")
+		if len(w) > 1 && !stop[w] {
+			words = append(words, w)
+		}
+	}
+	return words
 }
 
 func (e *Executor) storeDecisions(decs []decision.Decision) {
