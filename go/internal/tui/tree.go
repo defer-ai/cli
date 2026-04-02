@@ -27,9 +27,10 @@ const (
 
 // ChatEntry is a line in the conversation panel.
 type ChatEntry struct {
-	Type     string // "tool", "agent", "user", "system", "action"
+	Type     string // "topic", "subtool", "tool", "agent", "user", "system", "action"
 	Text     string
-	Expanded bool // for agent messages: show full content (ctrl+o toggles)
+	Expanded bool       // for agent/topic messages: show full content (ctrl+o toggles)
+	Children []ChatEntry // for topics: subprocess calls that ran under this topic
 }
 
 // TreeModel is the main decision tree view.
@@ -147,9 +148,9 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	if m.mode == tmChat {
 		switch key {
 		case "ctrl+o":
-			// Toggle expand/collapse on the last agent message
+			// Toggle expand/collapse on the last topic (only topics are collapsible)
 			for i := len(m.chatLog) - 1; i >= 0; i-- {
-				if m.chatLog[i].Type == "agent" {
+				if m.chatLog[i].Type == "topic" {
 					m.chatLog[i].Expanded = !m.chatLog[i].Expanded
 					break
 				}
@@ -753,6 +754,8 @@ func (m TreeModel) viewChat() string {
 	}
 	const maxCollapsedLines = 6 // agent messages collapse after this many lines
 
+	const maxChildLines = 5 // collapse topic children after this many
+
 	var chatLines []string
 	for i, entry := range m.chatLog {
 		prevType := ""
@@ -760,14 +763,41 @@ func (m TreeModel) viewChat() string {
 			prevType = m.chatLog[i-1].Type
 		}
 
-		// Add separator between different message types (but not between consecutive tools)
-		needsSep := prevType != "" && prevType != entry.Type && !(prevType == "tool" && entry.Type == "tool")
+		// Add separator between different message types
+		needsSep := prevType != "" && prevType != entry.Type &&
+			!(prevType == "topic" && entry.Type == "topic") &&
+			!(prevType == "tool" && entry.Type == "tool")
 		if needsSep {
 			chatLines = append(chatLines, "")
 		}
 
 		switch entry.Type {
+		case "topic":
+			// Topics: white text, with icon
+			icon := toolIcon(entry.Text)
+			for _, wl := range wrapText(entry.Text, maxTextWidth-4) {
+				chatLines = append(chatLines, " "+BoldWhite.Render(icon+" "+wl))
+			}
+			// Render children (subtools) indented and grey
+			childCount := len(entry.Children)
+			showCount := childCount
+			if !entry.Expanded && childCount > maxChildLines {
+				showCount = maxChildLines
+			}
+			for ci := 0; ci < showCount; ci++ {
+				child := entry.Children[ci]
+				childIcon := toolIcon(child.Text)
+				for _, wl := range wrapText(child.Text, maxTextWidth-7) {
+					chatLines = append(chatLines, " "+DimStyle.Render("  "+childIcon+" "+wl))
+				}
+			}
+			if !entry.Expanded && childCount > maxChildLines {
+				remaining := childCount - maxChildLines
+				chatLines = append(chatLines, " "+DimStyle.Render(fmt.Sprintf("  ... %d more (ctrl+o to expand)", remaining)))
+			}
+
 		case "tool":
+			// Standalone tool (no parent topic)
 			icon := toolIcon(entry.Text)
 			for _, wl := range wrapText(entry.Text, maxTextWidth-5) {
 				chatLines = append(chatLines, " "+DimStyle.Render(" "+icon+" "+wl))
@@ -793,23 +823,13 @@ func (m TreeModel) viewChat() string {
 				renderedLines = wrapText(entry.Text, maxTextWidth-1)
 			}
 
-			// First non-empty line is the "title" (white), rest is grey
+			// First non-empty line is the "title" (white), rest is grey — no collapsing
 			titleDone := false
-			lineCount := 0
 			for _, rl := range renderedLines {
 				if !titleDone && strings.TrimSpace(rl) != "" {
 					chatLines = append(chatLines, " "+BoldWhite.Render(strings.TrimSpace(rl)))
 					titleDone = true
-					lineCount++
 					continue
-				}
-				lineCount++
-				if !entry.Expanded && lineCount > maxCollapsedLines {
-					remaining := len(renderedLines) - lineCount + 1
-					if remaining > 0 {
-						chatLines = append(chatLines, " "+DimStyle.Render(fmt.Sprintf("  ... %d more lines (ctrl+o to expand)", remaining)))
-					}
-					break
 				}
 				chatLines = append(chatLines, " "+DimStyle.Render(strings.TrimRight(rl, " ")))
 			}

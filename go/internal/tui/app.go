@@ -486,12 +486,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case ToolActivityMsg:
-		// Update activity line for tree status bar
 		m.tree.activityLine = msg.Description
-		// Add to chat log as tool activity
-		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "tool", Text: msg.Description})
-		if len(m.tree.chatLog) > 100 {
-			m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-100:]
+
+		// Skip "Waiting for input" — AskUserQuestion shouldn't surface
+		if strings.Contains(msg.Description, "Waiting for input") {
+			cmds = append(cmds, ListenForEvents(m.eventChan))
+			return m, tea.Batch(cmds...)
+		}
+
+		// Classify: topics (Agent, planning, high-level) vs subtools (Bash, Read, etc.)
+		isTopic := isTopicTool(msg.Description)
+
+		if isTopic {
+			// New topic — add as a top-level entry
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "topic", Text: msg.Description})
+		} else {
+			// Subtool — attach to the last topic as a child
+			attached := false
+			for i := len(m.tree.chatLog) - 1; i >= 0; i-- {
+				if m.tree.chatLog[i].Type == "topic" {
+					m.tree.chatLog[i].Children = append(m.tree.chatLog[i].Children, ChatEntry{Type: "subtool", Text: msg.Description})
+					attached = true
+					break
+				}
+			}
+			if !attached {
+				// No parent topic — show as standalone tool
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "tool", Text: msg.Description})
+			}
+		}
+
+		if len(m.tree.chatLog) > 200 {
+			m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-200:]
 		}
 		m.notifications.Push(msg.Description, NotifyLow, 3*time.Second)
 		cmds = append(cmds, ListenForEvents(m.eventChan))
@@ -1165,6 +1191,38 @@ func looksLikeTaskResponse(text string) bool {
 		if strings.Contains(lower, sig) {
 			return true
 		}
+	}
+	return false
+}
+
+// isTopicTool returns true if the tool description represents a high-level topic
+// (Agent spawn, planning) vs a subprocess call (Bash, Read, Write, etc.).
+func isTopicTool(desc string) bool {
+	lower := strings.ToLower(desc)
+	// Topics: agent spawns, planning, looking up tools
+	topicPrefixes := []string{
+		"explore", "research", "design", "build", "implement",
+		"plan", "investigate", "analyze", "check", "review",
+		"looking up", "planning approach",
+	}
+	for _, p := range topicPrefixes {
+		if strings.HasPrefix(lower, p) {
+			return true
+		}
+	}
+	// Subtools: running commands, reading/writing files, searching, fetching
+	subtoolPrefixes := []string{
+		"running:", "reading ", "creating ", "editing ", "searching ",
+		"finding ", "fetching ", "waiting", "plan complete",
+	}
+	for _, p := range subtoolPrefixes {
+		if strings.HasPrefix(lower, p) {
+			return false
+		}
+	}
+	// Default: if it looks like a sentence/description (Agent tool), it's a topic
+	if len(desc) > 20 && !strings.Contains(lower, "/") {
+		return true
 	}
 	return false
 }
