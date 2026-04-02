@@ -681,11 +681,11 @@ If the user is just chatting, greeting, or asking questions — respond naturall
 	case ChatResponseMsg:
 		m.tree.chatThinking = false
 
-		// Check if the response contains a defer-decisions block (task detected)
 		if m.task == "" {
+			// Check if response contains a defer-decisions block
 			decs := agent.ParseScanDecisions(msg.Text)
 			if len(decs) > 0 {
-				// Agent identified a task — extract the user's original message as the task
+				// Agent output decisions directly — use them
 				for i := len(m.tree.chatLog) - 1; i >= 0; i-- {
 					if m.tree.chatLog[i].Type == "user" {
 						m.task = m.tree.chatLog[i].Text
@@ -695,16 +695,40 @@ If the user is just chatting, greeting, or asking questions — respond naturall
 				if m.task == "" {
 					m.task = "(from conversation)"
 				}
-
-				// Show the non-decision part of the response
 				cleaned := stripJSONBlocks(msg.Text)
 				if strings.TrimSpace(cleaned) != "" {
 					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: cleaned})
 				}
-
-				// Trigger the decision flow
 				return m, func() tea.Msg {
 					return AgentDecisionsReadyMsg{Decisions: decs}
+				}
+			}
+
+			// No decisions block — check if the agent is planning something
+			// (substantive response to a substantive request = task detected)
+			if looksLikeTaskResponse(msg.Text) {
+				// Extract task from the conversation
+				var taskDesc string
+				for i := len(m.tree.chatLog) - 1; i >= 0; i-- {
+					if m.tree.chatLog[i].Type == "user" {
+						taskDesc = m.tree.chatLog[i].Text
+						break
+					}
+				}
+				if taskDesc != "" && len(taskDesc) > 10 {
+					m.task = taskDesc
+					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: msg.Text})
+					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Identifying decisions..."})
+
+					// Run full decomposition with the proper prompt
+					m.manager = agent.NewManager(m.provider, m.cwd)
+					ch := m.eventChan
+					ctx := m.ctx
+					m.manager.StartDecomposition(ctx, m.task, func(ev agent.Event) {
+						safeSend(ctx, ch, BridgeAgentEvent(ev))
+					})
+					cmds = append(cmds, ListenForEvents(m.eventChan))
+					return m, tea.Batch(cmds...)
 				}
 			}
 		}
@@ -944,6 +968,34 @@ func (m Model) computeOverallStatus() string {
 		return "done"
 	}
 	return "executing" // default to executing if executors exist but not all done
+}
+
+// looksLikeTaskResponse returns true if the agent's response indicates it's
+// planning or preparing to build something (as opposed to casual conversation).
+func looksLikeTaskResponse(text string) bool {
+	if len(text) < 100 {
+		return false // short responses are probably casual chat
+	}
+	lower := strings.ToLower(text)
+	// Planning/building signals
+	signals := []string{
+		"let me plan", "here's the plan", "here is the plan",
+		"i'll break this down", "let me break this",
+		"key decisions", "decisions we need", "decisions to make",
+		"architecture", "tech stack", "framework",
+		"here's what i", "here is what i",
+		"let me start", "i'll start by",
+		"first, we need", "first step",
+		"components", "features", "requirements",
+		"let's build", "we can build", "i'll build",
+		"implementation", "project structure",
+	}
+	for _, sig := range signals {
+		if strings.Contains(lower, sig) {
+			return true
+		}
+	}
+	return false
 }
 
 func extractShortStatus(output, fallback string) string {
