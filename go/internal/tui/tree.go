@@ -26,8 +26,9 @@ const (
 
 // ChatEntry is a line in the conversation panel.
 type ChatEntry struct {
-	Type string // "tool", "agent", "user", "system"
-	Text string
+	Type     string // "tool", "agent", "user", "system"
+	Text     string
+	Expanded bool // for agent messages: show full content (ctrl+o toggles)
 }
 
 // TreeModel is the main decision tree view.
@@ -123,6 +124,15 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	// --- Chat input mode (full screen chat via tmChat) ---
 	if m.mode == tmChat {
 		switch key {
+		case "ctrl+o":
+			// Toggle expand/collapse on the last agent message
+			for i := len(m.chatLog) - 1; i >= 0; i-- {
+				if m.chatLog[i].Type == "agent" {
+					m.chatLog[i].Expanded = !m.chatLog[i].Expanded
+					break
+				}
+			}
+			return m, nil
 		case "esc":
 			m.mode = tmTree
 			m.chatFocused = false
@@ -461,6 +471,35 @@ func (m TreeModel) updateCompletions() ([]string, int) {
 	return matches, -1
 }
 
+// toolIcon returns a contextual icon for a tool activity line.
+func toolIcon(text string) string {
+	lower := strings.ToLower(text)
+	switch {
+	case strings.HasPrefix(lower, "running:") || strings.HasPrefix(lower, "run:"):
+		return "$"
+	case strings.HasPrefix(lower, "reading"):
+		return "→"
+	case strings.HasPrefix(lower, "creating"):
+		return "+"
+	case strings.HasPrefix(lower, "editing"):
+		return "~"
+	case strings.HasPrefix(lower, "searching"), strings.HasPrefix(lower, "finding"):
+		return "?"
+	case strings.HasPrefix(lower, "fetching"):
+		return "↓"
+	case strings.HasPrefix(lower, "planning"):
+		return "◇"
+	case strings.HasPrefix(lower, "plan complete"):
+		return "◆"
+	case strings.HasPrefix(lower, "looking up"):
+		return "…"
+	case strings.HasPrefix(lower, "waiting"):
+		return "⏳"
+	default:
+		return "↳"
+	}
+}
+
 func trunc(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -597,6 +636,8 @@ func (m TreeModel) viewChat() string {
 	if maxTextWidth < 20 {
 		maxTextWidth = 20
 	}
+	const maxCollapsedLines = 6 // agent messages collapse after this many lines
+
 	var chatLines []string
 	for i, entry := range m.chatLog {
 		prevType := ""
@@ -612,48 +653,65 @@ func (m TreeModel) viewChat() string {
 
 		switch entry.Type {
 		case "tool":
-			// Indented with arrow prefix, visually nested under parent context
-			for _, wl := range wrapText(entry.Text, maxTextWidth-6) {
-				chatLines = append(chatLines, "  "+DimStyle.Render(" ↳ "+wl))
+			icon := toolIcon(entry.Text)
+			for _, wl := range wrapText(entry.Text, maxTextWidth-5) {
+				chatLines = append(chatLines, " "+DimStyle.Render(" "+icon+" "+wl))
 			}
+
 		case "agent":
-			// Render markdown
+			// Render agent response: first line white (title), rest grey (collapsible)
+			var renderedLines []string
 			if m.mdRenderer != nil {
 				if md, err := m.mdRenderer.Render(entry.Text); err == nil {
 					for _, ml := range strings.Split(strings.TrimRight(md, "\n"), "\n") {
 						visWidth := lipgloss.Width(ml)
 						if visWidth > maxTextWidth {
-							for _, wl := range wrapText(ml, maxTextWidth) {
-								chatLines = append(chatLines, wl)
-							}
+							renderedLines = append(renderedLines, wrapText(ml, maxTextWidth)...)
 						} else {
-							chatLines = append(chatLines, ml)
+							renderedLines = append(renderedLines, ml)
 						}
 					}
+				}
+			}
+			if len(renderedLines) == 0 {
+				// Fallback: plain text
+				renderedLines = wrapText(entry.Text, maxTextWidth-1)
+			}
+
+			// First non-empty line is the "title" (white), rest is grey
+			titleDone := false
+			lineCount := 0
+			for _, rl := range renderedLines {
+				if !titleDone && strings.TrimSpace(rl) != "" {
+					chatLines = append(chatLines, " "+BoldWhite.Render(strings.TrimSpace(rl)))
+					titleDone = true
+					lineCount++
 					continue
 				}
-			}
-			// Fallback: wrap plain text
-			wrapped := wrapText(entry.Text, maxTextWidth-2)
-			for i, wl := range wrapped {
-				if i == 0 {
-					chatLines = append(chatLines, " "+AccentStyle.Render("● ")+wl)
-				} else {
-					chatLines = append(chatLines, "   "+wl)
+				lineCount++
+				if !entry.Expanded && lineCount > maxCollapsedLines {
+					remaining := len(renderedLines) - lineCount + 1
+					if remaining > 0 {
+						chatLines = append(chatLines, " "+DimStyle.Render(fmt.Sprintf("  ... %d more lines (ctrl+o to expand)", remaining)))
+					}
+					break
 				}
+				chatLines = append(chatLines, " "+DimStyle.Render(strings.TrimRight(rl, " ")))
 			}
+
 		case "user":
 			chatLines = append(chatLines, "")
 			wrapped := wrapText(entry.Text, maxTextWidth-6)
-			for i, wl := range wrapped {
+			for j, wl := range wrapped {
 				styledLine := UserMsgStyle.Render(" " + wl + " ")
-				if i == 0 {
+				if j == 0 {
 					chatLines = append(chatLines, " "+UserMsgStyle.Render(" > ")+styledLine)
 				} else {
 					chatLines = append(chatLines, " "+UserMsgStyle.Render("   ")+styledLine)
 				}
 			}
 			chatLines = append(chatLines, "")
+
 		default:
 			// System messages rendered dim
 			for _, wl := range wrapText(entry.Text, maxTextWidth) {
