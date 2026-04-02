@@ -148,7 +148,7 @@ func setupAtTreeNoExecutors(t *testing.T, decs []decision.Decision) Model {
 
 // --- tests ---
 
-func TestConversationToDecomposing(t *testing.T) {
+func TestConversationStartsInChatMode(t *testing.T) {
 	m := NewModel("", nil, t.TempDir())
 
 	if m.view != ViewConversation {
@@ -166,16 +166,16 @@ func TestConversationToDecomposing(t *testing.T) {
 		t.Fatalf("dimensions = %dx%d, want 120x40", m.width, m.height)
 	}
 
-	// Type "build a todo app" character by character into the chat input
-	for _, ch := range "build a todo app" {
+	// Type "hey" into the chat input
+	for _, ch := range "hey" {
 		m, _ = updateModel(t, m, keyRunes(string(ch)))
 	}
 
-	if m.tree.chatInput.Value() != "build a todo app" {
-		t.Fatalf("chatInput = %q, want %q", m.tree.chatInput.Value(), "build a todo app")
+	if m.tree.chatInput.Value() != "hey" {
+		t.Fatalf("chatInput = %q, want %q", m.tree.chatInput.Value(), "hey")
 	}
 
-	// Press enter -- the chat should produce a ChatMessageMsg, which becomes TaskSubmittedMsg
+	// Press enter -- should produce ChatMessageMsg (goes to agent, not decomposition)
 	var cmd tea.Cmd
 	m, cmd = updateModel(t, m, keyEnter())
 
@@ -184,19 +184,53 @@ func TestConversationToDecomposing(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected ChatMessageMsg, got %T", msg)
 	}
-	if cmm.Text != "build a todo app" {
-		t.Fatalf("text = %q, want %q", cmm.Text, "build a todo app")
+	if cmm.Text != "hey" {
+		t.Fatalf("text = %q, want %q", cmm.Text, "hey")
 	}
 
-	// Processing the ChatMessageMsg when no task is set should produce TaskSubmittedMsg
-	m, cmd = updateModel(t, m, cmm)
-	msg = processCmd(t, cmd)
-	tsm, ok := msg.(TaskSubmittedMsg)
-	if !ok {
-		t.Fatalf("expected TaskSubmittedMsg, got %T", msg)
+	// The message should appear in chat log
+	found := false
+	for _, entry := range m.tree.chatLog {
+		if entry.Type == "user" && entry.Text == "hey" {
+			found = true
+		}
 	}
-	if tsm.Task != "build a todo app" {
-		t.Fatalf("task = %q, want %q", tsm.Task, "build a todo app")
+	if !found {
+		t.Fatal("chat log should contain the user message")
+	}
+
+	// Task should NOT be set (casual chat doesn't trigger decomposition)
+	if m.task != "" {
+		t.Errorf("task should be empty after casual chat, got %q", m.task)
+	}
+}
+
+func TestChatResponseWithDecisionsTriggersFlow(t *testing.T) {
+	m := NewModel("", nil, t.TempDir())
+
+	// Simulate a chat response that contains decisions
+	m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "user", Text: "build a todo app"})
+
+	resp := "Here are the decisions:\n\n```defer-decisions\n" +
+		`[{"category": "Stack", "question": "Backend?", "options": [{"key": "A", "label": "Go"}, {"key": "B", "label": "Choose for me"}], "context": "Backend choice"}]` +
+		"\n```\n"
+
+	var cmd tea.Cmd
+	m, cmd = updateModel(t, m, ChatResponseMsg{Text: resp})
+
+	// Should detect decisions and trigger AgentDecisionsReadyMsg
+	msg := processCmd(t, cmd)
+	adm, ok := msg.(AgentDecisionsReadyMsg)
+	if !ok {
+		t.Fatalf("expected AgentDecisionsReadyMsg, got %T", msg)
+	}
+	if len(adm.Decisions) != 1 {
+		t.Fatalf("expected 1 decision, got %d", len(adm.Decisions))
+	}
+
+	// Task should be set from the last user message
+	if m.task != "build a todo app" {
+		t.Errorf("task = %q, want %q", m.task, "build a todo app")
 	}
 
 	// We don't process TaskSubmittedMsg further because it triggers decomposition

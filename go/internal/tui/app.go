@@ -632,33 +632,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ChatMessageMsg:
 		text := msg.Text
 
-		// If no task set yet, first message becomes the task
-		if m.task == "" {
-			return m, func() tea.Msg { return TaskSubmittedMsg{Task: text} }
-		}
-
 		// Check for direct change commands: "@STACK-001 change to Go with Gin"
 		if changed := m.tryParseChangeCommand(text); changed {
 			return m, nil
 		}
 
-		// Otherwise send to agent as a question
+		// Send to agent — system prompt adapts based on whether we have a task
 		if m.provider != nil && !m.quitting {
 			ch := m.eventChan
 			ctx := m.ctx
-			var decContext strings.Builder
-			for _, d := range m.tree.decisions {
-				answer := "(pending)"
-				if d.Answer != nil {
-					answer = *d.Answer
+
+			var sysPrompt string
+			if m.task == "" {
+				// No task yet — conversational mode with task detection
+				sysPrompt = `You are defer, a zero-autonomy AI assistant. Have a natural conversation with the user.
+
+If the user describes a project, feature, or task they want built, respond by identifying the key decisions that need to be made. Output them in a ` + "```defer-decisions" + ` JSON block:
+
+` + "```defer-decisions" + `
+[{"category": "Stack", "question": "Backend framework?", "options": [{"key": "A", "label": "Express"}, {"key": "B", "label": "FastAPI"}, {"key": "C", "label": "Choose for me"}], "context": "Why it matters", "impact": 8, "dependsOn": []}]
+` + "```" + `
+
+If the user is just chatting, greeting, or asking questions — respond naturally. Do NOT output a defer-decisions block unless the user describes something to build.`
+			} else {
+				// Task active — decision management mode
+				var decContext strings.Builder
+				for _, d := range m.tree.decisions {
+					answer := "(pending)"
+					if d.Answer != nil {
+						answer = *d.Answer
+					}
+					decContext.WriteString(fmt.Sprintf("%s [%s]: %s → %s\n", d.ID, d.Category, d.Question, answer))
 				}
-				decContext.WriteString(fmt.Sprintf("%s [%s]: %s → %s\n", d.ID, d.Category, d.Question, answer))
+				sysPrompt = "You are the defer assistant. Help the user understand and manage project decisions. " +
+					"When the user references @DECISION-ID, answer about that specific decision. " +
+					"If the user wants to CHANGE a decision, respond with the new value clearly. " +
+					"Be concise.\n\nCurrent decisions:\n" + decContext.String()
 			}
+
 			go func() {
-				resp := runSimpleChat(ctx, m.provider, "You are the defer assistant. Help the user understand and manage project decisions. "+
-					"When the user references @DECISION-ID, answer about that specific decision. "+
-					"If the user wants to CHANGE a decision, respond with the new value clearly. "+
-					"Be concise.\n\nCurrent decisions:\n"+decContext.String(), text)
+				resp := runSimpleChat(ctx, m.provider, sysPrompt, text)
 				safeSend(ctx, ch, ChatResponseMsg{Text: resp})
 			}()
 			cmds = append(cmds, ListenForEvents(m.eventChan))
@@ -667,9 +680,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ChatResponseMsg:
 		m.tree.chatThinking = false
+
+		// Check if the response contains a defer-decisions block (task detected)
+		if m.task == "" {
+			decs := agent.ParseScanDecisions(msg.Text)
+			if len(decs) > 0 {
+				// Agent identified a task — extract the user's original message as the task
+				for i := len(m.tree.chatLog) - 1; i >= 0; i-- {
+					if m.tree.chatLog[i].Type == "user" {
+						m.task = m.tree.chatLog[i].Text
+						break
+					}
+				}
+				if m.task == "" {
+					m.task = "(from conversation)"
+				}
+
+				// Show the non-decision part of the response
+				cleaned := stripJSONBlocks(msg.Text)
+				if strings.TrimSpace(cleaned) != "" {
+					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: cleaned})
+				}
+
+				// Trigger the decision flow
+				return m, func() tea.Msg {
+					return AgentDecisionsReadyMsg{Decisions: decs}
+				}
+			}
+		}
+
+		// Normal chat response
 		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: msg.Text})
-		if len(m.tree.chatLog) > 100 {
-			m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-100:]
+		if len(m.tree.chatLog) > 200 {
+			m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-200:]
 		}
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)

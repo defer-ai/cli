@@ -159,6 +159,7 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 				input := strings.TrimSpace(m.chatInput.Value())
 				m.chatLog = append(m.chatLog, ChatEntry{Type: "user", Text: input})
 				m.chatInput.Reset()
+				m.chatInput.Focus() // keep input focused after sending
 				m.chatThinking = true
 				m.chatThinkStart = time.Now()
 				m.completions = nil
