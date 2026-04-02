@@ -19,6 +19,7 @@ var (
 	YellowStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	MagentaStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
 	RedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	BlueStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
 
 	// Border colors
 	BorderColor       = lipgloss.Color("240")

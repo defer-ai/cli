@@ -4,41 +4,44 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 // WelcomeModel is the initial screen where the user describes their project.
 type WelcomeModel struct {
-	input         string
+	input         textinput.Model
 	width, height int
 	mascotTick    int
 }
 
 func NewWelcomeModel() WelcomeModel {
-	return WelcomeModel{}
+	ti := textinput.New()
+	ti.Placeholder = "Describe your project..."
+	ti.PromptStyle = AccentStyle
+	ti.TextStyle = lipgloss.NewStyle()
+	ti.PlaceholderStyle = DimStyle
+	ti.Cursor.Style = AccentStyle
+	ti.Focus()
+	return WelcomeModel{input: ti}
 }
 
 func (m WelcomeModel) Update(msg tea.Msg) (WelcomeModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "enter":
-			task := strings.TrimSpace(m.input)
+		if msg.String() == "enter" {
+			task := strings.TrimSpace(m.input.Value())
 			if task != "" {
 				return m, func() tea.Msg { return TaskSubmittedMsg{Task: task} }
 			}
-		case "backspace":
-			if len(m.input) > 0 {
-				m.input = m.input[:len(m.input)-1]
-			}
-		default:
-			if len(msg.String()) == 1 {
-				m.input += msg.String()
-			}
+			return m, nil
 		}
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return m, cmd
 }
 
 func (m WelcomeModel) View() string {
@@ -84,21 +87,29 @@ func (m WelcomeModel) View() string {
 	lines = append(lines, "     "+DimStyle.Render("cwd "+cwd))
 	lines = append(lines, "")
 
-	// Input box (bordered)
-	inputContent := AccentStyle.Render("> ") + m.input + AccentStyle.Render("_")
+	// Input via textinput component
+	m.input.Width = innerWidth - 8
+	if m.input.Width < 10 {
+		m.input.Width = 10
+	}
+
+	inputView := m.input.View()
+
+	border := lipgloss.RoundedBorder()
+	bStyle := lipgloss.NewStyle().Foreground(BorderColor)
 	inputBoxWidth := innerWidth - 6
 	if inputBoxWidth < 10 {
 		inputBoxWidth = 10
 	}
-	inputPad := inputBoxWidth - lipgloss.Width(inputContent)
+
+	inputVisWidth := lipgloss.Width(inputView)
+	inputPad := inputBoxWidth - inputVisWidth
 	if inputPad < 0 {
 		inputPad = 0
 	}
 
-	border := lipgloss.RoundedBorder()
-	bStyle := lipgloss.NewStyle().Foreground(BorderColor)
 	inputTop := "  " + bStyle.Render(border.TopLeft) + bStyle.Render(strings.Repeat(border.Top, inputBoxWidth+2)) + bStyle.Render(border.TopRight)
-	inputMid := "  " + bStyle.Render(border.Left) + " " + inputContent + strings.Repeat(" ", inputPad) + " " + bStyle.Render(border.Right)
+	inputMid := "  " + bStyle.Render(border.Left) + " " + inputView + strings.Repeat(" ", inputPad) + " " + bStyle.Render(border.Right)
 	inputBot := "  " + bStyle.Render(border.BottomLeft) + bStyle.Render(strings.Repeat(border.Bottom, inputBoxWidth+2)) + bStyle.Render(border.BottomRight)
 
 	lines = append(lines, inputTop)

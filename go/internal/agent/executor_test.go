@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/defer-ai/cli/internal/decision"
@@ -399,6 +400,170 @@ func TestParseImplicitChoicesEmptyQuestion(t *testing.T) {
 	decs := e.parseImplicitChoices(input)
 	if len(decs) != 0 {
 		t.Errorf("expected 0 decisions (empty question), got %d", len(decs))
+	}
+}
+
+func TestUpdateDecision(t *testing.T) {
+	existing := []decision.Decision{
+		{ID: "STACK-001", Category: "Stack", Question: "Backend language?", Answer: nil, Source: "user"},
+		{ID: "DATA-001", Category: "Data", Question: "Database?", Answer: strPtr("PostgreSQL"), Source: "agent"},
+	}
+
+	e := makeTestExecutor(existing, []string{"Stack", "Data"}, nil)
+
+	// Update existing pending decision
+	ok := e.UpdateDecision("STACK-001", "Go with Gin")
+	if !ok {
+		t.Fatal("UpdateDecision should return true for existing ID")
+	}
+
+	decs := *e.allDecisions
+	if decs[0].Answer == nil || *decs[0].Answer != "Go with Gin" {
+		t.Errorf("STACK-001 answer = %v, want 'Go with Gin'", decs[0].Answer)
+	}
+	if decs[0].Source != "agent" {
+		t.Errorf("STACK-001 source = %q, want 'agent'", decs[0].Source)
+	}
+}
+
+func TestUpdateDecisionOverwrite(t *testing.T) {
+	existing := []decision.Decision{
+		{ID: "DATA-001", Category: "Data", Question: "Database?", Answer: strPtr("PostgreSQL"), Source: "auto"},
+	}
+
+	e := makeTestExecutor(existing, []string{"Data"}, nil)
+
+	ok := e.UpdateDecision("DATA-001", "SQLite")
+	if !ok {
+		t.Fatal("UpdateDecision should return true for existing ID")
+	}
+
+	decs := *e.allDecisions
+	if *decs[0].Answer != "SQLite" {
+		t.Errorf("DATA-001 answer = %q, want 'SQLite'", *decs[0].Answer)
+	}
+	if decs[0].Source != "agent" {
+		t.Errorf("DATA-001 source = %q, want 'agent'", decs[0].Source)
+	}
+}
+
+func TestUpdateDecisionNotFound(t *testing.T) {
+	existing := []decision.Decision{
+		{ID: "STACK-001", Category: "Stack", Question: "Language?"},
+	}
+
+	e := makeTestExecutor(existing, []string{"Stack"}, nil)
+
+	ok := e.UpdateDecision("NONEXISTENT-999", "anything")
+	if ok {
+		t.Fatal("UpdateDecision should return false for nonexistent ID")
+	}
+}
+
+func TestScanInlineDecisions(t *testing.T) {
+	existing := []decision.Decision{
+		{ID: "STACK-001", Category: "Stack", Question: "Backend language?", Answer: nil},
+		{ID: "DATA-001", Category: "Data", Question: "Database?", Answer: nil},
+	}
+
+	e := makeTestExecutor(existing, []string{"Stack", "Data"}, nil)
+
+	text := `I've decided on the following:
+DECISION: STACK-001 = Go with Gin
+Some other text here.
+DECISION: DATA-001 = PostgreSQL with pgx`
+
+	e.scanInlineDecisions(text)
+
+	decs := *e.allDecisions
+	if decs[0].Answer == nil || *decs[0].Answer != "Go with Gin" {
+		t.Errorf("STACK-001 answer = %v, want 'Go with Gin'", decs[0].Answer)
+	}
+	if decs[1].Answer == nil || *decs[1].Answer != "PostgreSQL with pgx" {
+		t.Errorf("DATA-001 answer = %v, want 'PostgreSQL with pgx'", decs[1].Answer)
+	}
+}
+
+func TestScanInlineDecisionsNoMatch(t *testing.T) {
+	existing := []decision.Decision{
+		{ID: "STACK-001", Category: "Stack", Question: "Backend language?", Answer: nil},
+	}
+
+	e := makeTestExecutor(existing, []string{"Stack"}, nil)
+
+	// Text with no DECISION patterns
+	e.scanInlineDecisions("just some regular text without any decision markers")
+
+	decs := *e.allDecisions
+	if decs[0].Answer != nil {
+		t.Errorf("STACK-001 should still be pending, got %v", *decs[0].Answer)
+	}
+}
+
+func TestScanInlineDecisionsPartialMatch(t *testing.T) {
+	existing := []decision.Decision{
+		{ID: "STACK-001", Category: "Stack", Question: "Backend language?", Answer: nil},
+	}
+
+	e := makeTestExecutor(existing, []string{"Stack"}, nil)
+
+	// Only one decision matches an existing ID
+	text := `DECISION: STACK-001 = Rust
+DECISION: MISSING-999 = something`
+
+	e.scanInlineDecisions(text)
+
+	decs := *e.allDecisions
+	if decs[0].Answer == nil || *decs[0].Answer != "Rust" {
+		t.Errorf("STACK-001 answer = %v, want 'Rust'", decs[0].Answer)
+	}
+}
+
+func TestInlineDecisionRegex(t *testing.T) {
+	tests := []struct {
+		input  string
+		wantID string
+		wantAn string
+	}{
+		{"DECISION: STACK-001 = Go with Gin", "STACK-001", "Go with Gin"},
+		{"DECISION:  DATA-042  =  PostgreSQL ", "DATA-042", "PostgreSQL"},
+		{"DECISION: UI-001 = Tailwind CSS v4", "UI-001", "Tailwind CSS v4"},
+	}
+
+	for _, tt := range tests {
+		m := inlineDecisionRe.FindStringSubmatch(tt.input)
+		if m == nil {
+			t.Errorf("no match for %q", tt.input)
+			continue
+		}
+		if len(m) != 3 {
+			t.Errorf("expected 3 groups for %q, got %d", tt.input, len(m))
+			continue
+		}
+		gotID := strings.TrimSpace(m[1])
+		gotAn := strings.TrimSpace(m[2])
+		if gotID != tt.wantID {
+			t.Errorf("input %q: ID = %q, want %q", tt.input, gotID, tt.wantID)
+		}
+		if gotAn != tt.wantAn {
+			t.Errorf("input %q: answer = %q, want %q", tt.input, gotAn, tt.wantAn)
+		}
+	}
+}
+
+func TestInlineDecisionRegexNoMatch(t *testing.T) {
+	noMatch := []string{
+		"regular text",
+		"DECISION: no-match = something",     // lowercase ID
+		"DECISION: 123 = something",           // no prefix
+		"decision: STACK-001 = something",     // lowercase DECISION
+	}
+
+	for _, input := range noMatch {
+		m := inlineDecisionRe.FindStringSubmatch(input)
+		if m != nil {
+			t.Errorf("should not match %q, but got %v", input, m)
+		}
 	}
 }
 

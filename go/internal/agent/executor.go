@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,10 @@ import (
 	"github.com/defer-ai/cli/internal/api"
 	"github.com/defer-ai/cli/internal/decision"
 )
+
+// inlineDecisionRe matches patterns like "DECISION: STACK-001 = Go with Gin" in executor output.
+var inlineDecisionRe = regexp.MustCompile(`DECISION:\s*([A-Z]+-\d+)\s*=\s*(.+)`)
+
 
 // DomainStatus tracks executor progress.
 type DomainStatus int
@@ -251,6 +256,9 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 			}
 			e.mu.Unlock()
 			e.onEvent(Event{Type: ExecStateChanged, ExecutorID: e.state.ID})
+
+			// Scan for inline decision updates (e.g. "DECISION: STACK-001 = Go with Gin")
+			e.scanInlineDecisions(ev.Text)
 
 		case api.EventToolCallStart:
 			if ev.ToolCall != nil {
@@ -603,6 +611,37 @@ func significantWords(s string, stop map[string]bool) []string {
 func (e *Executor) storeDecisions(decs []decision.Decision) {
 	for _, d := range decs {
 		e.storeDecision(d)
+	}
+}
+
+// UpdateDecision finds a decision in allDecisions by ID and updates its answer.
+// Sets the source to "agent". Returns true if the decision was found and updated.
+func (e *Executor) UpdateDecision(id string, answer string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for i := range *e.allDecisions {
+		if (*e.allDecisions)[i].ID == id {
+			(*e.allDecisions)[i].Answer = &answer
+			(*e.allDecisions)[i].Source = "agent"
+			return true
+		}
+	}
+	return false
+}
+
+// scanInlineDecisions scans text for patterns like "DECISION: STACK-001 = Go with Gin"
+// and calls UpdateDecision for each match.
+func (e *Executor) scanInlineDecisions(text string) {
+	matches := inlineDecisionRe.FindAllStringSubmatch(text, -1)
+	for _, m := range matches {
+		if len(m) == 3 {
+			id := strings.TrimSpace(m[1])
+			answer := strings.TrimSpace(m[2])
+			if id != "" && answer != "" {
+				e.UpdateDecision(id, answer)
+			}
+		}
 	}
 }
 

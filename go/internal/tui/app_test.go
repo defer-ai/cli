@@ -166,8 +166,8 @@ func TestWelcomeToDecomposing(t *testing.T) {
 		m, _ = updateModel(t, m, keyRunes(string(ch)))
 	}
 
-	if m.welcome.input != "build a todo app" {
-		t.Fatalf("welcome.input = %q, want %q", m.welcome.input, "build a todo app")
+	if m.welcome.input.Value() != "build a todo app" {
+		t.Fatalf("welcome.input = %q, want %q", m.welcome.input.Value(), "build a todo app")
 	}
 
 	// Press enter -- the welcome model should produce a TaskSubmittedMsg via cmd

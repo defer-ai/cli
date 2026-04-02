@@ -47,8 +47,8 @@ type Model struct {
 	cancel    context.CancelFunc
 
 	// State
-	mascotTick      int
-	reasoningLines  []string
+	mascotTick        int
+	notifications     *NotificationManager
 	executorsLaunched bool
 	lastCtrlC       time.Time
 	quitting        bool // set on double ctrl+c, prevents new goroutine spawns
@@ -70,8 +70,10 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 		ctx:              ctx,
 		cancel:           cancel,
 		domainPriorities: make(map[string]agent.CareLevel),
+		notifications:    NewNotificationManager(),
 	}
 
+	m.tree.domainStatuses = make(map[string]string)
 	m.manager = agent.NewManager(provider, cwd)
 
 	// Check for existing session to resume (only if no new task given)
@@ -166,8 +168,10 @@ func NewScanModel(provider api.Provider, cwd string) Model {
 		ctx:              ctx,
 		cancel:           cancel,
 		domainPriorities: make(map[string]agent.CareLevel),
+		notifications:    NewNotificationManager(),
 		view:             ViewDecomposing,
 	}
+	m.tree.domainStatuses = make(map[string]string)
 	m.manager = agent.NewManager(provider, cwd)
 
 	// Start scan in background
@@ -294,10 +298,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			m.lastCtrlC = now
-			m.reasoningLines = append(m.reasoningLines, "Press Ctrl+C again to exit.")
-			if len(m.reasoningLines) > 20 {
-				m.reasoningLines = m.reasoningLines[len(m.reasoningLines)-20:]
-			}
+			m.notifications.Push("Press Ctrl+C again to exit.", NotifyMedium, 3*time.Second)
 			return m, nil
 		}
 
@@ -305,6 +306,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mascotTick++
 		m.welcome.mascotTick = m.mascotTick
 		m.tree.mascotTick = m.mascotTick
+		m.notifications.Tick()
 		return m, DoTick()
 
 	case TaskSubmittedMsg:
@@ -326,10 +328,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cleaned := stripJSONBlocks(st.Output)
 				if cleaned != "" {
 					lines := strings.Split(cleaned, "\n")
-					if len(lines) > 6 {
-						lines = lines[len(lines)-6:]
+					if len(lines) > 0 {
+						last := strings.TrimSpace(lines[len(lines)-1])
+						if last != "" {
+							m.notifications.Push(last, NotifyLow, 3*time.Second)
+						}
 					}
-					m.reasoningLines = lines
 				}
 			}
 		}
@@ -437,16 +441,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.manager != nil {
 			// Only update the status line, NOT the feed
 			// Feed is populated exclusively by ToolActivityMsg (real tool calls)
-			var lines []string
 			for _, exec := range m.manager.Executors() {
 				st := exec.State()
 				if st.Status == agent.DomainExecuting || st.Status == agent.DomainPlanning || st.Status == agent.DomainVerifying {
 					status := extractShortStatus(st.Output, st.Status.String())
-					lines = append(lines, "["+st.Domain+"] "+status)
+					m.notifications.Push("["+st.Domain+"] "+status, NotifyLow, 3*time.Second)
 				}
-			}
-			if len(lines) > 0 {
-				m.reasoningLines = lines
+				// Update per-domain status pills
+				m.tree.domainStatuses[st.Domain] = st.Status.String()
 			}
 			m.tree.overallStatus = m.computeOverallStatus()
 		}
@@ -461,10 +463,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.tree.chatLog) > 100 {
 			m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-100:]
 		}
-		m.reasoningLines = append(m.reasoningLines, msg.Description)
-		if len(m.reasoningLines) > 20 {
-			m.reasoningLines = m.reasoningLines[len(m.reasoningLines)-20:]
-		}
+		m.notifications.Push(msg.Description, NotifyLow, 3*time.Second)
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 
@@ -488,7 +487,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AllExecutorsDoneMsg:
 		m.tree.overallStatus = "done"
-		m.reasoningLines = append(m.reasoningLines, "All domains complete.")
+		m.notifications.Push("All domains complete.", NotifyHigh, 0)
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 
@@ -522,7 +521,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.executorsLaunched && changedDecision != "" {
 			m.executorsLaunched = false // allow re-launch
 			m.tree.overallStatus = "executing"
-			m.reasoningLines = append(m.reasoningLines, fmt.Sprintf("Decision changed: %s. Re-implementing...", trunc(changedDecision, 40)))
+			m.notifications.Push(fmt.Sprintf("Decision changed: %s. Re-implementing...", trunc(changedDecision, 40)), NotifyMedium, 5*time.Second)
 			// Re-launch executor with updated decisions
 			ch := m.eventChan
 			ctx := m.ctx
@@ -553,7 +552,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				})
 				m.executorsLaunched = true
 				m.tree.overallStatus = "executing"
-				m.reasoningLines = append(m.reasoningLines, "All decisions answered. Launching executors...")
+				m.notifications.Push("All decisions answered. Launching executors...", NotifyMedium, 5*time.Second)
 				cmds = append(cmds, ListenForEvents(m.eventChan))
 				return m, tea.Batch(cmds...)
 			}
@@ -766,16 +765,9 @@ func (m Model) viewDecomposing() string {
 	lines = append(lines, "     "+AccentStyle.Render("Analyzing task..."))
 	lines = append(lines, "")
 
-	// Show reasoning lines if available
-	if len(m.reasoningLines) > 0 {
-		maxShow := 4
-		start := len(m.reasoningLines) - maxShow
-		if start < 0 {
-			start = 0
-		}
-		for _, rl := range m.reasoningLines[start:] {
-			lines = append(lines, "     "+DimStyle.Render(trunc(rl, innerWidth-8)))
-		}
+	// Show current notification if available
+	if notif := m.notifications.Render(innerWidth - 8); notif != "" {
+		lines = append(lines, "     "+notif)
 	}
 
 	// Fill remaining space

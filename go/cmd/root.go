@@ -28,6 +28,13 @@ var rootCmd = &cobra.Command{
 you care about each domain, and implements everything while you watch
 and challenge in real-time.
 
+Workflow:
+  1. Describe your project        defer "build a REST API"
+  2. Set care levels per domain   skip / low / medium / high / paranoid
+  3. Inspect & challenge           navigate tree, chat with @ID references
+  4. Watch implementation          executor plans, implements, verifies
+  5. Everything tracked            DECISIONS.md + .defer/decisions.json
+
 Providers (auto-detected from environment):
   Claude Code subprocess  (default, free with subscription)
   OpenAI                  OPENAI_API_KEY
@@ -36,6 +43,34 @@ Providers (auto-detected from environment):
   Together                TOGETHER_API_KEY
   Ollama                  --provider ollama (local, no key)
   Any OpenAI-compatible   --provider <url> --api-key <key>
+
+TUI Keybindings (in decision tree):
+  j/k or up/down   Navigate decisions
+  enter             Inspect decision (split-pane on wide terminals)
+  /                 Search/filter decisions
+  tab               Open conversation panel
+  q or esc          Back
+
+TUI Keybindings (in decision detail):
+  j/k               Navigate options
+  enter              Confirm option
+  c                  Custom answer
+  s                  Shuffle (generate new options)
+  w                  Why? (explain tradeoffs)
+  a                  Ask a question
+  q                  Back to tree
+
+TUI Keybindings (in conversation):
+  enter              Send message
+  @ID                Reference a decision
+  tab                Auto-complete @ID / back to tree
+  esc                Back to tree
+
+Configuration:
+  ~/.defer/config.json           Global defaults (care levels, model, provider)
+  .defer/config.json             Project overrides
+  ~/.defer/keybindings.json      Custom keybindings
+  .defer/skills/*.md             Custom skill/prompt overrides
 
 `,
 	Args: cobra.MaximumNArgs(1),

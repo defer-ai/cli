@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -198,8 +200,8 @@ func TestDetailCustomRevise(t *testing.T) {
 	for _, ch := range "my custom answer" {
 		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
 	}
-	if tm.textBuf != "my custom answer" {
-		t.Fatalf("textBuf = %q, want %q", tm.textBuf, "my custom answer")
+	if tm.textInput.Value() != "my custom answer" {
+		t.Fatalf("textInput.Value() = %q, want %q", tm.textInput.Value(), "my custom answer")
 	}
 
 	// Press enter
@@ -233,8 +235,8 @@ func TestDetailCustomReviseBackspace(t *testing.T) {
 		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
 	}
 	tm, _ = updateTree(t, tm, tea.KeyMsg{Type: tea.KeyBackspace})
-	if tm.textBuf != "hell" {
-		t.Errorf("textBuf = %q, want %q", tm.textBuf, "hell")
+	if tm.textInput.Value() != "hell" {
+		t.Errorf("textInput.Value() = %q, want %q", tm.textInput.Value(), "hell")
 	}
 }
 
@@ -251,8 +253,8 @@ func TestDetailCustomReviseEscCancels(t *testing.T) {
 	if tm.mode != tmDetail {
 		t.Errorf("mode = %d, want tmDetail after esc from revise", tm.mode)
 	}
-	if tm.textBuf != "" {
-		t.Errorf("textBuf = %q, want empty after cancel", tm.textBuf)
+	if tm.textInput.Value() != "" {
+		t.Errorf("textInput.Value() = %q, want empty after cancel", tm.textInput.Value())
 	}
 }
 
@@ -522,5 +524,620 @@ func TestCustomReviseEmptyDoesNothing(t *testing.T) {
 
 	if cmd != nil {
 		t.Error("empty custom revise should not produce a cmd")
+	}
+}
+
+// ========== Search feature tests ==========
+
+func TestSearchModeActivation(t *testing.T) {
+	tm := newTree(fiveDecisions())
+
+	// Press "/" to enter search mode
+	tm, _ = updateTree(t, tm, keyRunes("/"))
+	if !tm.searchMode {
+		t.Error("search mode should be active after pressing /")
+	}
+}
+
+func TestSearchModeEscClearsFilter(t *testing.T) {
+	tm := newTree(fiveDecisions())
+
+	// Enter search mode
+	tm, _ = updateTree(t, tm, keyRunes("/"))
+
+	// Type a query
+	for _, ch := range "data" {
+		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
+	}
+	if tm.searchQuery == "" {
+		t.Fatal("searchQuery should be set after typing")
+	}
+
+	// Esc should clear filter
+	tm, _ = updateTree(t, tm, keyEsc())
+	if tm.searchMode {
+		t.Error("search mode should be inactive after esc")
+	}
+	if tm.searchQuery != "" {
+		t.Errorf("searchQuery = %q, want empty after esc", tm.searchQuery)
+	}
+}
+
+func TestSearchModeEnterKeepsFilter(t *testing.T) {
+	tm := newTree(fiveDecisions())
+
+	// Enter search mode and type
+	tm, _ = updateTree(t, tm, keyRunes("/"))
+	for _, ch := range "data" {
+		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
+	}
+
+	// Enter should exit search mode but keep the filter
+	tm, _ = updateTree(t, tm, keyEnter())
+	if tm.searchMode {
+		t.Error("search mode should be inactive after enter")
+	}
+	if tm.searchQuery != "data" {
+		t.Errorf("searchQuery = %q, want %q after enter", tm.searchQuery, "data")
+	}
+}
+
+func TestSearchFiltersDecisions(t *testing.T) {
+	tm := newTree(fiveDecisions())
+
+	// Enter search mode and search for "data"
+	tm, _ = updateTree(t, tm, keyRunes("/"))
+	for _, ch := range "data" {
+		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
+	}
+
+	// Should filter to Data category (D-001, D-002)
+	items := tm.decisionItems()
+	if len(items) != 2 {
+		t.Errorf("filtered items = %d, want 2 (Data category)", len(items))
+	}
+	for _, item := range items {
+		if item.Category != "Data" {
+			t.Errorf("unexpected category %q in filtered results", item.Category)
+		}
+	}
+}
+
+func TestSearchFiltersByID(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.searchQuery = "S-001"
+
+	items := tm.decisionItems()
+	if len(items) != 1 {
+		t.Errorf("filtered items = %d, want 1", len(items))
+	}
+	if len(items) > 0 && items[0].ID != "S-001" {
+		t.Errorf("filtered item ID = %q, want S-001", items[0].ID)
+	}
+}
+
+func TestSearchFiltersByQuestion(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.searchQuery = "css"
+
+	items := tm.decisionItems()
+	if len(items) != 1 {
+		t.Errorf("filtered items = %d, want 1", len(items))
+	}
+	if len(items) > 0 && items[0].ID != "U-001" {
+		t.Errorf("filtered item ID = %q, want U-001", items[0].ID)
+	}
+}
+
+func TestSearchIsCaseInsensitive(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.searchQuery = "STACK"
+
+	items := tm.decisionItems()
+	if len(items) != 2 {
+		t.Errorf("filtered items = %d, want 2 (Stack category)", len(items))
+	}
+}
+
+func TestSearchCursorClampedAfterFilter(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.cursor = 4 // last item
+
+	// Enter search mode and filter down to 2 items
+	tm, _ = updateTree(t, tm, keyRunes("/"))
+	for _, ch := range "data" {
+		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
+	}
+
+	// Cursor should be clamped to filtered results
+	if tm.cursor >= 2 {
+		t.Errorf("cursor = %d, want < 2 (only 2 filtered results)", tm.cursor)
+	}
+}
+
+func TestSearchViewShowsFilteredCount(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.searchQuery = "data"
+
+	output := tm.viewTree()
+	if !strings.Contains(output, "Filtered: 2 results") {
+		t.Error("tree view should show 'Filtered: 2 results' when filter is active")
+	}
+}
+
+func TestSearchViewShowsSearchInput(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.searchMode = true
+	tm.searchInput.Focus()
+
+	output := tm.viewTree()
+	if !strings.Contains(output, "Filter decisions") {
+		t.Error("tree view should show search input placeholder when search mode is active")
+	}
+}
+
+// ========== Contextual footer tests ==========
+
+func TestRenderFooterBasic(t *testing.T) {
+	actions := []footerAction{
+		{"enter", "confirm"},
+		{"esc", "cancel"},
+	}
+	result := renderFooter(actions, 80)
+	if !strings.Contains(result, "enter") {
+		t.Error("footer should contain 'enter'")
+	}
+	if !strings.Contains(result, "confirm") {
+		t.Error("footer should contain 'confirm'")
+	}
+	if !strings.Contains(result, "esc") {
+		t.Error("footer should contain 'esc'")
+	}
+}
+
+func TestRenderFooterTruncates(t *testing.T) {
+	actions := []footerAction{
+		{"a", "first"},
+		{"b", "second"},
+		{"c", "third"},
+		{"d", "fourth"},
+	}
+	// Very narrow width: only first action should fit
+	result := renderFooter(actions, 15)
+	if !strings.Contains(result, "first") {
+		t.Error("footer should contain at least the first action")
+	}
+	if strings.Contains(result, "fourth") {
+		t.Error("footer should not contain 'fourth' in narrow width")
+	}
+}
+
+func TestRenderFooterEmpty(t *testing.T) {
+	result := renderFooter(nil, 80)
+	// Should return just the prefix
+	if result != "  " {
+		t.Errorf("empty footer = %q, want %q", result, "  ")
+	}
+}
+
+func TestTreeFooterShowsSearch(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	output := tm.viewTree()
+	if !strings.Contains(output, "search") {
+		t.Error("tree footer should contain '/ search'")
+	}
+}
+
+func TestTreeFooterSearchMode(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.searchMode = true
+	tm.searchInput.Focus()
+
+	output := tm.viewTree()
+	if !strings.Contains(output, "to filter") {
+		t.Error("search mode footer should contain 'to filter'")
+	}
+	if !strings.Contains(output, "confirm") {
+		t.Error("search mode footer should contain 'confirm'")
+	}
+}
+
+func TestDetailFooterShowsActions(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.mode = tmDetail
+	output := tm.viewDetail()
+	if !strings.Contains(output, "custom") {
+		t.Error("detail footer should contain 'custom'")
+	}
+	if !strings.Contains(output, "shuffle") {
+		t.Error("detail footer should contain 'shuffle'")
+	}
+}
+
+func TestReviseFooterShowsSubmitCancel(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.mode = tmRevise
+	output := tm.viewDetail()
+	if !strings.Contains(output, "submit") {
+		t.Error("revise footer should contain 'submit'")
+	}
+	if !strings.Contains(output, "cancel") {
+		t.Error("revise footer should contain 'cancel'")
+	}
+}
+
+func TestChatFooterShowsActions(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.mode = tmChat
+	output := tm.viewChat()
+	if !strings.Contains(output, "send") {
+		t.Error("chat footer should contain 'send'")
+	}
+	if !strings.Contains(output, "reference") {
+		t.Error("chat footer should contain 'reference'")
+	}
+}
+
+// ========== Split-pane tests ==========
+
+func TestSplitPaneRendersOnWideTerminal(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.width = 140
+	tm.height = 40
+	tm, _ = updateTree(t, tm, keyEnter()) // enter detail
+
+	if tm.mode != tmDetail {
+		t.Fatalf("mode = %d, want tmDetail", tm.mode)
+	}
+
+	output := tm.View()
+	// Split pane should contain both the tree content and the detail content
+	// The detail pane shows the decision ID as a title in the border
+	if !strings.Contains(output, "S-001") {
+		t.Error("split pane should contain the selected decision ID")
+	}
+	// The left pane should still show other decisions
+	if !strings.Contains(output, "S-002") {
+		t.Error("split pane should show tree with other decisions")
+	}
+}
+
+func TestNarrowTerminalUsesFullScreenDetail(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.width = 80 // narrow: <= 100
+	tm.height = 40
+	tm, _ = updateTree(t, tm, keyEnter()) // enter detail
+
+	output := tm.View()
+	// Full-screen detail should show the detail-specific footer actions
+	if !strings.Contains(output, "shuffle") {
+		t.Error("narrow terminal detail should show 'shuffle' action (full-screen detail)")
+	}
+}
+
+func TestSplitPaneDetailPaneShowsOptions(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.width = 140
+	tm.height = 40
+	tm, _ = updateTree(t, tm, keyEnter()) // detail for S-001
+
+	output := tm.View()
+	// Should show options from S-001 (Go, Rust)
+	if !strings.Contains(output, "Go") {
+		t.Error("detail pane should show option 'Go'")
+	}
+	if !strings.Contains(output, "Rust") {
+		t.Error("detail pane should show option 'Rust'")
+	}
+}
+
+func TestSplitPaneOptionNavigation(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.width = 140
+	tm.height = 40
+	tm, _ = updateTree(t, tm, keyEnter()) // detail
+
+	// Navigate options with j/k -- should still work in split pane
+	tm, _ = updateTree(t, tm, keyRunes("j"))
+	if tm.optCursor != 1 {
+		t.Errorf("optCursor = %d, want 1 after j in split pane", tm.optCursor)
+	}
+	tm, _ = updateTree(t, tm, keyRunes("k"))
+	if tm.optCursor != 0 {
+		t.Errorf("optCursor = %d, want 0 after k in split pane", tm.optCursor)
+	}
+}
+
+func TestSplitPaneReviseGoesFullScreen(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.width = 140
+	tm.height = 40
+	tm, _ = updateTree(t, tm, keyEnter()) // detail
+	tm, _ = updateTree(t, tm, keyRunes("c"))  // revise mode
+
+	if tm.mode != tmRevise {
+		t.Fatalf("mode = %d, want tmRevise", tm.mode)
+	}
+
+	output := tm.View()
+	// Revise mode always uses full-screen detail, which has 'submit' in footer
+	if !strings.Contains(output, "submit") {
+		t.Error("revise mode should render full-screen detail with 'submit'")
+	}
+}
+
+func TestSplitPaneAskGoesFullScreen(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.width = 140
+	tm.height = 40
+	tm, _ = updateTree(t, tm, keyEnter()) // detail
+	tm, _ = updateTree(t, tm, keyRunes("a"))  // ask mode
+
+	if tm.mode != tmAsk {
+		t.Fatalf("mode = %d, want tmAsk", tm.mode)
+	}
+
+	output := tm.View()
+	if !strings.Contains(output, "submit") {
+		t.Error("ask mode should render full-screen detail with 'submit'")
+	}
+}
+
+func TestDetailPaneShowsAnswer(t *testing.T) {
+	decs := fiveDecisions()
+	answer := "Go"
+	decs[0].Answer = &answer
+	decs[0].Source = "user"
+
+	tm := newTree(decs)
+	tm.width = 140
+	tm.height = 40
+	tm, _ = updateTree(t, tm, keyEnter()) // detail
+
+	output := tm.View()
+	if !strings.Contains(output, "Go") {
+		t.Error("detail pane should show the current answer")
+	}
+}
+
+func TestWrapTextBasic(t *testing.T) {
+	lines := wrapText("hello world this is a test", 12)
+	if len(lines) < 2 {
+		t.Errorf("wrapText produced %d lines, want >= 2 for width 12", len(lines))
+	}
+	for _, l := range lines {
+		if len(l) > 12 {
+			t.Errorf("wrapped line %q exceeds width 12", l)
+		}
+	}
+}
+
+func TestWrapTextShortString(t *testing.T) {
+	lines := wrapText("hello", 80)
+	if len(lines) != 1 {
+		t.Errorf("wrapText produced %d lines, want 1 for short string", len(lines))
+	}
+	if lines[0] != "hello" {
+		t.Errorf("wrapText = %q, want %q", lines[0], "hello")
+	}
+}
+
+func TestWrapTextEmpty(t *testing.T) {
+	lines := wrapText("", 80)
+	if len(lines) != 1 || lines[0] != "" {
+		t.Errorf("wrapText empty = %v, want [\"\"]", lines)
+	}
+}
+
+// ========== @ID autocomplete tests ==========
+
+func TestGetCompletionsMatchingIDs(t *testing.T) {
+	decs := fiveDecisions() // S-001, S-002, D-001, D-002, U-001
+	matches := getCompletions(decs, "S-")
+	if len(matches) != 2 {
+		t.Errorf("getCompletions(S-) = %d, want 2", len(matches))
+	}
+	for _, m := range matches {
+		if !strings.HasPrefix(m, "S-") {
+			t.Errorf("unexpected match %q for prefix S-", m)
+		}
+	}
+}
+
+func TestGetCompletionsCaseInsensitive(t *testing.T) {
+	decs := fiveDecisions()
+	matches := getCompletions(decs, "s-")
+	if len(matches) != 2 {
+		t.Errorf("getCompletions(s-) = %d, want 2 (case-insensitive)", len(matches))
+	}
+	matches2 := getCompletions(decs, "d-00")
+	if len(matches2) != 2 {
+		t.Errorf("getCompletions(d-00) = %d, want 2", len(matches2))
+	}
+}
+
+func TestGetCompletionsMax5(t *testing.T) {
+	// Create 8 decisions with the same prefix
+	var decs []decision.Decision
+	for i := 0; i < 8; i++ {
+		decs = append(decs, decision.Decision{
+			ID:       fmt.Sprintf("TEST-%03d", i+1),
+			Category: "Test",
+			Question: fmt.Sprintf("Question %d?", i+1),
+			Source:   "user",
+		})
+	}
+	matches := getCompletions(decs, "TEST")
+	if len(matches) != 5 {
+		t.Errorf("getCompletions(TEST) = %d, want 5 (max)", len(matches))
+	}
+}
+
+func TestGetCompletionsEmptyPartial(t *testing.T) {
+	decs := fiveDecisions()
+	matches := getCompletions(decs, "")
+	if len(matches) != 0 {
+		t.Errorf("getCompletions('') = %d, want 0", len(matches))
+	}
+}
+
+func TestGetCompletionsNoMatch(t *testing.T) {
+	decs := fiveDecisions()
+	matches := getCompletions(decs, "ZZZZZ")
+	if len(matches) != 0 {
+		t.Errorf("getCompletions(ZZZZZ) = %d, want 0", len(matches))
+	}
+}
+
+func TestTabCyclesThroughCompletions(t *testing.T) {
+	tm := newTree(fiveDecisions())
+
+	// Switch to chat mode
+	tm, _ = updateTree(t, tm, keyTab())
+	if tm.mode != tmChat {
+		t.Fatalf("mode = %d, want tmChat", tm.mode)
+	}
+
+	// Type "@S-" to trigger completions
+	for _, ch := range "@S-" {
+		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
+	}
+
+	if len(tm.completions) != 2 {
+		t.Fatalf("completions = %d, want 2", len(tm.completions))
+	}
+	if tm.completionIdx != -1 {
+		t.Fatalf("completionIdx = %d, want -1 (none selected yet)", tm.completionIdx)
+	}
+
+	// First tab: select index 0
+	tm, _ = updateTree(t, tm, keyTab())
+	if tm.completionIdx != 0 {
+		t.Errorf("completionIdx after 1st tab = %d, want 0", tm.completionIdx)
+	}
+	if !strings.Contains(tm.chatInput.Value(), "@"+tm.completions[0]) {
+		t.Errorf("input = %q, should contain @%s", tm.chatInput.Value(), tm.completions[0])
+	}
+
+	// Second tab: select index 1
+	tm, _ = updateTree(t, tm, keyTab())
+	if tm.completionIdx != 1 {
+		t.Errorf("completionIdx after 2nd tab = %d, want 1", tm.completionIdx)
+	}
+
+	// Third tab: wraps to index 0
+	tm, _ = updateTree(t, tm, keyTab())
+	if tm.completionIdx != 0 {
+		t.Errorf("completionIdx after 3rd tab = %d, want 0 (wrap)", tm.completionIdx)
+	}
+}
+
+func TestTabWithNoCompletionsGoesBackToTree(t *testing.T) {
+	tm := newTree(fiveDecisions())
+
+	// Switch to chat mode
+	tm, _ = updateTree(t, tm, keyTab())
+	if tm.mode != tmChat {
+		t.Fatalf("mode = %d, want tmChat", tm.mode)
+	}
+
+	// Type something without @ prefix
+	for _, ch := range "hello" {
+		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
+	}
+
+	if len(tm.completions) != 0 {
+		t.Fatalf("completions = %d, want 0", len(tm.completions))
+	}
+
+	// Tab should go back to tree
+	tm, _ = updateTree(t, tm, keyTab())
+	if tm.mode != tmTree {
+		t.Errorf("mode = %d, want tmTree (no completions, tab should go back)", tm.mode)
+	}
+}
+
+func TestCompletionsOverlayRendered(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm.mode = tmChat
+	tm.chatInput.Focus()
+	tm.chatInput.SetValue("@S-")
+	tm.completions = []string{"S-001", "S-002"}
+	tm.completionIdx = 0
+
+	output := tm.viewChat()
+	if !strings.Contains(output, "@S-001") {
+		t.Error("chat view should contain @S-001 in completions overlay")
+	}
+	if !strings.Contains(output, "@S-002") {
+		t.Error("chat view should contain @S-002 in completions overlay")
+	}
+}
+
+func TestCompletionsClearedOnEnter(t *testing.T) {
+	tm := newTree(fiveDecisions())
+
+	// Switch to chat mode
+	tm, _ = updateTree(t, tm, keyTab())
+
+	// Type "@S-001 do something"
+	for _, ch := range "@S-001 do something" {
+		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
+	}
+
+	// Submit
+	tm, _ = updateTree(t, tm, keyEnter())
+	if len(tm.completions) != 0 {
+		t.Errorf("completions = %d, want 0 after enter", len(tm.completions))
+	}
+	if tm.completionIdx != -1 {
+		t.Errorf("completionIdx = %d, want -1 after enter", tm.completionIdx)
+	}
+}
+
+func TestCompletionsClearedOnEsc(t *testing.T) {
+	tm := newTree(fiveDecisions())
+
+	// Switch to chat mode
+	tm, _ = updateTree(t, tm, keyTab())
+
+	// Type "@S-" to get completions
+	for _, ch := range "@S-" {
+		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
+	}
+	if len(tm.completions) == 0 {
+		t.Fatal("expected completions")
+	}
+
+	// Esc should clear
+	tm, _ = updateTree(t, tm, keyEsc())
+	if len(tm.completions) != 0 {
+		t.Errorf("completions = %d, want 0 after esc", len(tm.completions))
+	}
+}
+
+func TestSplitPaneAtBoundary(t *testing.T) {
+	// Width exactly 101 should trigger split pane
+	tm := newTree(fiveDecisions())
+	tm.width = 101
+	tm.height = 40
+	tm, _ = updateTree(t, tm, keyEnter())
+
+	output := tm.View()
+	// Should be split pane (contains both tree items and detail ID)
+	if !strings.Contains(output, "S-001") {
+		t.Error("width 101 should trigger split pane showing decision ID")
+	}
+
+	// Width exactly 100 should NOT trigger split pane
+	tm2 := newTree(fiveDecisions())
+	tm2.width = 100
+	tm2.height = 40
+	tm2, _ = updateTree(t, tm2, keyEnter())
+
+	output2 := tm2.View()
+	// Full-screen detail has 'shuffle' in footer
+	if !strings.Contains(output2, "shuffle") {
+		t.Error("width 100 should use full-screen detail with 'shuffle' action")
 	}
 }
