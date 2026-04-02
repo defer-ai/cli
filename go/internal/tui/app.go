@@ -27,11 +27,23 @@ const (
 )
 
 // Model is the root Bubbletea model.
+// ModelOpts configures the TUI model.
+type ModelOpts struct {
+	ShowMascot bool
+	Version    string
+	ModelName  string
+}
+
 type Model struct {
 	view   View
 	task   string
 	width  int
 	height int
+
+	// Header
+	showMascot bool
+	version    string
+	modelName  string
 
 	// Sub-models
 	priorities PrioritiesModel
@@ -59,7 +71,7 @@ type Model struct {
 }
 
 // NewModel creates the root model.
-func NewModel(task string, provider api.Provider, cwd string) Model {
+func NewModel(task string, provider api.Provider, cwd string, opts ...ModelOpts) Model {
 	ctx, cancel := context.WithCancel(context.Background())
 	tree := NewTreeModel()
 	tree.domainStatuses = make(map[string]string)
@@ -68,10 +80,19 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 	tree.chatFocused = true
 	tree.chatInput.Focus()
 
+	// Apply opts
+	var o ModelOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+
 	m := Model{
 		task:             task,
 		provider:         provider,
 		cwd:              cwd,
+		showMascot:       o.ShowMascot,
+		version:          o.Version,
+		modelName:        o.ModelName,
 		tree:             tree,
 		eventChan:        make(chan tea.Msg, 100),
 		ctx:              ctx,
@@ -967,18 +988,38 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 }
 
 func (m Model) View() string {
+	// Render header (mascot + info) if enabled
+	header := ""
+	headerHeight := 0
+	if m.showMascot {
+		header = m.renderHeader(m.width)
+		headerHeight = strings.Count(header, "\n") + 2 // +1 for the line itself, +1 for gap
+	}
+
+	// Remaining height for the main panel
+	panelHeight := m.height - headerHeight
+	if panelHeight < 10 {
+		panelHeight = 10
+	}
+
 	var base string
 	switch m.view {
 	case ViewPriorities:
+		m.priorities.height = panelHeight
 		base = m.priorities.View()
 
 	case ViewChat, ViewTree:
-		m.tree.height = m.height
+		m.tree.height = panelHeight
 		m.tree.width = m.width
 		base = m.tree.View()
 
 	default:
 		base = ""
+	}
+
+	// Combine header + main panel
+	if header != "" {
+		base = header + "\n" + base
 	}
 
 	// If a permission overlay is pending, render it on top of the base view
@@ -990,6 +1031,72 @@ func (m Model) View() string {
 }
 
 // overlayPermission renders the permission request box centered over the base view.
+// renderHeader renders the mascot + info section above the main panel.
+func (m Model) renderHeader(width int) string {
+	mascot := RenderMascot(StatusToMood(m.tree.overallStatus), m.mascotTick)
+	mascotLines := strings.Split(mascot, "\n")
+
+	// Info panel on the right of the mascot
+	cwd := m.cwd
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		cwd = strings.Replace(cwd, home, "~", 1)
+	}
+
+	var info []string
+	info = append(info, BoldAccent.Render("defer")+" "+DimStyle.Render("v"+m.version))
+	info = append(info, DimStyle.Render("model: ")+m.modelName)
+	info = append(info, DimStyle.Render("cwd: ")+DimStyle.Render(cwd))
+	if m.task != "" {
+		taskDisplay := m.task
+		if len(taskDisplay) > 50 {
+			taskDisplay = taskDisplay[:47] + "..."
+		}
+		info = append(info, DimStyle.Render("task: ")+taskDisplay)
+	}
+	status := m.tree.overallStatus
+	if status == "" {
+		status = "ready"
+	}
+	info = append(info, DimStyle.Render("status: ")+status)
+
+	// Join mascot and info side by side
+	mascotWidth := 0
+	for _, ml := range mascotLines {
+		w := lipgloss.Width(ml)
+		if w > mascotWidth {
+			mascotWidth = w
+		}
+	}
+
+	maxLines := len(mascotLines)
+	if len(info) > maxLines {
+		maxLines = len(info)
+	}
+
+	var headerLines []string
+	gap := "   "
+	for i := 0; i < maxLines; i++ {
+		left := ""
+		if i < len(mascotLines) {
+			left = mascotLines[i]
+		}
+		// Pad left to mascot width
+		leftPad := mascotWidth - lipgloss.Width(left)
+		if leftPad < 0 {
+			leftPad = 0
+		}
+		left += strings.Repeat(" ", leftPad)
+
+		right := ""
+		if i < len(info) {
+			right = info[i]
+		}
+		headerLines = append(headerLines, " "+left+gap+right)
+	}
+
+	return strings.Join(headerLines, "\n")
+}
+
 func (m Model) overlayPermission(base string, width, height int) string {
 	if m.pendingPermission == nil {
 		return base
