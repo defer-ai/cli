@@ -751,19 +751,46 @@ When the user describes a project, feature, or task they want built, respond wit
 
 If the user is just chatting, greeting, or asking questions — respond naturally and concisely.`
 			} else {
-				// Task active — decision management mode
+				// Task active — decision management mode with full context
 				var decContext strings.Builder
+				pendingCount := 0
+				answeredCount := 0
+				invalidatedCount := 0
 				for _, d := range m.tree.decisions {
-					answer := "(pending)"
+					status := ""
 					if d.Answer != nil {
-						answer = *d.Answer
+						answeredCount++
+						status = *d.Answer
+						if d.Source == "invalidated" {
+							invalidatedCount++
+							status += " [INVALIDATED - needs new answer]"
+						}
+					} else {
+						pendingCount++
+						status = "(PENDING - user must decide)"
 					}
-					decContext.WriteString(fmt.Sprintf("%s [%s]: %s → %s\n", d.ID, d.Category, d.Question, answer))
+					decContext.WriteString(fmt.Sprintf("%s [%s]: %s → %s\n", d.ID, d.Category, d.Question, status))
 				}
-				sysPrompt = "You are the defer assistant. Help the user understand and manage project decisions. " +
-					"When the user references @DECISION-ID, answer about that specific decision. " +
-					"If the user wants to CHANGE a decision, respond with the new value clearly. " +
-					"Be concise.\n\nCurrent decisions:\n" + decContext.String()
+
+				execStatus := "not started"
+				if m.executorsLaunched {
+					execStatus = m.tree.overallStatus
+				}
+
+				sysPrompt = fmt.Sprintf(`You are the defer assistant managing project decisions.
+
+Status: %d answered, %d pending, %d invalidated. Execution: %s.
+Task: %s
+
+IMPORTANT:
+- Only reference decisions by their CURRENT state shown below
+- Decisions marked PENDING need user input before implementation can proceed
+- Decisions marked INVALIDATED had their answers cleared due to a dependency change
+- Do NOT ask conversational questions — if something is unclear, say what needs to be decided
+- Be concise
+
+Current decisions:
+%s`, answeredCount, pendingCount, invalidatedCount, execStatus, m.task, decContext.String())
 			}
 
 			go func() {

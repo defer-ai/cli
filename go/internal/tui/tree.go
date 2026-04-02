@@ -107,6 +107,25 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case tea.MouseMsg:
+		// Handle mouse wheel for scrolling the tree or chat
+		if msg.Button == tea.MouseButtonWheelUp {
+			if m.mode == tmTree || m.mode == tmDetail {
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			}
+			return m, nil
+		}
+		if msg.Button == tea.MouseButtonWheelDown {
+			if m.mode == tmTree || m.mode == tmDetail {
+				if m.cursor < m.decisionCount()-1 {
+					m.cursor++
+				}
+			}
+			return m, nil
+		}
+		return m, nil
 	default:
 		// Forward non-key messages to the active textinput for cursor blink etc.
 		var cmd tea.Cmd
