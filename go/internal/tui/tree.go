@@ -1140,17 +1140,10 @@ func (m TreeModel) viewTreePane(w, h int) string {
 			answer = DimStyle.Render("(pending)")
 		}
 
-		// Dependency indent: if this decision depends on another, indent it
-		indent := ""
-		if len(d.DependsOn) > 0 {
-			indent = "  "
-		}
-
 		// Color the ID based on impact level
 		idStr := pad(d.ID, idW)
-		qStr := trunc(d.Question, qW-len(indent))
+		qStr := trunc(d.Question, qW)
 
-		// Determine impact-based ID style
 		var idStyle lipgloss.Style
 		if d.Impact >= 7 {
 			idStyle = RedStyle
@@ -1164,21 +1157,18 @@ func (m TreeModel) viewTreePane(w, h int) string {
 
 		var row string
 		if isCur {
-			// When cursor is on this row, combine bold with impact color
 			curIDStyle := idStyle.Bold(true)
-			row = fmt.Sprintf("  %s%s %s%s%s  %s",
+			row = fmt.Sprintf(" %s%s %s %s  %s",
 				cursor,
 				iconStyle.Render(icon),
-				indent,
 				curIDStyle.Render(idStr),
 				BoldWhite.Render(qStr),
 				DimStyle.Render(answer),
 			)
 		} else {
-			row = fmt.Sprintf("  %s%s %s%s%s  %s",
+			row = fmt.Sprintf(" %s%s %s %s  %s",
 				cursor,
 				iconStyle.Render(icon),
-				indent,
 				idStyle.Render(idStr),
 				qStr,
 				DimStyle.Render(answer),
