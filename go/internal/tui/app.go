@@ -95,44 +95,19 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 			m.domainPriorities = priorities
 			m.task = store.Task
 
-			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: fmt.Sprintf("Resumed session: %s", store.Task)})
-			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: fmt.Sprintf("%d decisions loaded. Tab to view decision tree.", len(store.Decisions))})
+			// Check if any decisions already have answers
+			hasAnswered := false
+			for _, d := range store.Decisions {
+				if d.Answer != nil {
+					hasAnswered = true
+					break
+				}
+			}
 
-			// Auto-decide based on saved priorities
-			if len(priorities) > 0 {
-				priMap := make(map[string]agent.CareLevel)
-				for k, v := range priorities {
-					priMap[strings.ToLower(strings.TrimSpace(k))] = v
-				}
-				today := time.Now().Format("2006-01-02")
-				for i := range m.tree.decisions {
-					d := &m.tree.decisions[i]
-					if d.Answer != nil {
-						continue
-					}
-					level := priMap[strings.ToLower(strings.TrimSpace(d.Category))]
-					if level != agent.CareLevelParanoid && level != agent.CareLevelHigh {
-						var answer string
-						for _, opt := range d.Options {
-							if !strings.Contains(strings.ToLower(opt.Label), "choose for me") {
-								answer = opt.Label
-								break
-							}
-						}
-						if answer == "" && len(d.Options) > 0 {
-							answer = d.Options[0].Label
-						}
-						if answer == "" {
-							answer = "auto-decided"
-						}
-						d.Answer = &answer
-						d.Delegated = true
-						d.Source = "auto"
-						d.Date = today
-					}
-				}
-				store.Decisions = m.tree.decisions
-				_ = decision.SaveStore(cwd, store)
+			if hasAnswered {
+				// Session has progress — resume directly in conversation
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: fmt.Sprintf("Resumed session: %s", store.Task)})
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: fmt.Sprintf("%d decisions loaded. Tab to view decision tree.", len(store.Decisions))})
 
 				hasPending := false
 				for _, d := range m.tree.decisionItems() {
@@ -146,24 +121,11 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 				} else {
 					m.tree.overallStatus = "thinking"
 				}
-			} else if len(store.Decisions) > 0 {
-				// Have decisions but no saved priorities file.
-				// Check if decisions already have answers (from a previous session)
-				hasAnswered := false
-				for _, d := range store.Decisions {
-					if d.Answer != nil {
-						hasAnswered = true
-						break
-					}
-				}
-				if hasAnswered {
-					// Decisions already answered — skip priorities, resume in conversation
-					m.tree.overallStatus = "done"
-				} else {
-					// All pending, no priorities — ask user to set them
-					m.view = ViewPriorities
-					m.priorities = NewPrioritiesModel(store.Decisions)
-				}
+			} else {
+				// All decisions pending, no answers yet — show priorities picker
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: fmt.Sprintf("Resumed session: %s (%d pending decisions)", store.Task, len(store.Decisions))})
+				m.view = ViewPriorities
+				m.priorities = NewPrioritiesModel(store.Decisions)
 			}
 		}
 		// else: fresh start, conversation is empty, user types task
