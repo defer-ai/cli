@@ -591,12 +591,18 @@ func (m TreeModel) viewChat() string {
 		chatContentH = 3
 	}
 
-	// Render chat entries with markdown
+	// Render chat entries with markdown and word-wrap
+	maxTextWidth := innerWidth - 6 // 2 indent + 2 padding + 2 border
+	if maxTextWidth < 20 {
+		maxTextWidth = 20
+	}
 	var chatLines []string
 	for _, entry := range m.chatLog {
 		switch entry.Type {
 		case "tool":
-			chatLines = append(chatLines, "  "+DimStyle.Render("  "+entry.Text))
+			for _, wl := range wrapText(entry.Text, maxTextWidth-4) {
+				chatLines = append(chatLines, "  "+DimStyle.Render("  "+wl))
+			}
 		case "agent":
 			// Render markdown
 			if m.mdRenderer != nil {
@@ -607,13 +613,30 @@ func (m TreeModel) viewChat() string {
 					continue
 				}
 			}
-			chatLines = append(chatLines, "  "+AccentStyle.Render("● ")+entry.Text)
+			// Fallback: wrap plain text
+			wrapped := wrapText(entry.Text, maxTextWidth-2)
+			for i, wl := range wrapped {
+				if i == 0 {
+					chatLines = append(chatLines, "  "+AccentStyle.Render("● ")+wl)
+				} else {
+					chatLines = append(chatLines, "    "+wl)
+				}
+			}
 		case "user":
 			chatLines = append(chatLines, "")
-			chatLines = append(chatLines, "  "+BoldWhite.Render("> ")+highlightDecisionRefs(entry.Text))
+			wrapped := wrapText(highlightDecisionRefs(entry.Text), maxTextWidth-2)
+			for i, wl := range wrapped {
+				if i == 0 {
+					chatLines = append(chatLines, "  "+BoldWhite.Render("> ")+wl)
+				} else {
+					chatLines = append(chatLines, "    "+wl)
+				}
+			}
 			chatLines = append(chatLines, "")
 		default:
-			chatLines = append(chatLines, "  "+DimStyle.Render(entry.Text))
+			for _, wl := range wrapText(entry.Text, maxTextWidth) {
+				chatLines = append(chatLines, "  "+DimStyle.Render(wl))
+			}
 		}
 	}
 
@@ -643,7 +666,7 @@ func (m TreeModel) viewChat() string {
 	// Fill remaining
 	for i := len(visible); i < chatContentH; i++ {
 		if len(m.chatLog) == 0 && i == 0 {
-			lines = append(lines, "  "+DimStyle.Render("Ask anything. Use @DECISION-ID to reference a specific decision."))
+			lines = append(lines, "  "+DimStyle.Render("Describe your project to get started, or ask anything."))
 		} else {
 			lines = append(lines, "")
 		}

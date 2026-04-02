@@ -148,11 +148,16 @@ func setupAtTreeNoExecutors(t *testing.T, decs []decision.Decision) Model {
 
 // --- tests ---
 
-func TestWelcomeToDecomposing(t *testing.T) {
+func TestConversationToDecomposing(t *testing.T) {
 	m := NewModel("", nil, t.TempDir())
 
-	if m.view != ViewWelcome {
-		t.Fatalf("initial view = %d, want ViewWelcome (%d)", m.view, ViewWelcome)
+	if m.view != ViewConversation {
+		t.Fatalf("initial view = %d, want ViewConversation (%d)", m.view, ViewConversation)
+	}
+
+	// Chat mode should be active by default
+	if m.tree.mode != tmChat {
+		t.Fatalf("tree.mode = %d, want tmChat", m.tree.mode)
 	}
 
 	// Send window size
@@ -161,20 +166,31 @@ func TestWelcomeToDecomposing(t *testing.T) {
 		t.Fatalf("dimensions = %dx%d, want 120x40", m.width, m.height)
 	}
 
-	// Type "build a todo app" character by character
+	// Type "build a todo app" character by character into the chat input
 	for _, ch := range "build a todo app" {
 		m, _ = updateModel(t, m, keyRunes(string(ch)))
 	}
 
-	if m.welcome.input.Value() != "build a todo app" {
-		t.Fatalf("welcome.input = %q, want %q", m.welcome.input.Value(), "build a todo app")
+	if m.tree.chatInput.Value() != "build a todo app" {
+		t.Fatalf("chatInput = %q, want %q", m.tree.chatInput.Value(), "build a todo app")
 	}
 
-	// Press enter -- the welcome model should produce a TaskSubmittedMsg via cmd
+	// Press enter -- the chat should produce a ChatMessageMsg, which becomes TaskSubmittedMsg
 	var cmd tea.Cmd
 	m, cmd = updateModel(t, m, keyEnter())
 
 	msg := processCmd(t, cmd)
+	cmm, ok := msg.(ChatMessageMsg)
+	if !ok {
+		t.Fatalf("expected ChatMessageMsg, got %T", msg)
+	}
+	if cmm.Text != "build a todo app" {
+		t.Fatalf("text = %q, want %q", cmm.Text, "build a todo app")
+	}
+
+	// Processing the ChatMessageMsg when no task is set should produce TaskSubmittedMsg
+	m, cmd = updateModel(t, m, cmm)
+	msg = processCmd(t, cmd)
 	tsm, ok := msg.(TaskSubmittedMsg)
 	if !ok {
 		t.Fatalf("expected TaskSubmittedMsg, got %T", msg)
@@ -206,8 +222,8 @@ func TestPrioritiesToTree(t *testing.T) {
 	}
 	m := setupAtTree(t, fakeDecisions(), priorities)
 
-	if m.view != ViewTree {
-		t.Fatalf("view = %d, want ViewTree (%d)", m.view, ViewTree)
+	if m.view != ViewConversation {
+		t.Fatalf("view = %d, want ViewConversation (%d)", m.view, ViewConversation)
 	}
 
 	// Verify Stack decisions are auto-decided
@@ -634,9 +650,6 @@ func TestWindowSizePropagates(t *testing.T) {
 	if m.width != 200 || m.height != 50 {
 		t.Errorf("root: %dx%d, want 200x50", m.width, m.height)
 	}
-	if m.welcome.width != 200 || m.welcome.height != 50 {
-		t.Errorf("welcome: %dx%d, want 200x50", m.welcome.width, m.welcome.height)
-	}
 	if m.priorities.width != 200 || m.priorities.height != 50 {
 		t.Errorf("priorities: %dx%d, want 200x50", m.priorities.width, m.priorities.height)
 	}
@@ -650,8 +663,7 @@ func TestViewRendersWithoutPanic(t *testing.T) {
 		name string
 		view View
 	}{
-		{"Welcome", ViewWelcome},
-		{"Decomposing", ViewDecomposing},
+		{"Conversation", ViewConversation},
 		{"Priorities", ViewPriorities},
 		{"Tree", ViewTree},
 	}
@@ -673,11 +685,21 @@ func TestViewRendersWithoutPanic(t *testing.T) {
 
 func TestTaskSubmittedFromCLI(t *testing.T) {
 	m := NewModel("build something", nil, t.TempDir())
-	if m.view != ViewDecomposing {
-		t.Errorf("view = %d, want ViewDecomposing when task provided", m.view)
+	if m.view != ViewConversation {
+		t.Errorf("view = %d, want ViewConversation when task provided", m.view)
 	}
 	if m.task != "build something" {
 		t.Errorf("task = %q, want %q", m.task, "build something")
+	}
+	// Should have the task in chat log
+	foundTask := false
+	for _, entry := range m.tree.chatLog {
+		if entry.Type == "user" && entry.Text == "build something" {
+			foundTask = true
+		}
+	}
+	if !foundTask {
+		t.Error("chat log should contain the task as a user message")
 	}
 }
 

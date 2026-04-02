@@ -20,10 +20,9 @@ import (
 type View int
 
 const (
-	ViewWelcome View = iota
-	ViewDecomposing
-	ViewPriorities
-	ViewTree
+	ViewConversation View = iota // conversation is the primary view
+	ViewPriorities               // care level picker (overlay, returns to conversation)
+	ViewTree                     // decision tree (tab toggles)
 )
 
 // Model is the root Bubbletea model.
@@ -34,7 +33,6 @@ type Model struct {
 	height int
 
 	// Sub-models
-	welcome    WelcomeModel
 	priorities PrioritiesModel
 	tree       TreeModel
 
@@ -60,20 +58,26 @@ type Model struct {
 // NewModel creates the root model.
 func NewModel(task string, provider api.Provider, cwd string) Model {
 	ctx, cancel := context.WithCancel(context.Background())
+	tree := NewTreeModel()
+	tree.domainStatuses = make(map[string]string)
+	// Conversation is the default mode — chat input focused
+	tree.mode = tmChat
+	tree.chatFocused = true
+	tree.chatInput.Focus()
+
 	m := Model{
 		task:             task,
 		provider:         provider,
 		cwd:              cwd,
-		welcome:          NewWelcomeModel(),
-		tree:             NewTreeModel(),
+		tree:             tree,
 		eventChan:        make(chan tea.Msg, 100),
 		ctx:              ctx,
 		cancel:           cancel,
 		domainPriorities: make(map[string]agent.CareLevel),
 		notifications:    NewNotificationManager(),
+		view:             ViewConversation,
 	}
 
-	m.tree.domainStatuses = make(map[string]string)
 	m.manager = agent.NewManager(provider, cwd)
 
 	// Check for existing session to resume (only if no new task given)
@@ -86,6 +90,9 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 			m.tree.decisions = store.Decisions
 			m.domainPriorities = priorities
 			m.task = store.Task
+
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: fmt.Sprintf("Resumed session: %s", store.Task)})
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: fmt.Sprintf("%d decisions loaded. Tab to view decision tree.", len(store.Decisions))})
 
 			// Auto-decide based on saved priorities
 			if len(priorities) > 0 {
@@ -101,7 +108,6 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 					}
 					level := priMap[strings.ToLower(strings.TrimSpace(d.Category))]
 					if level != agent.CareLevelParanoid && level != agent.CareLevelHigh {
-						// Auto-decide: pick first non-"choose for me" option
 						var answer string
 						for _, opt := range d.Options {
 							if !strings.Contains(strings.ToLower(opt.Label), "choose for me") {
@@ -121,13 +127,9 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 						d.Date = today
 					}
 				}
-				// Save auto-decided state
 				store.Decisions = m.tree.decisions
 				_ = decision.SaveStore(cwd, store)
-			}
 
-			if len(priorities) > 0 {
-				m.view = ViewTree
 				hasPending := false
 				for _, d := range m.tree.decisionItems() {
 					if d.IsPending() {
@@ -140,16 +142,17 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 				} else {
 					m.tree.overallStatus = "thinking"
 				}
-			} else {
+			} else if len(store.Decisions) > 0 {
+				// Have decisions but no priorities — ask user to set them
 				m.view = ViewPriorities
 				m.priorities = NewPrioritiesModel(store.Decisions)
 			}
-		} else {
-			m.view = ViewWelcome
 		}
+		// else: fresh start, conversation is empty, user types task
 	} else {
-		// New task given -- start fresh
-		m.view = ViewDecomposing
+		// Task given via CLI arg — add as first message and start decomposition
+		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "user", Text: task})
+		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Analyzing project and identifying decisions..."})
 	}
 
 	return m
@@ -158,20 +161,25 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 // NewScanModel creates a model that scans an existing project.
 func NewScanModel(provider api.Provider, cwd string) Model {
 	ctx, cancel := context.WithCancel(context.Background())
+	tree := NewTreeModel()
+	tree.domainStatuses = make(map[string]string)
+	tree.mode = tmChat
+	tree.chatFocused = true
+	tree.chatInput.Focus()
+	tree.chatLog = append(tree.chatLog, ChatEntry{Type: "system", Text: "Scanning project..."})
+
 	m := Model{
 		task:             "(scanning project)",
 		provider:         provider,
 		cwd:              cwd,
-		welcome:          NewWelcomeModel(),
-		tree:             NewTreeModel(),
+		tree:             tree,
 		eventChan:        make(chan tea.Msg, 100),
 		ctx:              ctx,
 		cancel:           cancel,
 		domainPriorities: make(map[string]agent.CareLevel),
 		notifications:    NewNotificationManager(),
-		view:             ViewDecomposing,
+		view:             ViewConversation,
 	}
-	m.tree.domainStatuses = make(map[string]string)
 	m.manager = agent.NewManager(provider, cwd)
 
 	// Start scan in background
@@ -280,8 +288,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.welcome.width = msg.Width
-		m.welcome.height = msg.Height
 		m.priorities.width = msg.Width
 		m.priorities.height = msg.Height
 		m.tree.width = msg.Width
@@ -304,15 +310,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case TickMsg:
 		m.mascotTick++
-		m.welcome.mascotTick = m.mascotTick
 		m.tree.mascotTick = m.mascotTick
 		m.notifications.Tick()
 		return m, DoTick()
 
 	case TaskSubmittedMsg:
+		// First message in conversation becomes the task — start decomposition
 		m.task = msg.Task
-		m.view = ViewDecomposing
+		m.view = ViewConversation
 		m.manager = agent.NewManager(m.provider, m.cwd)
+		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Analyzing project and identifying decisions..."})
 		ch := m.eventChan
 		ctx := m.ctx
 		m.manager.StartDecomposition(ctx, m.task, func(ev agent.Event) {
@@ -328,10 +335,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cleaned := stripJSONBlocks(st.Output)
 				if cleaned != "" {
 					lines := strings.Split(cleaned, "\n")
-					if len(lines) > 0 {
-						last := strings.TrimSpace(lines[len(lines)-1])
-						if last != "" {
-							m.notifications.Push(last, NotifyLow, 3*time.Second)
+					// Stream the last meaningful line into the conversation
+					for i := len(lines) - 1; i >= 0; i-- {
+						line := strings.TrimSpace(lines[i])
+						if line != "" {
+							// Avoid duplicate consecutive messages
+							if len(m.tree.chatLog) == 0 || m.tree.chatLog[len(m.tree.chatLog)-1].Text != line {
+								m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: line})
+								if len(m.tree.chatLog) > 200 {
+									m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-200:]
+								}
+							}
+							break
 						}
 					}
 				}
@@ -352,7 +367,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			store.Task = m.task
 			_ = decision.SaveStore(m.cwd, store)
 		}
-		// Go straight to priorities
+		// Show summary in conversation
+		categories := make(map[string]int)
+		for _, d := range msg.Decisions {
+			categories[d.Category]++
+		}
+		var summary strings.Builder
+		summary.WriteString(fmt.Sprintf("Found **%d decisions** across %d domains:\n", len(msg.Decisions), len(categories)))
+		for cat, count := range categories {
+			summary.WriteString(fmt.Sprintf("  - **%s**: %d decisions\n", cat, count))
+		}
+		summary.WriteString("\nSet your care level per domain (how much you want to control).")
+		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: summary.String()})
+		// Switch to priorities picker
 		m.view = ViewPriorities
 		m.priorities = NewPrioritiesModel(msg.Decisions)
 		m.priorities.width = m.width
@@ -363,7 +390,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case PrioritiesConfirmedMsg:
 		m.domainPriorities = msg.Priorities
 		savePriorities(m.cwd, msg.Priorities, m.task)
-		m.view = ViewTree
+		m.view = ViewConversation
+		m.tree.mode = tmChat
+		m.tree.chatFocused = true
+		m.tree.chatInput.Focus()
 
 		if m.manager != nil && m.manager.Agent() != nil {
 			m.manager.AutoDecide(msg.Priorities)
@@ -439,16 +469,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ExecutorStateChangedMsg:
 		if m.manager != nil {
-			// Only update the status line, NOT the feed
-			// Feed is populated exclusively by ToolActivityMsg (real tool calls)
 			for _, exec := range m.manager.Executors() {
 				st := exec.State()
-				if st.Status == agent.DomainExecuting || st.Status == agent.DomainPlanning || st.Status == agent.DomainVerifying {
-					status := extractShortStatus(st.Output, st.Status.String())
-					m.notifications.Push("["+st.Domain+"] "+status, NotifyLow, 3*time.Second)
+				prevStatus := m.tree.domainStatuses[st.Domain]
+				newStatus := st.Status.String()
+				// Only log domain status transitions (not every delta)
+				if prevStatus != newStatus && newStatus != "pending" {
+					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+						Type: "system",
+						Text: fmt.Sprintf("[%s] %s", st.Domain, newStatus),
+					})
 				}
-				// Update per-domain status pills
-				m.tree.domainStatuses[st.Domain] = st.Status.String()
+				m.tree.domainStatuses[st.Domain] = newStatus
+
+				// Stream executor output into conversation
+				if st.Output != "" {
+					cleaned := stripJSONBlocks(st.Output)
+					if cleaned != "" {
+						lines := strings.Split(cleaned, "\n")
+						for i := len(lines) - 1; i >= 0; i-- {
+							line := strings.TrimSpace(lines[i])
+							if line != "" && len(line) > 5 {
+								if len(m.tree.chatLog) == 0 || m.tree.chatLog[len(m.tree.chatLog)-1].Text != line {
+									m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: line})
+									if len(m.tree.chatLog) > 200 {
+										m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-200:]
+									}
+								}
+								break
+							}
+						}
+					}
+				}
 			}
 			m.tree.overallStatus = m.computeOverallStatus()
 		}
@@ -487,6 +539,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AllExecutorsDoneMsg:
 		m.tree.overallStatus = "done"
+		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "All domains complete. Tab to view decision tree."})
 		m.notifications.Push("All domains complete.", NotifyHigh, 0)
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
@@ -578,6 +631,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ChatMessageMsg:
 		text := msg.Text
+
+		// If no task set yet, first message becomes the task
+		if m.task == "" {
+			return m, func() tea.Msg { return TaskSubmittedMsg{Task: text} }
+		}
 
 		// Check for direct change commands: "@STACK-001 change to Go with Gin"
 		if changed := m.tryParseChangeCommand(text); changed {
@@ -687,12 +745,6 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 	// Pass ALL message types (not just KeyMsg) so textinput components
 	// receive cursor blink commands and other internal messages.
 	switch m.view {
-	case ViewWelcome:
-		var cmd tea.Cmd
-		m.welcome, cmd = m.welcome.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
 	case ViewPriorities:
 		if keyMsg, ok := msg.(tea.KeyMsg); ok {
 			var cmd tea.Cmd
@@ -701,7 +753,7 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 				cmds = append(cmds, cmd)
 			}
 		}
-	case ViewTree:
+	case ViewConversation, ViewTree:
 		var cmd tea.Cmd
 		m.tree, cmd = m.tree.Update(msg)
 		if cmd != nil {
@@ -717,66 +769,16 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 
 func (m Model) View() string {
 	switch m.view {
-	case ViewWelcome:
-		return m.welcome.View()
-
-	case ViewDecomposing:
-		return m.viewDecomposing()
-
 	case ViewPriorities:
 		return m.priorities.View()
 
-	case ViewTree:
+	case ViewConversation, ViewTree:
 		m.tree.height = m.height
 		m.tree.width = m.width
 		return m.tree.View()
 	}
 
 	return ""
-}
-
-func (m Model) viewDecomposing() string {
-	w := m.width
-	if w < 40 {
-		w = 80
-	}
-	h := m.height
-	if h < 10 {
-		h = 24
-	}
-
-	innerWidth := w - 4
-	if innerWidth < 20 {
-		innerWidth = 20
-	}
-
-	mascot := RenderMascot(MoodThinking, m.mascotTick)
-
-	var lines []string
-	lines = append(lines, "")
-
-	mascotLines := strings.Split(mascot, "\n")
-	for _, ml := range mascotLines {
-		lines = append(lines, "     "+ml)
-	}
-	lines = append(lines, "")
-	lines = append(lines, "     "+AccentStyle.Render("Analyzing task..."))
-	lines = append(lines, "")
-
-	// Show current notification if available
-	if notif := m.notifications.Render(innerWidth - 8); notif != "" {
-		lines = append(lines, "     "+notif)
-	}
-
-	// Fill remaining space
-	usedLines := len(lines) + 2
-	remaining := h - usedLines - 4
-	for i := 0; i < remaining; i++ {
-		lines = append(lines, "")
-	}
-
-	content := strings.Join(lines, "\n")
-	return buildBorderedBox(content, innerWidth, "defer", "decomposing")
 }
 
 // tryParseChangeCommand detects "@ID change to X" or "@ID = X" patterns and updates the decision.
