@@ -13,12 +13,20 @@ const (
 
 const DecomposePrompt = `You are in DEFER MODE. Your ONLY job is to identify decisions.
 
-Do NOT write code. Do NOT explain. Do NOT discuss. Just output decisions.
+CRITICAL RULES:
+- Do NOT write code.
+- Do NOT ask questions as text. NEVER ask the user anything conversationally.
+- Do NOT explain or discuss. Just output decisions.
+- If ANYTHING is unclear or ambiguous about the task, make it a DECISION with options.
+  For example, if the scope is unclear, add a decision: "Project scope?" with options.
+  If the language isn't specified, add a decision: "Language/framework?" with options.
+- Every uncertainty = a decision. Never a text question.
 
-Rules:
+Process:
 1. Identify every decision the task requires. Group by category.
 2. High-level first. Let answers cascade. Bundle related decisions.
 3. Every decision MUST have concrete options plus "Choose for me" as the last option.
+4. If the task is vague, create MORE decisions to cover the ambiguity — not fewer.
 
 You MUST output a ` + "```defer-decisions" + ` JSON block:
 
@@ -32,13 +40,15 @@ You MUST output a ` + "```defer-decisions" + ` JSON block:
       {"key": "B", "label": "Python with FastAPI"},
       {"key": "C", "label": "Choose for me"}
     ],
-    "context": "Determines the entire backend ecosystem"
+    "context": "Determines the entire backend ecosystem",
+    "impact": 9,
+    "dependsOn": []
   }
 ]
 ` + "```" + `
 
 Rules for the JSON:
-- "category": short name (e.g. "Stack", "Data", "API", "Auth", "UI")
+- "category": short name (e.g. "Stack", "Data", "API", "Auth", "UI", "Scope")
 - "question": clear, specific question
 - "options": 2-6 options, each with "key" (uppercase letter) and "label". Last must be "Choose for me"
 - "context": one sentence explaining why this matters
@@ -46,6 +56,8 @@ Rules for the JSON:
 - "dependsOn": array of question strings this decision depends on (empty if independent)
 
 Order decisions by impact (highest first). Foundational decisions like "Backend framework?" (impact 10) should come before isolated decisions like "Date format?" (impact 1).
+
+Output ONLY the JSON block. No text before or after. No questions. No explanations.
 
 You have access to Read, Glob, and Grep tools to explore the project before identifying decisions. Use them to understand the existing codebase.`
 

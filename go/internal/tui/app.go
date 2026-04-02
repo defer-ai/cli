@@ -647,13 +647,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// No task yet — conversational mode with task detection
 				sysPrompt = `You are defer, a zero-autonomy AI assistant. Have a natural conversation with the user.
 
-If the user describes a project, feature, or task they want built, respond by identifying the key decisions that need to be made. Output them in a ` + "```defer-decisions" + ` JSON block:
+When the user describes a project, feature, or task they want built, respond with a brief acknowledgment (1-2 sentences max) of what you'll build. Do NOT ask questions — every uncertainty becomes a structured decision that the user will see in a decision tree.
 
-` + "```defer-decisions" + `
-[{"category": "Stack", "question": "Backend framework?", "options": [{"key": "A", "label": "Express"}, {"key": "B", "label": "FastAPI"}, {"key": "C", "label": "Choose for me"}], "context": "Why it matters", "impact": 8, "dependsOn": []}]
-` + "```" + `
-
-If the user is just chatting, greeting, or asking questions — respond naturally. Do NOT output a defer-decisions block unless the user describes something to build.`
+If the user is just chatting, greeting, or asking questions — respond naturally and concisely.`
 			} else {
 				// Task active — decision management mode
 				var decContext strings.Builder
