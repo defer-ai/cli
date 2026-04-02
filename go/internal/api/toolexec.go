@@ -32,33 +32,78 @@ func (tc *ToolCall) HumanDescription() string {
 	case "Write":
 		var in struct{ FilePath string `json:"file_path"` }
 		json.Unmarshal(tc.Input, &in)
-		return fmt.Sprintf("Create file %s", in.FilePath)
+		return fmt.Sprintf("Creating %s", filepath.Base(in.FilePath))
 	case "Edit":
 		var in struct{ FilePath string `json:"file_path"` }
 		json.Unmarshal(tc.Input, &in)
-		return fmt.Sprintf("Edit %s", in.FilePath)
+		return fmt.Sprintf("Editing %s", filepath.Base(in.FilePath))
 	case "Bash":
-		var in struct{ Command string `json:"command"` }
-		json.Unmarshal(tc.Input, &in)
-		cmd := in.Command
-		if len(cmd) > 80 {
-			cmd = cmd[:77] + "..."
+		var in struct {
+			Command     string `json:"command"`
+			Description string `json:"description"`
 		}
-		return fmt.Sprintf("Run: %s", cmd)
+		json.Unmarshal(tc.Input, &in)
+		if in.Description != "" {
+			desc := in.Description
+			if len(desc) > 80 {
+				desc = desc[:77] + "..."
+			}
+			return desc
+		}
+		cmd := in.Command
+		if len(cmd) > 60 {
+			cmd = cmd[:57] + "..."
+		}
+		return fmt.Sprintf("Running: %s", cmd)
 	case "Read":
 		var in struct{ FilePath string `json:"file_path"` }
 		json.Unmarshal(tc.Input, &in)
-		return fmt.Sprintf("Read %s", in.FilePath)
+		return fmt.Sprintf("Reading %s", filepath.Base(in.FilePath))
 	case "Glob":
 		var in struct{ Pattern string `json:"pattern"` }
 		json.Unmarshal(tc.Input, &in)
-		return fmt.Sprintf("Search files: %s", in.Pattern)
+		return fmt.Sprintf("Finding files matching %s", in.Pattern)
 	case "Grep":
 		var in struct{ Pattern string `json:"pattern"` }
 		json.Unmarshal(tc.Input, &in)
-		return fmt.Sprintf("Search content: %s", in.Pattern)
+		return fmt.Sprintf("Searching for \"%s\"", in.Pattern)
+	case "WebSearch":
+		var in struct{ Query string `json:"query"` }
+		json.Unmarshal(tc.Input, &in)
+		return fmt.Sprintf("Searching the web: %s", in.Query)
+	case "WebFetch":
+		var in struct{ URL string `json:"url"` }
+		json.Unmarshal(tc.Input, &in)
+		return fmt.Sprintf("Fetching %s", in.URL)
+	case "Agent":
+		var in struct{ Description string `json:"description"` }
+		json.Unmarshal(tc.Input, &in)
+		if in.Description != "" {
+			return in.Description
+		}
+		return "Spawning sub-agent..."
+	case "ToolSearch":
+		var in struct{ Query string `json:"query"` }
+		json.Unmarshal(tc.Input, &in)
+		return fmt.Sprintf("Looking up tools: %s", in.Query)
+	case "AskUserQuestion":
+		return "Waiting for input..."
+	case "EnterPlanMode":
+		return "Planning approach..."
+	case "ExitPlanMode":
+		return "Plan complete, executing..."
+	case "TaskCreate":
+		var in struct{ Subject string `json:"subject"` }
+		json.Unmarshal(tc.Input, &in)
+		return fmt.Sprintf("Creating task: %s", in.Subject)
+	case "TaskUpdate":
+		return "Updating task..."
+	case "NotebookEdit":
+		return "Editing notebook..."
+	case "LSP":
+		return "Querying language server..."
 	default:
-		return fmt.Sprintf("Tool: %s", tc.Name)
+		return tc.Name
 	}
 }
 

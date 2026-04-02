@@ -715,8 +715,8 @@ func TestRenderFooterTruncates(t *testing.T) {
 func TestRenderFooterEmpty(t *testing.T) {
 	result := renderFooter(nil, 80)
 	// Should return just the prefix
-	if result != "  " {
-		t.Errorf("empty footer = %q, want %q", result, "  ")
+	if result != " " {
+		t.Errorf("empty footer = %q, want %q", result, " ")
 	}
 }
 

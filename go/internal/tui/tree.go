@@ -490,7 +490,7 @@ type footerAction struct {
 func renderFooter(actions []footerAction, width int) string {
 	const sep = "  " // two-space separator between actions
 	sepLen := len(sep)
-	prefix := "  " // left padding inside the border
+	prefix := " " // left padding inside the border
 	available := width - len(prefix)
 	if available < 0 {
 		available = 0
@@ -593,7 +593,7 @@ func (m TreeModel) viewChat() string {
 	}
 
 	// Render chat entries with markdown and word-wrap
-	maxTextWidth := innerWidth - 6 // 2 indent + 2 padding + 2 border
+	maxTextWidth := innerWidth - 2 // border already adds 1 space each side
 	if maxTextWidth < 20 {
 		maxTextWidth = 20
 	}
@@ -601,22 +601,21 @@ func (m TreeModel) viewChat() string {
 	for _, entry := range m.chatLog {
 		switch entry.Type {
 		case "tool":
-			for _, wl := range wrapText(entry.Text, maxTextWidth-4) {
-				chatLines = append(chatLines, "  "+DimStyle.Render("  "+wl))
+			for _, wl := range wrapText(entry.Text, maxTextWidth-2) {
+				chatLines = append(chatLines, " "+DimStyle.Render(" "+wl))
 			}
 		case "agent":
 			// Render markdown
 			if m.mdRenderer != nil {
 				if md, err := m.mdRenderer.Render(entry.Text); err == nil {
 					for _, ml := range strings.Split(strings.TrimRight(md, "\n"), "\n") {
-						// Re-wrap glamour output that exceeds available width
 						visWidth := lipgloss.Width(ml)
 						if visWidth > maxTextWidth {
-							for _, wl := range wrapText(ml, maxTextWidth-2) {
-								chatLines = append(chatLines, "  "+wl)
+							for _, wl := range wrapText(ml, maxTextWidth) {
+								chatLines = append(chatLines, wl)
 							}
 						} else {
-							chatLines = append(chatLines, "  "+ml)
+							chatLines = append(chatLines, ml)
 						}
 					}
 					continue
@@ -626,26 +625,26 @@ func (m TreeModel) viewChat() string {
 			wrapped := wrapText(entry.Text, maxTextWidth-2)
 			for i, wl := range wrapped {
 				if i == 0 {
-					chatLines = append(chatLines, "  "+AccentStyle.Render("● ")+wl)
+					chatLines = append(chatLines, " "+AccentStyle.Render("● ")+wl)
 				} else {
-					chatLines = append(chatLines, "    "+wl)
+					chatLines = append(chatLines, "   "+wl)
 				}
 			}
 		case "user":
 			chatLines = append(chatLines, "")
-			wrapped := wrapText(entry.Text, maxTextWidth-4)
+			wrapped := wrapText(entry.Text, maxTextWidth-6)
 			for i, wl := range wrapped {
 				styledLine := UserMsgStyle.Render(" " + wl + " ")
 				if i == 0 {
-					chatLines = append(chatLines, "  "+UserMsgStyle.Render(" > ")+styledLine)
+					chatLines = append(chatLines, " "+UserMsgStyle.Render(" > ")+styledLine)
 				} else {
-					chatLines = append(chatLines, "  "+UserMsgStyle.Render("   ")+styledLine)
+					chatLines = append(chatLines, " "+UserMsgStyle.Render("   ")+styledLine)
 				}
 			}
 			chatLines = append(chatLines, "")
 		default:
 			for _, wl := range wrapText(entry.Text, maxTextWidth) {
-				chatLines = append(chatLines, "  "+DimStyle.Render(wl))
+				chatLines = append(chatLines, " "+DimStyle.Render(wl))
 			}
 		}
 	}
@@ -660,7 +659,7 @@ func (m TreeModel) viewChat() string {
 			timeStr = fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
 		}
 		chatLines = append(chatLines, "")
-		chatLines = append(chatLines, "  "+AccentStyle.Render("● Thinking... ")+DimStyle.Render("("+timeStr+")"))
+		chatLines = append(chatLines, " "+AccentStyle.Render("● Thinking... ")+DimStyle.Render("("+timeStr+")"))
 	}
 
 	// Scroll to bottom
@@ -676,7 +675,7 @@ func (m TreeModel) viewChat() string {
 	// Fill remaining
 	for i := len(visible); i < chatContentH; i++ {
 		if len(m.chatLog) == 0 && i == 0 {
-			lines = append(lines, "  "+DimStyle.Render("Describe your project to get started, or ask anything."))
+			lines = append(lines, " "+DimStyle.Render("Describe your project to get started, or ask anything."))
 		} else {
 			lines = append(lines, "")
 		}
@@ -696,7 +695,7 @@ func (m TreeModel) viewChat() string {
 		}
 		lines = append(lines, "  "+strings.Join(parts, "  "))
 	}
-	inputLine := "  " + m.chatInput.View()
+	inputLine := " " + m.chatInput.View()
 	lines = append(lines, inputLine)
 
 	// Footer

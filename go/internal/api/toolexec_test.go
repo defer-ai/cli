@@ -132,10 +132,10 @@ func TestToolCallDescription(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"Write", `{"file_path": "src/auth.ts"}`, "Create file src/auth.ts"},
-		{"Edit", `{"file_path": "config.ts"}`, "Edit config.ts"},
-		{"Bash", `{"command": "npm install prisma"}`, "Run: npm install prisma"},
-		{"Read", `{"file_path": "go.mod"}`, "Read go.mod"},
+		{"Write", `{"file_path": "src/auth.ts"}`, "Creating auth.ts"},
+		{"Edit", `{"file_path": "config.ts"}`, "Editing config.ts"},
+		{"Bash", `{"command": "npm install prisma"}`, "Running: npm install prisma"},
+		{"Read", `{"file_path": "go.mod"}`, "Reading go.mod"},
 	}
 
 	for _, tt := range tests {
