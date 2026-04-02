@@ -143,9 +143,23 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 					m.tree.overallStatus = "thinking"
 				}
 			} else if len(store.Decisions) > 0 {
-				// Have decisions but no priorities — ask user to set them
-				m.view = ViewPriorities
-				m.priorities = NewPrioritiesModel(store.Decisions)
+				// Have decisions but no saved priorities file.
+				// Check if decisions already have answers (from a previous session)
+				hasAnswered := false
+				for _, d := range store.Decisions {
+					if d.Answer != nil {
+						hasAnswered = true
+						break
+					}
+				}
+				if hasAnswered {
+					// Decisions already answered — skip priorities, resume in conversation
+					m.tree.overallStatus = "done"
+				} else {
+					// All pending, no priorities — ask user to set them
+					m.view = ViewPriorities
+					m.priorities = NewPrioritiesModel(store.Decisions)
+				}
 			}
 		}
 		// else: fresh start, conversation is empty, user types task
