@@ -683,15 +683,15 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 		return m, tea.Batch(cmds...)
 	}
 
-	// Delegate to active sub-model
+	// Delegate to active sub-model.
+	// Pass ALL message types (not just KeyMsg) so textinput components
+	// receive cursor blink commands and other internal messages.
 	switch m.view {
 	case ViewWelcome:
-		if keyMsg, ok := msg.(tea.KeyMsg); ok {
-			var cmd tea.Cmd
-			m.welcome, cmd = m.welcome.Update(keyMsg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
+		var cmd tea.Cmd
+		m.welcome, cmd = m.welcome.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 	case ViewPriorities:
 		if keyMsg, ok := msg.(tea.KeyMsg); ok {
@@ -702,12 +702,10 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 			}
 		}
 	case ViewTree:
-		if keyMsg, ok := msg.(tea.KeyMsg); ok {
-			var cmd tea.Cmd
-			m.tree, cmd = m.tree.Update(keyMsg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
+		var cmd tea.Cmd
+		m.tree, cmd = m.tree.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 	}
 

@@ -86,8 +86,20 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	default:
+		// Forward non-key messages to the active textinput for cursor blink etc.
+		var cmd tea.Cmd
+		switch m.mode {
+		case tmChat:
+			m.chatInput, cmd = m.chatInput.Update(msg)
+		case tmRevise, tmAsk:
+			m.textInput, cmd = m.textInput.Update(msg)
+		}
+		if m.searchMode {
+			m.searchInput, cmd = m.searchInput.Update(msg)
+		}
+		return m, cmd
 	}
-	return m, nil
 }
 
 func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
