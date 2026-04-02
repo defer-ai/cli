@@ -21,7 +21,7 @@ import (
 type View int
 
 const (
-	ViewConversation View = iota // conversation is the primary view
+	ViewChat View = iota // conversation is the primary view
 	ViewPriorities               // care level picker (overlay, returns to conversation)
 	ViewTree                     // decision tree (tab toggles)
 )
@@ -79,7 +79,7 @@ func NewModel(task string, provider api.Provider, cwd string) Model {
 		cancel:           cancel,
 		domainPriorities: make(map[string]agent.CareLevel),
 		notifications:    NewNotificationManager(),
-		view:             ViewConversation,
+		view:             ViewChat,
 	}
 
 	m.manager = agent.NewManager(provider, cwd)
@@ -158,7 +158,7 @@ func NewScanModel(provider api.Provider, cwd string) Model {
 		cancel:           cancel,
 		domainPriorities: make(map[string]agent.CareLevel),
 		notifications:    NewNotificationManager(),
-		view:             ViewConversation,
+		view:             ViewChat,
 	}
 	m.manager = agent.NewManager(provider, cwd)
 
@@ -325,7 +325,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case TaskSubmittedMsg:
 		// First message in conversation becomes the task — start decomposition
 		m.task = msg.Task
-		m.view = ViewConversation
+		m.view = ViewChat
 		m.manager = agent.NewManager(m.provider, m.cwd)
 		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Analyzing project and identifying decisions..."})
 		ch := m.eventChan
@@ -392,7 +392,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case PrioritiesConfirmedMsg:
 		m.domainPriorities = msg.Priorities
 		savePriorities(m.cwd, msg.Priorities, m.task)
-		m.view = ViewConversation
+		m.view = ViewChat
 		m.tree.mode = tmChat
 		m.tree.chatFocused = true
 		m.tree.chatInput.Focus()
@@ -954,7 +954,7 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 				cmds = append(cmds, cmd)
 			}
 		}
-	case ViewConversation, ViewTree:
+	case ViewChat, ViewTree:
 		var cmd tea.Cmd
 		m.tree, cmd = m.tree.Update(msg)
 		if cmd != nil {
@@ -974,7 +974,7 @@ func (m Model) View() string {
 	case ViewPriorities:
 		base = m.priorities.View()
 
-	case ViewConversation, ViewTree:
+	case ViewChat, ViewTree:
 		m.tree.height = m.height
 		m.tree.width = m.width
 		base = m.tree.View()

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
@@ -21,11 +22,11 @@ const (
 	tmDetail
 	tmRevise
 	tmAsk
-	tmChat         // full-screen conversation
+	tmChat         // full-screen chat
 	tmEditFeatures // editing feature tags on a decision
 )
 
-// ChatEntry is a line in the conversation panel.
+// ChatEntry is a line in the chat panel.
 type ChatEntry struct {
 	Type     string // "topic", "subtool", "tool", "agent", "user", "system", "action"
 	Text     string
@@ -45,8 +46,8 @@ type TreeModel struct {
 	whyText        string
 	width, height  int
 	mascotTick     int
-	chatLog        []ChatEntry     // conversation panel
-	chatInput      textinput.Model // chat input
+	chatLog        []ChatEntry     // chat panel
+	chatInput      textarea.Model // chat input (textarea for word wrap)
 	chatFocused    bool            // true = keys go to chat, false = keys go to tree
 	chatThinking   bool            // true while waiting for agent response
 	chatThinkStart time.Time       // when thinking started
@@ -80,10 +81,14 @@ func NewTreeModel() TreeModel {
 		glamour.WithWordWrap(0), // we handle wrapping ourselves
 	)
 
-	ci := textinput.New()
+	ci := textarea.New()
 	ci.Placeholder = "Ask anything..."
 	ci.Prompt = AccentStyle.Render("> ")
 	ci.CharLimit = 0
+	ci.MaxHeight = 5       // wrap up to 5 lines
+	ci.ShowLineNumbers = false
+	ci.FocusedStyle.CursorLine = lipgloss.NewStyle() // no highlight on current line
+	ci.BlurredStyle.CursorLine = lipgloss.NewStyle()
 
 	ti := textinput.New()
 	ti.Placeholder = "Type here..."
@@ -148,7 +153,7 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	key := msg.String()
 
-	// Tab toggles between tree view and full-screen conversation,
+	// Tab toggles between tree and chat,
 	// unless we're in chat with active completions (tab-complete).
 	if key == "tab" && !(m.mode == tmChat && len(m.completions) > 0) {
 		if m.mode == tmChat {
@@ -930,8 +935,12 @@ func (m TreeModel) viewChat() string {
 		}
 		lines = append(lines, "  "+strings.Join(parts, "  "))
 	}
+	m.chatInput.SetWidth(innerWidth - 2)
 	inputLine := " " + m.chatInput.View()
-	lines = append(lines, inputLine)
+	// Textarea may render multiple lines — split and add each
+	for _, il := range strings.Split(inputLine, "\n") {
+		lines = append(lines, il)
+	}
 
 	// Footer
 	lines = append(lines, buildMiddleBorder(innerWidth))
@@ -1268,7 +1277,7 @@ func (m TreeModel) viewTreePane(w, h int) string {
 		}
 		lines = append(lines, "  "+AccentStyle.Render("● Thinking... ")+DimStyle.Render("("+timeStr+")"))
 	} else {
-		lines = append(lines, "  "+DimStyle.Render("tab to open conversation"))
+		lines = append(lines, "  "+DimStyle.Render("tab to open chat"))
 	}
 
 	// Footer
@@ -1294,7 +1303,7 @@ func (m TreeModel) viewTreePane(w, h int) string {
 			{"/", "filter"},
 			{"ctrl+f", "find"},
 			{"g", "group"},
-			{"tab", "conversation"},
+			{"tab", "chat"},
 			{"ctrl+c\u00d72", "quit"},
 		}
 	}

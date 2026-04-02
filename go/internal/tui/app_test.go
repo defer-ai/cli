@@ -151,8 +151,8 @@ func setupAtTreeNoExecutors(t *testing.T, decs []decision.Decision) Model {
 func TestConversationStartsInChatMode(t *testing.T) {
 	m := NewModel("", nil, t.TempDir())
 
-	if m.view != ViewConversation {
-		t.Fatalf("initial view = %d, want ViewConversation (%d)", m.view, ViewConversation)
+	if m.view != ViewChat {
+		t.Fatalf("initial view = %d, want ViewChat (%d)", m.view, ViewChat)
 	}
 
 	// Chat mode should be active by default
@@ -256,8 +256,8 @@ func TestPrioritiesToTree(t *testing.T) {
 	}
 	m := setupAtTree(t, fakeDecisions(), priorities)
 
-	if m.view != ViewConversation {
-		t.Fatalf("view = %d, want ViewConversation (%d)", m.view, ViewConversation)
+	if m.view != ViewChat {
+		t.Fatalf("view = %d, want ViewChat (%d)", m.view, ViewChat)
 	}
 
 	// Verify Stack decisions are auto-decided
@@ -697,7 +697,7 @@ func TestViewRendersWithoutPanic(t *testing.T) {
 		name string
 		view View
 	}{
-		{"Conversation", ViewConversation},
+		{"Chat", ViewChat},
 		{"Priorities", ViewPriorities},
 		{"Tree", ViewTree},
 	}
@@ -719,8 +719,8 @@ func TestViewRendersWithoutPanic(t *testing.T) {
 
 func TestTaskSubmittedFromCLI(t *testing.T) {
 	m := NewModel("build something", nil, t.TempDir())
-	if m.view != ViewConversation {
-		t.Errorf("view = %d, want ViewConversation when task provided", m.view)
+	if m.view != ViewChat {
+		t.Errorf("view = %d, want ViewChat when task provided", m.view)
 	}
 	if m.task != "build something" {
 		t.Errorf("task = %q, want %q", m.task, "build something")
