@@ -43,10 +43,10 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `
           (function(){
             var c=document.createElement('canvas');c.width=32;c.height=32;
-            var x=c.getContext('2d');
-            for(var y=0;y<32;y++)for(var i=0;i<32;i++){
+            var x=c.getContext('2d');var s=4;
+            for(var y=0;y<8;y++)for(var i=0;i<8;i++){
               x.fillStyle=Math.random()<.5?'#f97316':'#0a0a0a';
-              x.fillRect(i,y,1,1);
+              x.fillRect(i*s,y*s,s,s);
             }
             var l=document.createElement('link');l.rel='icon';l.href=c.toDataURL();
             document.head.appendChild(l);
