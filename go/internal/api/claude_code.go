@@ -88,6 +88,7 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 		"--verbose",
 		"--model", p.model,
 		"--dangerously-skip-permissions",
+		"--allowedTools", "Bash,Read,Write,Edit,Glob,Grep,Agent,WebSearch,WebFetch,ToolSearch,EnterPlanMode,ExitPlanMode,TaskCreate,TaskUpdate",
 	}
 
 	if p.sessionID != "" {

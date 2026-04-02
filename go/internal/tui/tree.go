@@ -675,23 +675,27 @@ func (m TreeModel) viewChat() string {
 		chatLines = append(chatLines, " "+AccentStyle.Render("● Thinking... ")+DimStyle.Render("("+timeStr+")"))
 	}
 
-	// Scroll to bottom
+	// Anchor content to bottom — empty space goes above, content fills from bottom
 	start := 0
 	if len(chatLines) > chatContentH {
 		start = len(chatLines) - chatContentH
 	}
 	visible := chatLines[start:]
 
-	for _, cl := range visible {
-		lines = append(lines, cl)
-	}
-	// Fill remaining
-	for i := len(visible); i < chatContentH; i++ {
-		if len(m.chatLog) == 0 && i == 0 {
+	// Fill empty space ABOVE the content (pushes content to bottom)
+	emptyAbove := chatContentH - len(visible)
+	for i := 0; i < emptyAbove; i++ {
+		if len(m.chatLog) == 0 && i == emptyAbove-1 {
+			// Show placeholder at the bottom of the empty area
 			lines = append(lines, " "+DimStyle.Render("Describe your project to get started, or ask anything."))
 		} else {
 			lines = append(lines, "")
 		}
+	}
+
+	// Then render the actual content
+	for _, cl := range visible {
+		lines = append(lines, cl)
 	}
 
 	// Input divider + completions overlay + input
