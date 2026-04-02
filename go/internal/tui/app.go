@@ -329,23 +329,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case AgentStateChangedMsg:
+		// Decomposition progress — show in notification bar only, not conversation
 		if m.manager != nil && m.manager.Agent() != nil {
 			st := m.manager.Agent().State()
 			if st.Output != "" {
 				cleaned := stripJSONBlocks(st.Output)
 				if cleaned != "" {
 					lines := strings.Split(cleaned, "\n")
-					// Stream the last meaningful line into the conversation
 					for i := len(lines) - 1; i >= 0; i-- {
 						line := strings.TrimSpace(lines[i])
 						if line != "" {
-							// Avoid duplicate consecutive messages
-							if len(m.tree.chatLog) == 0 || m.tree.chatLog[len(m.tree.chatLog)-1].Text != line {
-								m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: line})
-								if len(m.tree.chatLog) > 200 {
-									m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-200:]
-								}
-							}
+							m.notifications.Push(line, NotifyLow, 3*time.Second)
 							break
 						}
 					}
@@ -468,38 +462,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case ExecutorStateChangedMsg:
+		// Executor progress — update domain pills and notification bar only
 		if m.manager != nil {
 			for _, exec := range m.manager.Executors() {
 				st := exec.State()
-				prevStatus := m.tree.domainStatuses[st.Domain]
-				newStatus := st.Status.String()
-				// Only log domain status transitions (not every delta)
-				if prevStatus != newStatus && newStatus != "pending" {
-					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
-						Type: "system",
-						Text: fmt.Sprintf("[%s] %s", st.Domain, newStatus),
-					})
-				}
-				m.tree.domainStatuses[st.Domain] = newStatus
-
-				// Stream executor output into conversation
-				if st.Output != "" {
-					cleaned := stripJSONBlocks(st.Output)
-					if cleaned != "" {
-						lines := strings.Split(cleaned, "\n")
-						for i := len(lines) - 1; i >= 0; i-- {
-							line := strings.TrimSpace(lines[i])
-							if line != "" && len(line) > 5 {
-								if len(m.tree.chatLog) == 0 || m.tree.chatLog[len(m.tree.chatLog)-1].Text != line {
-									m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: line})
-									if len(m.tree.chatLog) > 200 {
-										m.tree.chatLog = m.tree.chatLog[len(m.tree.chatLog)-200:]
-									}
-								}
-								break
-							}
-						}
-					}
+				m.tree.domainStatuses[st.Domain] = st.Status.String()
+				if st.Status == agent.DomainExecuting || st.Status == agent.DomainPlanning || st.Status == agent.DomainVerifying {
+					status := extractShortStatus(st.Output, st.Status.String())
+					m.notifications.Push(status, NotifyLow, 3*time.Second)
 				}
 			}
 			m.tree.overallStatus = m.computeOverallStatus()
