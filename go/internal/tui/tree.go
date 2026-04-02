@@ -609,7 +609,15 @@ func (m TreeModel) viewChat() string {
 			if m.mdRenderer != nil {
 				if md, err := m.mdRenderer.Render(entry.Text); err == nil {
 					for _, ml := range strings.Split(strings.TrimRight(md, "\n"), "\n") {
-						chatLines = append(chatLines, "  "+ml)
+						// Re-wrap glamour output that exceeds available width
+						visWidth := lipgloss.Width(ml)
+						if visWidth > maxTextWidth {
+							for _, wl := range wrapText(ml, maxTextWidth-2) {
+								chatLines = append(chatLines, "  "+wl)
+							}
+						} else {
+							chatLines = append(chatLines, "  "+ml)
+						}
 					}
 					continue
 				}
@@ -1094,7 +1102,8 @@ func wrapText(s string, width int) []string {
 	if width <= 0 {
 		return []string{s}
 	}
-	if len(s) <= width {
+	// Use visible width (ignores ANSI escape codes)
+	if lipgloss.Width(s) <= width {
 		return []string{s}
 	}
 	words := strings.Fields(s)
@@ -1104,7 +1113,7 @@ func wrapText(s string, width int) []string {
 	var lines []string
 	cur := words[0]
 	for _, w := range words[1:] {
-		if len(cur)+1+len(w) > width {
+		if lipgloss.Width(cur)+1+lipgloss.Width(w) > width {
 			lines = append(lines, cur)
 			cur = w
 		} else {
