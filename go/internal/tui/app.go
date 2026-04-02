@@ -534,17 +534,78 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case ReviseDecisionMsg:
-		var changedDecision string
+		var changedDecision *decision.Decision
 		for i := range m.tree.decisions {
 			if m.tree.decisions[i].ID == msg.ID {
 				answer := msg.NewAnswer
 				m.tree.decisions[i].Answer = &answer
 				m.tree.decisions[i].Delegated = false
 				m.tree.decisions[i].Source = "user"
-				changedDecision = m.tree.decisions[i].Question
+				changedDecision = &m.tree.decisions[i]
 				break
 			}
 		}
+
+		// Cascade: invalidate dependent decisions
+		if changedDecision != nil {
+			dependents := decision.FindTransitiveDependents(changedDecision.ID, m.tree.decisions)
+			if len(dependents) > 0 {
+				var invalidatedIDs []string
+				for _, dep := range dependents {
+					for i := range m.tree.decisions {
+						if m.tree.decisions[i].ID == dep.ID {
+							decision.InvalidateDependent(&m.tree.decisions[i])
+							invalidatedIDs = append(invalidatedIDs, dep.ID)
+							break
+						}
+					}
+				}
+				// Show cascade in conversation
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+					Type: "system",
+					Text: fmt.Sprintf("Changed %s → %s. Invalidated %d dependent decisions: %s",
+						changedDecision.ID, msg.NewAnswer, len(invalidatedIDs), strings.Join(invalidatedIDs, ", ")),
+				})
+			} else {
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+					Type: "system",
+					Text: fmt.Sprintf("Changed %s → %s", changedDecision.ID, msg.NewAnswer),
+				})
+			}
+
+			// For high-impact changes (>= 8), check for implicit invalidation
+			// across the full decision set using the agent
+			if changedDecision.Impact >= 8 && m.provider != nil && !m.quitting {
+				ch := m.eventChan
+				ctx := m.ctx
+				allDecJSON := decisionSummaryForAgent(m.tree.decisions)
+				go func() {
+					prompt := fmt.Sprintf(`Decision %s ("%s") changed to "%s". This is a high-impact foundational decision (impact %d/10).
+
+Review ALL these decisions and identify which ones are now INCOMPATIBLE or need to change due to this foundational shift:
+
+%s
+
+For each incompatible decision, output ONLY a JSON array of IDs that should be invalidated:
+["ID-001", "ID-002"]
+
+If no decisions are incompatible, output: []`, changedDecision.ID, changedDecision.Question, msg.NewAnswer, changedDecision.Impact, allDecJSON)
+
+					resp := runSimpleChat(ctx, m.provider, "You identify incompatible decisions. Output only a JSON array of decision IDs.", prompt)
+					// Parse the response for IDs
+					start := strings.Index(resp, "[")
+					end := strings.LastIndex(resp, "]")
+					if start >= 0 && end > start {
+						var ids []string
+						if err := json.Unmarshal([]byte(resp[start:end+1]), &ids); err == nil && len(ids) > 0 {
+							safeSend(ctx, ch, ImplicitInvalidationMsg{IDs: ids, Reason: fmt.Sprintf("Incompatible with %s = %s", changedDecision.ID, msg.NewAnswer)})
+						}
+					}
+				}()
+				cmds = append(cmds, ListenForEvents(m.eventChan))
+			}
+		}
+
 		if m.manager != nil {
 			m.manager.SyncDecisions(m.tree.decisions)
 		}
@@ -555,11 +616,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// If executors already ran, re-execute with updated decisions
-		if m.executorsLaunched && changedDecision != "" {
-			m.executorsLaunched = false // allow re-launch
+		if m.executorsLaunched && changedDecision != nil {
+			m.executorsLaunched = false
 			m.tree.overallStatus = "executing"
-			m.notifications.Push(fmt.Sprintf("Decision changed: %s. Re-implementing...", trunc(changedDecision, 40)), NotifyMedium, 5*time.Second)
-			// Re-launch executor with updated decisions
 			ch := m.eventChan
 			ctx := m.ctx
 			m.manager.LaunchExecutors(ctx, m.task, m.tree.decisions, m.domainPriorities, func(ev agent.Event) {
@@ -595,6 +654,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case ImplicitInvalidationMsg:
+		var invalidated []string
+		for _, id := range msg.IDs {
+			for i := range m.tree.decisions {
+				if m.tree.decisions[i].ID == id && m.tree.decisions[i].Source != "invalidated" {
+					decision.InvalidateDependent(&m.tree.decisions[i])
+					invalidated = append(invalidated, id)
+					break
+				}
+			}
+		}
+		if len(invalidated) > 0 {
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+				Type: "system",
+				Text: fmt.Sprintf("Implicit invalidation: %s (%s)", strings.Join(invalidated, ", "), msg.Reason),
+			})
+			// Persist
+			if store, _ := decision.LoadStore(m.cwd); store != nil {
+				store.Decisions = m.tree.decisions
+				_ = decision.SaveStore(m.cwd, store)
+			}
+		}
+		cmds = append(cmds, ListenForEvents(m.eventChan))
+		return m, tea.Batch(cmds...)
 
 	case SuggestResponseMsg:
 		// Replace options on the target decision
@@ -976,6 +1060,18 @@ func looksLikeTaskResponse(text string) bool {
 		}
 	}
 	return false
+}
+
+func decisionSummaryForAgent(decs []decision.Decision) string {
+	var b strings.Builder
+	for _, d := range decs {
+		answer := "(pending)"
+		if d.Answer != nil {
+			answer = *d.Answer
+		}
+		b.WriteString(fmt.Sprintf("%s [%s, impact %d]: %s → %s\n", d.ID, d.Category, d.Impact, d.Question, answer))
+	}
+	return b.String()
 }
 
 func extractShortStatus(output, fallback string) string {

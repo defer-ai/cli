@@ -39,6 +39,10 @@ type SuggestResponseMsg struct {
 }
 type TogglePermissionsMsg struct{ Bypass bool }
 type CheckAllDecidedMsg struct{}
+type ImplicitInvalidationMsg struct {
+	IDs    []string
+	Reason string
+}
 
 // BridgeAgentEvent converts an agent.Event to a tea.Msg.
 func BridgeAgentEvent(ev agent.Event) tea.Msg {

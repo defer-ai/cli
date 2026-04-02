@@ -598,11 +598,23 @@ func (m TreeModel) viewChat() string {
 		maxTextWidth = 20
 	}
 	var chatLines []string
-	for _, entry := range m.chatLog {
+	for i, entry := range m.chatLog {
+		prevType := ""
+		if i > 0 {
+			prevType = m.chatLog[i-1].Type
+		}
+
+		// Add separator between different message types (but not between consecutive tools)
+		needsSep := prevType != "" && prevType != entry.Type && !(prevType == "tool" && entry.Type == "tool")
+		if needsSep {
+			chatLines = append(chatLines, "")
+		}
+
 		switch entry.Type {
 		case "tool":
-			for _, wl := range wrapText(entry.Text, maxTextWidth-2) {
-				chatLines = append(chatLines, " "+DimStyle.Render(" "+wl))
+			// Indented with arrow prefix, visually nested under parent context
+			for _, wl := range wrapText(entry.Text, maxTextWidth-6) {
+				chatLines = append(chatLines, "  "+DimStyle.Render(" ↳ "+wl))
 			}
 		case "agent":
 			// Render markdown
@@ -643,6 +655,7 @@ func (m TreeModel) viewChat() string {
 			}
 			chatLines = append(chatLines, "")
 		default:
+			// System messages rendered dim
 			for _, wl := range wrapText(entry.Text, maxTextWidth) {
 				chatLines = append(chatLines, " "+DimStyle.Render(wl))
 			}
@@ -883,45 +896,46 @@ func (m TreeModel) viewTreePane(w, h int) string {
 			answer = DimStyle.Render("(pending)")
 		}
 
-		// Impact indicator: fixed-width 3 chars so columns stay aligned
-		var impactStr string
-		if d.Impact >= 7 {
-			impactStr = RedStyle.Render("!!!")
-		} else if d.Impact >= 4 {
-			impactStr = YellowStyle.Render("!! ")
-		} else if d.Impact >= 1 {
-			impactStr = DimStyle.Render("!  ")
-		} else {
-			impactStr = "   "
-		}
-
 		// Dependency indent: if this decision depends on another, indent it
 		indent := ""
 		if len(d.DependsOn) > 0 {
 			indent = "  "
 		}
 
+		// Color the ID based on impact level
 		idStr := pad(d.ID, idW)
 		qStr := trunc(d.Question, qW-len(indent))
 
+		// Determine impact-based ID style
+		var idStyle lipgloss.Style
+		if d.Impact >= 7 {
+			idStyle = RedStyle
+		} else if d.Impact >= 4 {
+			idStyle = YellowStyle
+		} else if d.Impact >= 1 {
+			idStyle = DimStyle
+		} else {
+			idStyle = lipgloss.NewStyle()
+		}
+
 		var row string
 		if isCur {
-			row = fmt.Sprintf("  %s%s %s %s%s%s  %s",
+			// When cursor is on this row, combine bold with impact color
+			curIDStyle := idStyle.Bold(true)
+			row = fmt.Sprintf("  %s%s %s%s%s  %s",
 				cursor,
 				iconStyle.Render(icon),
-				impactStr,
 				indent,
-				BoldWhite.Render(idStr),
+				curIDStyle.Render(idStr),
 				BoldWhite.Render(qStr),
 				DimStyle.Render(answer),
 			)
 		} else {
-			row = fmt.Sprintf("  %s%s %s %s%s%s  %s",
+			row = fmt.Sprintf("  %s%s %s%s%s  %s",
 				cursor,
 				iconStyle.Render(icon),
-				impactStr,
 				indent,
-				idStr,
+				idStyle.Render(idStr),
 				qStr,
 				DimStyle.Render(answer),
 			)
@@ -1021,6 +1035,21 @@ func (m TreeModel) viewDetailPane(w, h int) string {
 		header += "  " + MagentaStyle.Render("auto")
 	}
 	lines = append(lines, header)
+
+	// Dependencies
+	if len(sel.DependsOn) > 0 {
+		lines = append(lines, "  "+DimStyle.Render("depends on: "+strings.Join(sel.DependsOn, ", ")))
+	}
+
+	// Reverse dependencies
+	revDeps := decision.FindDependents(sel.ID, m.decisions)
+	if len(revDeps) > 0 {
+		var revIDs []string
+		for _, rd := range revDeps {
+			revIDs = append(revIDs, rd.ID)
+		}
+		lines = append(lines, "  "+DimStyle.Render("depended on by: "+strings.Join(revIDs, ", ")))
+	}
 	lines = append(lines, "")
 
 	// Question (word-wrapped to fit pane)
@@ -1249,6 +1278,16 @@ func (m TreeModel) viewDetail() string {
 	if len(sel.DependsOn) > 0 {
 		deps := "  " + DimStyle.Render("depends on: "+strings.Join(sel.DependsOn, ", "))
 		lines = append(lines, deps)
+	}
+
+	// Reverse dependencies (what depends on THIS decision)
+	revDeps := decision.FindDependents(sel.ID, m.decisions)
+	if len(revDeps) > 0 {
+		var revIDs []string
+		for _, rd := range revDeps {
+			revIDs = append(revIDs, rd.ID)
+		}
+		lines = append(lines, "  "+DimStyle.Render("depended on by: "+strings.Join(revIDs, ", ")))
 	}
 	lines = append(lines, "")
 
