@@ -533,8 +533,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ToolActivityMsg:
 		m.tree.activityLine = msg.Description
 
-		// Skip "Waiting for input" — AskUserQuestion shouldn't surface
-		if strings.Contains(msg.Description, "Waiting for input") {
+		// Skip AskUserQuestion-related activity — it can't be handled interactively
+		if strings.Contains(msg.Description, "Waiting for input") ||
+			strings.Contains(msg.Description, "AskUserQuestion") {
 			cmds = append(cmds, ListenForEvents(m.eventChan))
 			return m, tea.Batch(cmds...)
 		}

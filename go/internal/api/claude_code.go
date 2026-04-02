@@ -112,6 +112,7 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 		"--output-format", "stream-json",
 		"--verbose",
 		"--model", p.model,
+		"--permission-mode", "default",
 	}
 
 	// Resume Claude session if we have one (from .defer/), fresh otherwise.
