@@ -197,8 +197,8 @@ func (e *Executor) decisionSummary() string {
 // freshProvider creates a new provider for isolated sessions.
 // For ClaudeCodeProvider, creates a fresh subprocess; for stateless HTTP providers, reuses the provider.
 func (e *Executor) freshProvider() api.Provider {
-	if cc, ok := e.provider.(*api.ClaudeCodeProvider); ok {
-		return api.NewClaudeCodeProvider(cc.GetModel())
+	if _, ok := e.provider.(*api.ClaudeCodeProvider); ok {
+		return api.NewClaudeCodeProviderWithCWD(e.provider.GetModel(), e.cwd)
 	}
 	return e.provider // stateless HTTP providers can be reused
 }
@@ -242,8 +242,8 @@ func (e *Executor) simpleCompletion(ctx context.Context, systemPrompt, userMsg s
 func (e *Executor) execute(ctx context.Context, decSummary string) string {
 	systemPrompt := fmt.Sprintf(ExecutePromptTemplate, e.domain, CarePrompts[e.careLevel])
 
-	userMsg := fmt.Sprintf("Task: %s\n\nDomain: %s\nDecisions:\n%s\n\nImplement the %s domain now.",
-		e.task, e.domain, decSummary, e.domain)
+	userMsg := fmt.Sprintf("Task: %s\n\nProject directory: %s\nDomain: %s\nDecisions:\n%s\n\nImplement the %s domain now. All files must go in %s or its subdirectories.",
+		e.task, e.cwd, e.domain, decSummary, e.domain, e.cwd)
 
 	events := make(chan api.Event, 100)
 

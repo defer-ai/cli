@@ -104,6 +104,13 @@ func NewModel(task string, provider api.Provider, cwd string, opts ...ModelOpts)
 
 	m.manager = agent.NewManager(provider, cwd)
 
+	// Load Claude session ID from .defer/ if it exists
+	if sessionID := loadSessionID(cwd); sessionID != "" {
+		if cc, ok := provider.(*api.ClaudeCodeProvider); ok {
+			cc.SetSessionID(sessionID)
+		}
+	}
+
 	// Check for existing session to resume (only if no new task given)
 	if task == "" {
 		store, _ := decision.LoadStore(cwd)
@@ -236,6 +243,23 @@ func NewScanModel(provider api.Provider, cwd string) Model {
 	}()
 
 	return m
+}
+
+func loadSessionID(cwd string) string {
+	data, err := os.ReadFile(filepath.Join(cwd, ".defer", "session_id"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func saveSessionID(cwd string, id string) {
+	if id == "" {
+		return
+	}
+	dir := filepath.Join(cwd, ".defer")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "session_id"), []byte(id), 0o644)
 }
 
 func loadPriorities(cwd string) map[string]agent.CareLevel {
@@ -567,6 +591,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tree.chatThinking = false
 		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "All domains complete. Tab to view decision tree."})
 		m.notifications.Push("All domains complete.", NotifyHigh, 0)
+		// Persist Claude session ID for future resume
+		if cc, ok := m.provider.(*api.ClaudeCodeProvider); ok {
+			saveSessionID(m.cwd, cc.SessionID())
+		}
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 

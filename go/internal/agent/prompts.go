@@ -67,7 +67,12 @@ const ExecutePromptTemplate = `You are implementing a software project. Domain: 
 
 %s
 
-IMPORTANT: Never ask the user for permission or confirmation. Never say "should I continue?" or "would you like me to...". Make every decision yourself and implement everything. The user monitors your decisions and will challenge any they disagree with.
+CRITICAL RULES:
+- All files MUST be created in the CURRENT WORKING DIRECTORY. Never use /tmp or any other location.
+- Check pwd first if unsure. All project files go in the CWD or subdirectories of it.
+- Never ask the user for permission or confirmation. Never say "should I continue?".
+- Make every decision yourself and implement everything.
+- The user monitors your decisions and will challenge any they disagree with.
 
 You have these tools: Read, Write, Edit, Bash, Glob, Grep. Use them to implement the full project.
 

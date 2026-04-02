@@ -58,12 +58,19 @@ type Event struct {
 // Used when no ANTHROPIC_API_KEY is set (user has Claude Code authenticated via subscription).
 type ClaudeCodeProvider struct {
 	model     string
-	sessionID string
+	cwd       string // working directory for the subprocess
+	sessionID string // Claude session ID (persisted in .defer/)
 }
 
-// NewClaudeCodeProvider creates a subprocess provider.
+// NewClaudeCodeProvider creates a subprocess provider using the current working directory.
 func NewClaudeCodeProvider(model string) *ClaudeCodeProvider {
-	return &ClaudeCodeProvider{model: model}
+	cwd, _ := os.Getwd()
+	return &ClaudeCodeProvider{model: model, cwd: cwd}
+}
+
+// NewClaudeCodeProviderWithCWD creates a subprocess provider with an explicit working directory.
+func NewClaudeCodeProviderWithCWD(model, cwd string) *ClaudeCodeProvider {
+	return &ClaudeCodeProvider{model: model, cwd: cwd}
 }
 
 // IsClaudeInstalled checks if the claude binary is available.
@@ -107,6 +114,8 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 		"--model", p.model,
 	}
 
+	// Resume Claude session if we have one (from .defer/), fresh otherwise.
+	// When .defer/ is deleted, sessionID is empty → fresh session.
 	if p.sessionID != "" {
 		args = append(args, "--resume", p.sessionID)
 	} else {
@@ -117,6 +126,9 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 
 	cmd := exec.CommandContext(ctx, claudePath, args...)
 	cmd.Env = os.Environ()
+	if p.cwd != "" {
+		cmd.Dir = p.cwd
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -353,6 +365,16 @@ func (p *ClaudeCodeProvider) handleControlRequest(event map[string]interface{}, 
 // ResetSession clears the session ID for a fresh context.
 func (p *ClaudeCodeProvider) ResetSession() {
 	p.sessionID = ""
+}
+
+// SessionID returns the current Claude session ID (for persistence).
+func (p *ClaudeCodeProvider) SessionID() string {
+	return p.sessionID
+}
+
+// SetSessionID sets the Claude session ID (loaded from .defer/).
+func (p *ClaudeCodeProvider) SetSessionID(id string) {
+	p.sessionID = id
 }
 
 // GetModel returns the configured model name.
