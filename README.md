@@ -2,18 +2,21 @@
 
 Zero-autonomy AI. Every decision is yours.
 
-Defer decomposes your task into a tree of decisions, lets you set care levels per domain (skip through paranoid), auto-decides the rest, then implements everything while you watch, chat, and challenge in real-time. Every choice -- from framework to variable name -- is tracked, reversible, and exportable.
+## What is defer
+
+Defer decomposes your task into a tree of decisions, lets you set care levels per domain (from skip through paranoid), auto-decides the rest, then implements everything while you watch, chat, and challenge in real-time. Every choice -- from framework to variable name -- is tracked, reversible, and exportable. The agent never asks questions as text; all ambiguity becomes decisions with concrete options.
 
 ## Install
 
 **From release (recommended):**
+
 ```bash
-# macOS / Linux
 curl -sSL https://github.com/defer-ai/cli/releases/latest/download/defer_$(uname -s)_$(uname -m).tar.gz | tar xz
 sudo mv defer /usr/local/bin/
 ```
 
 **From source:**
+
 ```bash
 cd go && go build -ldflags "-s -w" -o defer .
 sudo mv defer /usr/local/bin/
@@ -37,6 +40,7 @@ You: "build a secret sharing tool"
          | Groups by category (Stack, Security, API, UI, ...)
          | Assigns impact score 0-10 per decision
          | Each decision has 3-4 concrete options
+         | If anything is unclear, it becomes a decision -- never a question
          |
     2. PRIORITIZE
          | You set care levels per domain
@@ -44,7 +48,7 @@ You: "build a secret sharing tool"
          | high/paranoid   -> you must confirm (yellow)
          |
     3. DECIDE
-         | Navigate the decision tree
+         | Navigate the decision tree (tab to switch from conversation)
          | Inspect, challenge, override any decision
          | Chat with @ID references for context
          |
@@ -52,6 +56,7 @@ You: "build a secret sharing tool"
          | Executor: plan -> implement -> verify -> extract
          | Autonomous execution, no "should I continue?" prompts
          | If you change a decision mid-run, it re-implements
+         | Changing a high-impact decision invalidates dependents
          |
     5. TRACK
          | DECISIONS.md tracks everything
@@ -59,9 +64,23 @@ You: "build a secret sharing tool"
          | Every implicit decision extracted and logged
 ```
 
+## The Conversation
+
+The conversation is the primary interface. When you launch defer, you land in a full-screen chat where the agent streams everything -- decomposition progress, execution output, tool calls, and status updates. You type naturally, reference decisions with `@ID`, and the agent responds inline.
+
+The conversation view is where you:
+
+- Describe your task or ask follow-up questions
+- Reference decisions with `@STA-0001` to discuss, challenge, or change them
+- Use `@ID change to X` to revise a decision directly
+- Use `@ID why?` to ask about a specific decision's tradeoffs
+- Watch the agent work (tool calls, file writes, test runs stream in real-time)
+
+Press `tab` to switch to the decision tree. Press `tab` again to come back.
+
 ## The Decision Tree
 
-The tree is the main view. On wide terminals (>100 columns), selecting a decision shows a split-pane with the detail on the right. On narrow terminals, detail opens full-screen.
+The tree is the secondary view, accessible via `tab`. On wide terminals (>100 columns), selecting a decision shows a split-pane with the detail on the right. On narrow terminals, detail opens full-screen.
 
 ```
   defer                               3/8 decisions -- 5 pending
@@ -82,47 +101,53 @@ The tree is the main view. On wide terminals (>100 columns), selecting a decisio
   |                                                                   |
   +-- Stack: executing  Security: planning  UI: done -----------------+
   |  @SECU-002 what are the tradeoffs?                               |
-  +-- enter inspect  / search  tab chat  ctrl+c x2 quit -------------+
+  +-- enter inspect  / filter  f find  g group  ctrl+q quit ----------+
 ```
+
+Status indicators:
 
 - `o` pending (yellow) -- needs your input
 - `+` confirmed (green) -- you decided
 - `*` auto-decided (gray) -- agent decided, challengeable
-- Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 
-## TUI Keybindings
+Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 
-### Decision Tree
+## Keybindings
+
+### Tree View
 
 | Key | Action |
 |-----|--------|
 | `j` / `k` or arrows | Navigate decisions |
 | `enter` | Inspect decision (split-pane on wide terminals) |
-| `/` | Search/filter decisions by ID, category, or question |
-| `tab` | Open conversation panel |
-| `ctrl+c` x2 | Quit |
+| `/` | Filter decisions by ID, category, or question |
+| `f` or `ctrl+f` | Find and jump to a decision, category, or feature |
+| `g` | Toggle grouping between category and feature |
+| `tab` | Switch to conversation |
+| `ctrl+q` | Quit |
+| `ctrl+c` | Shows warning (press `ctrl+q` to actually quit) |
 
 ### Decision Detail
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Navigate options |
+| `j` / `k` or arrows | Navigate options |
 | `enter` | Confirm selected option |
 | `c` | Type a custom answer |
 | `s` | Shuffle -- generate new options via AI |
 | `w` | Why? -- explain tradeoffs for current option |
-| `a` | Ask -- ask a freeform question about this decision |
+| `a` | Ask a freeform question about this decision |
+| `f` | Edit feature tags (comma-separated) |
 | `q` / `esc` | Back to tree |
 
-### Conversation Panel
+### Conversation
 
 | Key | Action |
 |-----|--------|
 | `enter` | Send message |
-| `@` + type | Autocomplete decision IDs (tab to cycle) |
-| `@ID change to X` | Directly change a decision |
-| `@ID why?` | Ask about a specific decision |
-| `tab` | Back to tree (or cycle autocomplete) |
+| `@` + type | Autocomplete decision IDs |
+| `tab` | Cycle autocomplete / switch to tree (when no completions) |
+| `ctrl+o` | Toggle expand/collapse on last agent topic |
 | `esc` | Back to tree |
 
 ### Care Level Picker
@@ -137,51 +162,56 @@ All keybindings are configurable via `~/.defer/keybindings.json`.
 
 ## Care Levels
 
-| Level    | What happens                             |
+| Level | What happens |
 |----------|------------------------------------------|
-| skip     | All auto-decided, hidden from tree       |
-| low      | All auto-decided, visible                |
-| medium   | First decision per category shown, rest auto |
-| high     | All decisions shown, you confirm each    |
-| paranoid | All decisions + sub-decisions shown       |
+| skip | All auto-decided, hidden from tree |
+| low | All auto-decided, visible |
+| medium | First decision per category shown, rest auto |
+| high | All decisions shown, you confirm each |
+| paranoid | All decisions + sub-decisions shown |
 
 Same number of decisions regardless of care level. The only difference: skip/low/medium get auto-answered, high/paranoid stay pending for you.
 
-## Search
+## Features
 
-Press `/` in the tree view to filter decisions. Type any part of a decision's ID, category, or question. Press `enter` to lock the filter (navigate within filtered results), or `esc` to clear.
+Decisions can be tagged with features (e.g., "messaging", "auth", "encryption"). Features provide a second axis for organizing decisions beyond categories.
 
-## Provider Support
+**Feature tagging.** Press `f` in the decision detail view to edit a decision's feature tags. Enter comma-separated values (e.g., `auth, onboarding`). Feature IDs use the `#` prefix and follow the same 3-letter prefix rules as categories: `#MSG`, `#AUT`, `#ENC`.
 
-Auto-detected from environment, or set explicitly:
+**Grouping.** Press `g` in the tree view to toggle between grouping by category (default) and grouping by feature.
 
-| Provider         | How to enable                                |
-|------------------|----------------------------------------------|
-| Claude Code      | Default (free with subscription)             |
-| OpenAI           | `export OPENAI_API_KEY=sk-...`               |
-| Groq             | `export GROQ_API_KEY=gsk_...`                |
-| Mistral          | `--provider mistral --api-key ...`           |
-| Together         | `--provider together --api-key ...`          |
-| DeepInfra        | `--provider deepinfra --api-key ...`         |
-| Cerebras         | `--provider cerebras --api-key ...`          |
-| OpenRouter       | `--provider openrouter --api-key ...`        |
-| Ollama           | `--provider ollama --model llama3.1`         |
-| Any OpenAI-compat| `--provider <url> --api-key <key>`           |
+**Search.** Press `/` to filter decisions by any part of their ID, category, or question text. Press `enter` to lock the filter and navigate within results. Press `esc` to clear.
 
-## Commands
+**Jump.** Press `f` or `ctrl+f` in the tree view to open a jump search. Type to find decisions, categories, or features by name, then press `enter` to jump directly to the match.
+
+## ID Scheme
+
+Defer uses prefixed IDs to reference decisions and features throughout the system.
+
+**Decision IDs** use the `@` prefix followed by a 3-letter category code and a 4-digit sequence number:
 
 ```
-defer "task"               Start a new project with the given task
-defer                      Resume the last session in the current directory
-defer scan                 Discover decisions in an existing project
-defer init [target]        Scaffold config for: claude-code, cursor, copilot, codex, universal
-defer sessions list        List all sessions in directory tree
-defer sessions delete      Delete .defer/ in current directory
-defer sessions export      Print DECISIONS.md to stdout
-defer --debug "task"       Headless mode (no TUI, prints to stdout)
-defer --model opus "task"  Use a specific model (sonnet, opus, haiku, or ID)
-defer --version            Show version
+@STA-0001    (Stack)
+@SEC-0001    (Security)
+@DAT-0001    (Data)
 ```
+
+**Feature IDs** use the `#` prefix followed by a 3-letter code:
+
+```
+#MSG    (messaging)
+#AUT    (auth)
+#ENC    (encryption)
+```
+
+**Prefix rules:**
+
+- Single-word category: first 3 letters, uppercased. "Stack" becomes `STA`, "Data" becomes `DAT`.
+- Multi-word category: first letter of each word, take first 3. "User Interface" becomes `UI` + padding.
+- Words shorter than 3 characters are padded with `X`.
+- Empty or blank names produce `UNK`.
+
+IDs are stored with their prefix -- `@STA-0001` in JSON, in chat, and in DECISIONS.md. You reference them the same way everywhere.
 
 ## Configuration
 
@@ -233,13 +263,20 @@ Create `~/.defer/keybindings.json` to override default bindings:
   "custom": ["c"],
   "shuffle": ["s"],
   "why": ["w"],
-  "ask": ["a"]
+  "ask": ["a"],
+  "quit": ["ctrl+c"],
+  "care.up": ["l", "right"],
+  "care.down": ["h", "left"]
 }
 ```
 
+User bindings replace defaults per-action (not append). Unknown actions are accepted for extensibility.
+
 ## Lifecycle Hooks
 
-Hooks run at specific points in the decision/execution lifecycle. Configure in `config.json`:
+Hooks run at specific points in the decision/execution lifecycle. Configure them in `config.json` under the `hooks` key.
+
+### Events
 
 | Hook | When it fires |
 |------|---------------|
@@ -249,17 +286,29 @@ Hooks run at specific points in the decision/execution lifecycle. Configure in `
 | `post-execute` | After the executor completes |
 | `decision-changed` | When a user revises a decision |
 
-Hook types:
-- **Command**: runs a shell command (e.g., `npm test`, `make lint`)
-- **Webhook**: POSTs JSON to a URL (e.g., Slack notification)
+### Hook Types
 
-Environment variables available to hooks: `DEFER_EVENT`, `DEFER_DECISION_ID`, `DEFER_DECISION_ANSWER`, `DEFER_CWD`.
+- **Command**: runs a shell command with a 10-second timeout (e.g., `npm test`, `make lint`)
+- **Webhook**: POSTs JSON to a URL with a 5-second timeout (e.g., Slack notification)
+
+### Environment Variables
+
+All hooks receive these environment variables: `DEFER_EVENT`, `DEFER_DECISION_ID`, `DEFER_DECISION_ANSWER`, `DEFER_CWD`.
 
 ## Custom Skills (Prompt Overrides)
 
-The defer process is built from 6 skills (prompts): decompose, plan, execute, extract, verify, scan. You can override any of them per-project.
+The defer process is built from 6 skills:
 
-Create `.defer/skills/decompose.md`:
+| Skill | Purpose |
+|-------|---------|
+| `decompose` | Break task into decisions |
+| `plan` | Identify remaining implementation decisions |
+| `execute` | Implement a domain given decisions |
+| `extract` | Extract implicit decisions from implementation |
+| `verify` | Review domain implementation for correctness |
+| `scan` | Analyze existing codebase to discover decisions |
+
+You can override any skill per-project by creating a `.md` file with YAML frontmatter in `.defer/skills/`:
 
 ```markdown
 ---
@@ -270,19 +319,15 @@ Your custom prompt here. This replaces the default decompose prompt.
 Focus on security decisions first...
 ```
 
-Skills are discovered by walking up from the current directory. Project-level skills override parent-level skills, which override built-in defaults.
+Skills are discovered by walking up from the current directory. Project-level skills override parent-level skills, which override built-in defaults. Additional skill directories can be configured via `config.json`:
 
-## Tool Permissions
-
-Care levels also control what the executor is allowed to do without prompting:
-
-| Care Level | Read files | Write files | Run commands |
-|------------|-----------|-------------|-------------|
-| skip | auto | auto | auto |
-| low | auto | auto | auto |
-| medium | auto | auto | prompt |
-| high | auto | prompt | prompt |
-| paranoid | prompt | prompt | prompt |
+```json
+{
+  "skills": {
+    "dirs": ["./custom-skills"]
+  }
+}
+```
 
 ## Portable Mode (No CLI Required)
 
@@ -296,70 +341,89 @@ defer init codex          # Creates AGENTS.md
 defer init universal      # Creates DEFER.md (copy into any tool's config)
 ```
 
-The generated file contains the full defer philosophy (decompose, present, decide, implement, track, extract, verify). The AI tool reads it and follows the process natively.
+The generated file contains the full defer philosophy (decompose, present, decide, implement, track, extract, verify). The AI tool reads it and follows the process natively -- no CLI needed.
+
+## Provider Support
+
+Auto-detected from environment, or set explicitly with flags:
+
+| Provider | How to enable |
+|------------------|----------------------------------------------|
+| Claude Code | Default (free with subscription) |
+| OpenAI | `export OPENAI_API_KEY=sk-...` |
+| Groq | `export GROQ_API_KEY=gsk_...` |
+| Mistral | `--provider mistral` / `MISTRAL_API_KEY` |
+| Together | `--provider together` / `TOGETHER_API_KEY` |
+| DeepInfra | `--provider deepinfra` / `DEEPINFRA_API_KEY` |
+| Cerebras | `--provider cerebras` / `CEREBRAS_API_KEY` |
+| Perplexity | `--provider perplexity` / `PERPLEXITY_API_KEY` |
+| OpenRouter | `--provider openrouter` / `OPENROUTER_API_KEY` |
+| Ollama | `--provider ollama --model llama3.1` |
+| Any OpenAI-compat | `--provider <url> --api-key <key>` |
+
+## Commands
+
+```
+defer "task"                Start a new project with the given task
+defer                       Resume the last session in the current directory
+defer scan                  Discover decisions in an existing project
+defer init [target]         Scaffold config for: claude-code, cursor, copilot, codex, universal
+defer sessions list         List all sessions in directory tree
+defer sessions delete       Delete .defer/ in current directory
+defer sessions export       Print DECISIONS.md to stdout
+defer --debug "task"        Headless mode (no TUI, prints to stdout)
+defer --model opus "task"   Use a specific model (sonnet, opus, haiku, or provider-specific ID)
+defer --provider <p> "task" Override the AI provider
+defer --api-key <k> "task"  Override the API key
+defer --no-mascot "task"    Hide the mascot header
+defer --version             Show version
+```
+
+## Permission Model
+
+Care levels control what the executor is allowed to do without prompting:
+
+| Care Level | Read files | Write files | Run commands |
+|------------|-----------|-------------|-------------|
+| skip | auto | auto | auto |
+| low | auto | auto | auto |
+| medium | auto | auto | prompt |
+| high | auto | prompt | prompt |
+| paranoid | prompt | prompt | prompt |
+
+Tool classification: `Glob`, `Grep`, `Read` are read actions. `Write`, `Edit` are write actions. `Bash` is an execute action. Unknown tools default to execute (most restrictive).
 
 ## Architecture
 
-```
-go/
-  main.go                        Entry point + version injection
-  cmd/
-    root.go                      CLI flags, provider resolution, TUI launch
-    scan.go                      defer scan subcommand
-    sessions.go                  sessions list/delete/export
-    init.go                      defer init scaffolding (5 tool targets)
-    debug.go                     Headless debug mode (--debug)
-  internal/
-    agent/
-      agent.go                   Decomposition agent (parses decisions from LLM)
-      executor.go                Domain executor (plan/execute/verify/extract)
-      manager.go                 Coordinator (auto-decide, sync, launch, cancel)
-      prompts.go                 System prompts (decompose, plan, execute, etc.)
-      events.go                  Event types for agent -> TUI communication
-    api/
-      provider.go                Provider interface + auto-detection (9 providers)
-      claude_code.go             Claude Code subprocess provider
-      openai.go                  OpenAI-compatible HTTP provider
-      toolexec.go                Tool execution (file I/O, shell commands)
-    config/
-      config.go                  Settings cascade (global -> project -> CLI)
-    decision/
-      decision.go                Core types (Decision, DecisionStore, Options)
-      store.go                   Persistence (.defer/decisions.json)
-      id.go                      Category-prefix ID generation (STACK-001)
-      markdown.go                DECISIONS.md generation
-    hooks/
-      hooks.go                   Lifecycle hooks (bash commands + webhooks)
-    keybindings/
-      keybindings.go             Configurable keybindings (~/.defer/keybindings.json)
-    mcp/
-      client.go                  MCP client (JSON-RPC 2.0 over stdio)
-      config.go                  MCP server configuration
-    permissions/
-      permissions.go             Care-level-aware tool permissions
-    skills/
-      loader.go                  Skill file loading (.md with YAML frontmatter)
-      discovery.go               Dynamic skill directory discovery + file watching
-    templates/
-      defer_process.go           The defer philosophy (tool-agnostic spec)
-      templates.go               Tool-specific config templates (5 targets)
-    tui/
-      app.go                     Root Bubbletea model, message routing
-      tree.go                    Decision tree + split-pane detail + chat + search
-      priorities.go              Care level picker
-      welcome.go                 Welcome screen + task input (bubbles/textinput)
-      mascot.go                  Pixel art mascot with mood animations
-      styles.go                  Lip Gloss styles + bordered box renderer
-      notifications.go           Priority-based notification system
-      messages.go                All tea.Msg types + safeSend helper
-```
+The codebase lives under `go/` and is organized into these packages:
+
+| Package | Purpose |
+|---------|---------|
+| `cmd` | CLI entry point, cobra commands (root, scan, sessions, init, debug) |
+| `internal/agent` | Decomposition agent, domain executor, manager coordinator, system prompts, events |
+| `internal/api` | Provider interface, auto-detection, Claude Code subprocess, OpenAI-compatible HTTP, tool execution |
+| `internal/config` | Settings cascade (global -> project -> CLI flags) |
+| `internal/decision` | Core types (Decision, DecisionStore, Feature), persistence, ID generation, DECISIONS.md, dependency tracking |
+| `internal/hooks` | Lifecycle hooks (shell commands + webhooks) |
+| `internal/keybindings` | Configurable keybindings with defaults |
+| `internal/mcp` | MCP client (JSON-RPC 2.0 over stdio) |
+| `internal/permissions` | Care-level-aware tool permissions |
+| `internal/skills` | Skill file loading (.md with YAML frontmatter), directory discovery |
+| `internal/templates` | Defer philosophy spec, tool-specific config templates (5 targets) |
+| `internal/tui` | Bubbletea TUI: app, tree, priorities, welcome, mascot, styles, notifications, messages |
+
+Session state is persisted in `.defer/`:
+
+- `decisions.json` -- all decisions and features
+- `priorities.json` -- care levels per domain
+- `session_id` -- Claude Code session continuity
 
 ## Development
 
 ```bash
 cd go
-go build ./...              # build
-go test ./... -count=1      # run tests (13 packages)
+go build ./...              # build all packages
+go test ./... -count=1      # run tests
 go test ./... -race         # tests with race detector
 go vet ./...                # static analysis
 go build -o defer .         # build binary

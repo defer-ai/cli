@@ -85,7 +85,7 @@ func NewTreeModel() TreeModel {
 	ci.Placeholder = "Ask anything..."
 	ci.Prompt = AccentStyle.Render("> ")
 	ci.CharLimit = 0
-	ci.MaxHeight = 5       // wrap up to 5 lines
+	ci.MaxHeight = 3       // grows as you type, max 3 lines
 	ci.ShowLineNumbers = false
 	ci.FocusedStyle.CursorLine = lipgloss.NewStyle() // no highlight on current line
 	ci.BlurredStyle.CursorLine = lipgloss.NewStyle()
@@ -936,10 +936,14 @@ func (m TreeModel) viewChat() string {
 		lines = append(lines, "  "+strings.Join(parts, "  "))
 	}
 	m.chatInput.SetWidth(innerWidth - 2)
-	inputLine := " " + m.chatInput.View()
-	// Textarea may render multiple lines — split and add each
-	for _, il := range strings.Split(inputLine, "\n") {
-		lines = append(lines, il)
+	inputView := m.chatInput.View()
+	// Trim trailing empty lines from textarea (it renders full MaxHeight)
+	inputLines := strings.Split(inputView, "\n")
+	for len(inputLines) > 1 && strings.TrimSpace(inputLines[len(inputLines)-1]) == "" {
+		inputLines = inputLines[:len(inputLines)-1]
+	}
+	for _, il := range inputLines {
+		lines = append(lines, " "+il)
 	}
 
 	// Footer
@@ -954,7 +958,7 @@ func (m TreeModel) viewChat() string {
 	lines = append(lines, renderFooter(chatFooterActions, innerWidth))
 
 	content := strings.Join(lines, "\n")
-	return buildBorderedBox(content, innerWidth, "defer", rightStatus)
+	return buildBorderedBox(content, innerWidth, "", rightStatus)
 }
 
 // ========== TREE VIEW ==========
@@ -1311,7 +1315,7 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	lines = append(lines, renderFooter(footerActions, innerWidth))
 
 	content := strings.Join(lines, "\n")
-	return buildBorderedBox(content, innerWidth, "defer", rightStatus)
+	return buildBorderedBox(content, innerWidth, "", rightStatus)
 }
 
 // ========== DETAIL PANE (right side of split view) ==========
