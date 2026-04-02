@@ -41,6 +41,7 @@ You MUST output a ` + "```defer-decisions" + ` JSON block:
       {"key": "C", "label": "Choose for me"}
     ],
     "context": "Determines the entire backend ecosystem",
+    "features": ["messaging", "auth"],
     "impact": 9,
     "dependsOn": []
   }
@@ -52,6 +53,7 @@ Rules for the JSON:
 - "question": clear, specific question
 - "options": 2-6 options, each with "key" (uppercase letter) and "label". Last must be "Choose for me"
 - "context": one sentence explaining why this matters
+- "features": array of lowercase feature names this decision relates to (e.g. "messaging", "auth", "encryption", "ui")
 - "impact": 0-10, how many other decisions this affects (10 = foundational, changes everything; 0 = isolated, affects nothing else)
 - "dependsOn": array of question strings this decision depends on (empty if independent)
 
@@ -89,9 +91,10 @@ const ExtractPrompt = `Review this implementation and extract every decision tha
 For EACH decision, include what was chosen AND what the alternatives were.
 
 Output ONLY a JSON array:
-[{"category": "...", "question": "what was the choice about", "options": [{"key": "A", "label": "what was chosen"}, {"key": "B", "label": "alternative 1"}, {"key": "C", "label": "alternative 2"}], "answer": "A", "reasoning": "why this was chosen", "impact": 0-10 (how foundational was this choice)}]
+[{"category": "...", "question": "what was the choice about", "options": [{"key": "A", "label": "what was chosen"}, {"key": "B", "label": "alternative 1"}, {"key": "C", "label": "alternative 2"}], "answer": "A", "reasoning": "why this was chosen", "features": ["messaging", "auth"], "impact": 0-10 (how foundational was this choice)}]
 
-The first option (A) should always be what was actually chosen. Other options are what COULD have been chosen instead.`
+The first option (A) should always be what was actually chosen. Other options are what COULD have been chosen instead.
+The "features" field is an array of lowercase feature names this decision relates to (e.g. "messaging", "auth", "encryption", "ui").`
 
 const ScanPrompt = `You are analyzing an EXISTING codebase to discover all decisions that were already made.
 
@@ -134,6 +137,7 @@ const PlanPrompt = `You are a software architect. Given the task and existing de
 For EACH decision, provide 3-4 concrete options to choose from.
 
 Output ONLY a JSON array:
-[{"category": "...", "question": "what needs to be decided", "options": [{"key": "A", "label": "option 1"}, {"key": "B", "label": "option 2"}, {"key": "C", "label": "option 3"}], "answer": "A", "reasoning": "why you recommend this option", "impact": 0-10 (how many other decisions this affects)}]
+[{"category": "...", "question": "what needs to be decided", "options": [{"key": "A", "label": "option 1"}, {"key": "B", "label": "option 2"}, {"key": "C", "label": "option 3"}], "answer": "A", "reasoning": "why you recommend this option", "features": ["messaging", "auth"], "impact": 0-10 (how many other decisions this affects)}]
 
-The "answer" field is the KEY (A, B, C) of your recommended option. Always provide real alternatives, not just your recommendation.`
+The "answer" field is the KEY (A, B, C) of your recommended option. Always provide real alternatives, not just your recommendation.
+The "features" field is an array of lowercase feature names this decision relates to (e.g. "messaging", "auth", "encryption", "ui").`

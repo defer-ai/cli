@@ -21,12 +21,13 @@ const (
 	tmDetail
 	tmRevise
 	tmAsk
-	tmChat // full-screen conversation
+	tmChat         // full-screen conversation
+	tmEditFeatures // editing feature tags on a decision
 )
 
 // ChatEntry is a line in the conversation panel.
 type ChatEntry struct {
-	Type     string // "tool", "agent", "user", "system"
+	Type     string // "tool", "agent", "user", "system", "action"
 	Text     string
 	Expanded bool // for agent messages: show full content (ctrl+o toggles)
 }
@@ -57,6 +58,19 @@ type TreeModel struct {
 	searchQuery    string          // current search filter (persists after exiting search mode)
 	searchInput    textinput.Model // input for search filtering
 	showDetail     bool            // true when a decision is selected and terminal is wide enough for split pane
+	groupByFeature bool            // true = group tree by feature tag, false = group by category (default)
+	// Jump search (Ctrl+F) — find and jump without filtering
+	jumpSearchMode  bool
+	jumpSearchInput textinput.Model
+	jumpMatches     []jumpMatch
+	jumpCursor      int
+}
+
+// jumpMatch represents a match in the Ctrl+F jump search dropdown.
+type jumpMatch struct {
+	Type  string // "decision", "category", "feature"
+	Label string // display label
+	Index int    // decision index to jump to (for categories/features: first decision in group)
 }
 
 func NewTreeModel() TreeModel {
@@ -80,7 +94,12 @@ func NewTreeModel() TreeModel {
 	si.Prompt = AccentStyle.Render("/ ")
 	si.CharLimit = 0
 
-	return TreeModel{mode: tmTree, mdRenderer: r, chatInput: ci, textInput: ti, searchInput: si, completionIdx: -1}
+	ji := textinput.New()
+	ji.Placeholder = "Jump to decision, category, or feature..."
+	ji.Prompt = AccentStyle.Render("find: ")
+	ji.CharLimit = 0
+
+	return TreeModel{mode: tmTree, mdRenderer: r, chatInput: ci, textInput: ti, searchInput: si, jumpSearchInput: ji, completionIdx: -1}
 }
 
 func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
@@ -98,6 +117,9 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 		}
 		if m.searchMode {
 			m.searchInput, cmd = m.searchInput.Update(msg)
+		}
+		if m.jumpSearchMode {
+			m.jumpSearchInput, cmd = m.jumpSearchInput.Update(msg)
 		}
 		return m, cmd
 	}
@@ -176,8 +198,8 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 				m.completionIdx = -1
 
 				// Check for @DECISION-ID references
-				// Parse: "@STACK-001 change to Go" → ReviseDecisionMsg
-				// Parse: "@STACK-001 why?" → WhyDecisionMsg
+				// Parse: "@STA-0001 change to Go" → ReviseDecisionMsg
+				// Parse: "@STA-0001 why?" → WhyDecisionMsg
 				// Otherwise: general chat message
 				return m, func() tea.Msg { return ChatMessageMsg{Text: input} }
 			}
@@ -194,14 +216,38 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	}
 
 	// --- Text input ---
-	if m.mode == tmRevise || m.mode == tmAsk {
+	if m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
 		switch key {
 		case "esc":
+			if m.mode == tmEditFeatures {
+				m.mode = tmDetail
+				m.textInput.Reset()
+				m.textInput.Blur()
+				return m, nil
+			}
 			m.mode = tmDetail
 			m.textInput.Reset()
 			m.textInput.Blur()
 			return m, nil
 		case "enter":
+			if m.mode == tmEditFeatures {
+				sel := m.selected()
+				if sel != nil {
+					raw := strings.TrimSpace(m.textInput.Value())
+					features := parseFeatureTags(raw)
+					// Update the decision's features
+					for i := range m.decisions {
+						if m.decisions[i].ID == sel.ID {
+							m.decisions[i].Features = features
+							break
+						}
+					}
+				}
+				m.mode = tmDetail
+				m.textInput.Reset()
+				m.textInput.Blur()
+				return m, func() tea.Msg { return SaveFeaturesMsg{} }
+			}
 			if strings.TrimSpace(m.textInput.Value()) != "" {
 				sel := m.selected()
 				if sel != nil {
@@ -269,6 +315,17 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 				return m, func() tea.Msg { return SuggestDecisionMsg{ID: sel.ID} }
 			}
 			return m, nil
+		case "f":
+			// Edit feature tags
+			if sel != nil {
+				m.mode = tmEditFeatures
+				m.textInput.Reset()
+				m.textInput.Placeholder = "Comma-separated feature tags..."
+				m.textInput.SetValue(strings.Join(sel.Features, ", "))
+				m.textInput.Focus()
+				m.textInput.SetCursor(len(m.textInput.Value()))
+			}
+			return m, nil
 		}
 
 		// Option navigation -- works for BOTH pending AND answered decisions
@@ -296,6 +353,45 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 			}
 		}
 		return m, nil
+	}
+
+	// --- Jump search mode (Ctrl+F) ---
+	if m.jumpSearchMode {
+		switch key {
+		case "esc":
+			m.jumpSearchMode = false
+			m.jumpSearchInput.Reset()
+			m.jumpSearchInput.Blur()
+			m.jumpMatches = nil
+			m.jumpCursor = 0
+			return m, nil
+		case "up":
+			if m.jumpCursor > 0 {
+				m.jumpCursor--
+			}
+			return m, nil
+		case "down":
+			if m.jumpCursor < len(m.jumpMatches)-1 {
+				m.jumpCursor++
+			}
+			return m, nil
+		case "enter":
+			if len(m.jumpMatches) > 0 && m.jumpCursor < len(m.jumpMatches) {
+				m.cursor = m.jumpMatches[m.jumpCursor].Index
+			}
+			m.jumpSearchMode = false
+			m.jumpSearchInput.Reset()
+			m.jumpSearchInput.Blur()
+			m.jumpMatches = nil
+			m.jumpCursor = 0
+			return m, nil
+		default:
+			var cmd tea.Cmd
+			m.jumpSearchInput, cmd = m.jumpSearchInput.Update(msg)
+			m.jumpMatches = m.computeJumpMatches(m.jumpSearchInput.Value())
+			m.jumpCursor = 0
+			return m, cmd
+		}
 	}
 
 	// --- Tree (search mode) ---
@@ -334,6 +430,17 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	case "/":
 		m.searchMode = true
 		m.searchInput.Focus()
+		return m, nil
+	case "ctrl+f":
+		m.jumpSearchMode = true
+		m.jumpSearchInput.Reset()
+		m.jumpSearchInput.Focus()
+		m.jumpMatches = nil
+		m.jumpCursor = 0
+		return m, nil
+	case "g":
+		m.groupByFeature = !m.groupByFeature
+		m.cursor = 0
 		return m, nil
 	case "j", "down":
 		if m.cursor < decCount-1 {
@@ -418,12 +525,17 @@ func (m TreeModel) decisionCount() int {
 	return len(m.decisionItems())
 }
 
-// highlightDecisionRefs highlights @ID patterns (e.g. @STACK-001) in text using AccentStyle.
+// highlightDecisionRefs highlights @ID patterns (e.g. @STA-0001) in text using AccentStyle.
 func highlightDecisionRefs(text string) string {
+	return highlightRefs(text)
+}
+
+// highlightRefs highlights @DECISION-ID and #FEATURE references in text using AccentStyle.
+func highlightRefs(text string) string {
 	result := text
 	words := strings.Fields(text)
 	for _, word := range words {
-		if strings.HasPrefix(word, "@") && len(word) > 1 {
+		if (strings.HasPrefix(word, "@") || strings.HasPrefix(word, "#")) && len(word) > 1 {
 			ref := word
 			highlighted := AccentStyle.Render(ref)
 			result = strings.Replace(result, ref, highlighted, 1)
@@ -441,7 +553,10 @@ func getCompletions(decisions []decision.Decision, partial string) []string {
 	lower := strings.ToLower(partial)
 	var matches []string
 	for _, d := range decisions {
-		if strings.HasPrefix(strings.ToLower(d.ID), lower) {
+		// IDs are stored with @ prefix; match against both with and without
+		id := strings.ToLower(d.ID)
+		bareID := strings.TrimPrefix(id, "@")
+		if strings.HasPrefix(id, lower) || strings.HasPrefix(bareID, lower) {
 			matches = append(matches, d.ID)
 			if len(matches) >= 5 {
 				break
@@ -570,8 +685,8 @@ func (m TreeModel) View() string {
 		h = 24
 	}
 
-	// Revise and ask modes always use full-screen detail
-	if m.mode == tmRevise || m.mode == tmAsk {
+	// Revise, ask, and edit-features modes always use full-screen detail
+	if m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
 		return m.viewDetail()
 	}
 
@@ -712,6 +827,12 @@ func (m TreeModel) viewChat() string {
 			}
 			chatLines = append(chatLines, "")
 
+		case "action":
+			// Action confirmations rendered in accent (orange)
+			for _, wl := range wrapText(entry.Text, maxTextWidth) {
+				chatLines = append(chatLines, " "+AccentStyle.Render(wl))
+			}
+
 		default:
 			// System messages rendered dim
 			for _, wl := range wrapText(entry.Text, maxTextWidth) {
@@ -831,6 +952,11 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	if pending > 0 {
 		statusParts = append(statusParts, fmt.Sprintf("○ %d pending", pending))
 	}
+	if m.groupByFeature {
+		statusParts = append(statusParts, "by feature")
+	} else {
+		statusParts = append(statusParts, "by domain")
+	}
 	if m.overallStatus != "" {
 		statusParts = append(statusParts, m.overallStatus)
 	}
@@ -846,7 +972,6 @@ func (m TreeModel) viewTreePane(w, h int) string {
 		dec    *decision.Decision
 		decIdx int
 	}
-	sortDecisionsByCategory(visibleDecs)
 
 	// Build ID set for dependency lookups
 	idSet := make(map[string]bool)
@@ -855,21 +980,70 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	}
 
 	var flat []flatItem
-	lastCat := ""
-	decIdx := 0
-	for i := range visibleDecs {
-		d := &visibleDecs[i]
-		catKey := strings.ToLower(strings.TrimSpace(d.Category))
-		lastKey := strings.ToLower(strings.TrimSpace(lastCat))
-		if catKey != lastKey {
-			if lastCat != "" {
+
+	if m.groupByFeature {
+		// Group by feature tags
+		featureMap := map[string][]int{} // feature name → decision indices (into visibleDecs)
+		var featureOrder []string
+		featureSeen := map[string]bool{}
+		for i, d := range visibleDecs {
+			if len(d.Features) == 0 {
+				if !featureSeen["untagged"] {
+					featureOrder = append(featureOrder, "untagged")
+					featureSeen["untagged"] = true
+				}
+				featureMap["untagged"] = append(featureMap["untagged"], i)
+			}
+			for _, f := range d.Features {
+				fl := strings.ToLower(strings.TrimSpace(f))
+				if !featureSeen[fl] {
+					featureOrder = append(featureOrder, fl)
+					featureSeen[fl] = true
+				}
+				featureMap[fl] = append(featureMap[fl], i)
+			}
+		}
+		sort.Strings(featureOrder)
+		// Build flat items grouped by feature
+		decIdx := 0
+		// We need a global index mapping: visibleDecs index → decIdx
+		// Since feature grouping can show same decision under multiple features,
+		// we use the original visibleDecs order for cursor mapping.
+		// Build a mapping from visibleDecs index to decIdx (they are 1:1)
+		for _, feat := range featureOrder {
+			indices := featureMap[feat]
+			label := "#" + feat
+			if feat == "untagged" {
+				label = "(untagged)"
+			}
+			if len(flat) > 0 {
 				flat = append(flat, flatItem{isCat: true, cat: ""})
 			}
-			flat = append(flat, flatItem{isCat: true, cat: d.Category})
-			lastCat = d.Category
+			flat = append(flat, flatItem{isCat: true, cat: label})
+			for _, idx := range indices {
+				flat = append(flat, flatItem{dec: &visibleDecs[idx], decIdx: idx})
+			}
 		}
-		flat = append(flat, flatItem{dec: d, decIdx: decIdx})
-		decIdx++
+		_ = decIdx
+	} else {
+		// Default: group by category
+		sortDecisionsByCategory(visibleDecs)
+		lastCat := ""
+		decIdx := 0
+		for i := range visibleDecs {
+			d := &visibleDecs[i]
+			catKey := strings.ToLower(strings.TrimSpace(d.Category))
+			lastKey := strings.ToLower(strings.TrimSpace(lastCat))
+			if catKey != lastKey {
+				if lastCat != "" {
+					flat = append(flat, flatItem{isCat: true, cat: ""})
+				}
+				flat = append(flat, flatItem{isCat: true, cat: d.Category})
+				lastCat = d.Category
+			}
+			flat = append(flat, flatItem{dec: d, decIdx: decIdx})
+			decIdx++
+		}
 	}
 
 	// Find cursor position in flat list
@@ -891,6 +1065,14 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	// If search bar is visible, it takes a divider + content line
 	if m.searchMode || m.searchQuery != "" {
 		fixedLines += 2
+	}
+	// If jump search is active, it takes divider + input + dropdown lines
+	if m.jumpSearchMode {
+		dropdownLines := len(m.jumpMatches)
+		if dropdownLines > 8 {
+			dropdownLines = 8
+		}
+		fixedLines += 2 + dropdownLines // divider + input + matches
 	}
 	treeH := h - fixedLines
 	if treeH < 3 {
@@ -1012,6 +1194,30 @@ func (m TreeModel) viewTreePane(w, h int) string {
 		rendered++
 	}
 
+	// Jump search overlay (Ctrl+F) — shown above search bar
+	if m.jumpSearchMode {
+		lines = append(lines, buildMiddleBorder(innerWidth))
+		lines = append(lines, "  "+m.jumpSearchInput.View())
+		// Show matches dropdown (max 8)
+		maxDropdown := 8
+		if len(m.jumpMatches) < maxDropdown {
+			maxDropdown = len(m.jumpMatches)
+		}
+		for i := 0; i < maxDropdown; i++ {
+			jm := m.jumpMatches[i]
+			prefix := "    "
+			if i == m.jumpCursor {
+				prefix = "  " + AccentStyle.Render("> ")
+			}
+			typeTag := DimStyle.Render("[" + jm.Type + "]")
+			label := jm.Label
+			if i == m.jumpCursor {
+				label = BoldWhite.Render(label)
+			}
+			lines = append(lines, prefix+typeTag+" "+label)
+		}
+	}
+
 	// Search bar (shown when search mode is active)
 	if m.searchMode {
 		lines = append(lines, buildMiddleBorder(innerWidth))
@@ -1041,7 +1247,14 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	// Footer
 	lines = append(lines, buildMiddleBorder(innerWidth))
 	var footerActions []footerAction
-	if m.searchMode {
+	if m.jumpSearchMode {
+		footerActions = []footerAction{
+			{"type", "to find"},
+			{"\u2191\u2193", "select"},
+			{"enter", "jump"},
+			{"esc", "close"},
+		}
+	} else if m.searchMode {
 		footerActions = []footerAction{
 			{"type", "to filter"},
 			{"enter", "confirm"},
@@ -1051,7 +1264,9 @@ func (m TreeModel) viewTreePane(w, h int) string {
 		footerActions = []footerAction{
 			{"\u2191\u2193", "navigate"},
 			{"enter", "inspect"},
-			{"/", "search"},
+			{"/", "filter"},
+			{"ctrl+f", "find"},
+			{"g", "group"},
 			{"tab", "conversation"},
 			{"ctrl+c\u00d72", "quit"},
 		}
@@ -1189,12 +1404,23 @@ func (m TreeModel) viewDetailPane(w, h int) string {
 		lines = append(lines, "")
 	}
 
+	// Features
+	if len(sel.Features) > 0 {
+		featureTags := make([]string, len(sel.Features))
+		for i, f := range sel.Features {
+			featureTags[i] = "#" + f
+		}
+		lines = append(lines, "  "+AccentStyle.Render(strings.Join(featureTags, " ")))
+		lines = append(lines, "")
+	}
+
 	// Footer
 	lines = append(lines, buildMiddleBorder(innerWidth))
 	detailFooterActions := []footerAction{
 		{"\u2191\u2193", "pick"},
 		{"enter", "confirm"},
 		{"c", "custom"},
+		{"f", "features"},
 		{"w", "why"},
 		{"q", "back"},
 	}
@@ -1415,11 +1641,23 @@ func (m TreeModel) viewDetail() string {
 		lines = append(lines, "")
 	}
 
+	// Features
+	if len(sel.Features) > 0 {
+		featureTags := make([]string, len(sel.Features))
+		for i, f := range sel.Features {
+			featureTags[i] = "#" + f
+		}
+		lines = append(lines, "  "+AccentStyle.Render(strings.Join(featureTags, " ")))
+		lines = append(lines, "")
+	}
+
 	// Text input field
-	if m.mode == tmRevise || m.mode == tmAsk {
+	if m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
 		label := "Override:"
 		if m.mode == tmAsk {
 			label = "Ask:"
+		} else if m.mode == tmEditFeatures {
+			label = "Features:"
 		}
 		lines = append(lines, "  "+AccentStyle.Render(label))
 		lines = append(lines, "  "+m.textInput.View())
@@ -1436,7 +1674,7 @@ func (m TreeModel) viewDetail() string {
 	// Footer divider + keybindings
 	lines = append(lines, buildMiddleBorder(innerWidth))
 	var detailFooterActions []footerAction
-	if m.mode == tmRevise || m.mode == tmAsk {
+	if m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
 		detailFooterActions = []footerAction{
 			{"enter", "submit"},
 			{"esc", "cancel"},
@@ -1447,6 +1685,7 @@ func (m TreeModel) viewDetail() string {
 			{"enter", "confirm"},
 			{"c", "custom"},
 			{"s", "shuffle"},
+			{"f", "features"},
 			{"w", "why"},
 			{"a", "ask"},
 			{"q", "back"},
@@ -1459,4 +1698,87 @@ func (m TreeModel) viewDetail() string {
 
 	content := strings.Join(lines, "\n")
 	return buildBorderedBox(content, innerWidth, detailTitle, sel.Category)
+}
+
+// parseFeatureTags parses a comma-separated string into deduplicated, lowercase feature tags.
+func parseFeatureTags(raw string) []string {
+	parts := strings.Split(raw, ",")
+	seen := map[string]bool{}
+	var result []string
+	for _, p := range parts {
+		tag := strings.ToLower(strings.TrimSpace(p))
+		// Strip leading # if present
+		tag = strings.TrimPrefix(tag, "#")
+		tag = strings.TrimSpace(tag)
+		if tag != "" && !seen[tag] {
+			seen[tag] = true
+			result = append(result, tag)
+		}
+	}
+	return result
+}
+
+// computeJumpMatches returns up to 8 matches for the jump search query.
+// Matches decisions (by ID, question, category) and features.
+func (m TreeModel) computeJumpMatches(query string) []jumpMatch {
+	if strings.TrimSpace(query) == "" {
+		return nil
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+	var matches []jumpMatch
+	decs := m.decisionItems()
+
+	// Match decisions
+	for i, d := range decs {
+		if strings.Contains(strings.ToLower(d.ID), q) ||
+			strings.Contains(strings.ToLower(d.Question), q) ||
+			strings.Contains(strings.ToLower(d.Category), q) {
+			matches = append(matches, jumpMatch{
+				Type:  "decision",
+				Label: d.ID + " " + trunc(d.Question, 50),
+				Index: i,
+			})
+		}
+		if len(matches) >= 8 {
+			return matches
+		}
+	}
+
+	// Match categories — jump to first decision in category
+	catSeen := map[string]bool{}
+	for i, d := range decs {
+		catLower := strings.ToLower(d.Category)
+		if !catSeen[catLower] && strings.Contains(catLower, q) {
+			catSeen[catLower] = true
+			matches = append(matches, jumpMatch{
+				Type:  "category",
+				Label: d.Category,
+				Index: i,
+			})
+		}
+		if len(matches) >= 8 {
+			return matches
+		}
+	}
+
+	// Match features — jump to first decision with that feature
+	featSeen := map[string]bool{}
+	for i, d := range decs {
+		for _, f := range d.Features {
+			fl := strings.ToLower(f)
+			if !featSeen[fl] && strings.Contains(fl, q) {
+				featSeen[fl] = true
+				matches = append(matches, jumpMatch{
+					Type:  "feature",
+					Label: "#" + f,
+					Index: i,
+				})
+			}
+			if len(matches) >= 8 {
+				return matches
+			}
+		}
+	}
+
+	return matches
 }

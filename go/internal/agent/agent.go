@@ -286,6 +286,7 @@ func parseDecisions(text string, existing []decision.Decision) []decision.Decisi
 			Label string `json:"label"`
 		} `json:"options"`
 		Context   string   `json:"context"`
+		Features  []string `json:"features"`
 		Impact    int      `json:"impact"`
 		DependsOn []string `json:"dependsOn"`
 	}
@@ -313,6 +314,7 @@ func parseDecisions(text string, existing []decision.Decision) []decision.Decisi
 			Question:  item.Question,
 			Options:   opts,
 			Context:   item.Context,
+			Features:  item.Features,
 			Impact:    item.Impact,
 			DependsOn: item.DependsOn,
 			Source:    "user",

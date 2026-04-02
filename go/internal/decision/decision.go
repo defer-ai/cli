@@ -1,5 +1,12 @@
 package decision
 
+// Feature represents a named feature that decisions can relate to.
+type Feature struct {
+	ID          string `json:"id"`                    // F-MSG, F-AUT
+	Name        string `json:"name"`                  // "messaging", "auth"
+	Description string `json:"description,omitempty"`
+}
+
 // DecisionOption is one possible answer for a decision.
 type DecisionOption struct {
 	Key   string `json:"key"`
@@ -20,6 +27,7 @@ type Decision struct {
 	Source    string           `json:"source,omitempty"` // "user", "auto", "agent", "discovered"
 	Impact    int              `json:"impact,omitempty"`    // 0-10, how many other decisions this affects
 	DependsOn []string         `json:"dependsOn,omitempty"` // IDs of decisions this depends on
+	Features  []string         `json:"features,omitempty"`  // feature tags (e.g. "auth", "onboarding")
 	Date      string           `json:"date"`
 }
 
@@ -27,6 +35,7 @@ type Decision struct {
 type DecisionStore struct {
 	Task      string     `json:"task"`
 	Decisions []Decision `json:"decisions"`
+	Features  []Feature  `json:"features,omitempty"`
 	CreatedAt string     `json:"createdAt"`
 	UpdatedAt string     `json:"updatedAt"`
 }

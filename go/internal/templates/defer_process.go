@@ -30,8 +30,8 @@ Use the DECISIONS.md table format:
 
 | ID | Category | Question | Options | Impact |
 |----|----------|----------|---------|--------|
-| STACK-001 | Stack | Backend framework? | A) Express, B) FastAPI, C) Gin, D) Choose for me | 9 |
-| DATA-001 | Data | Database? | A) PostgreSQL, B) SQLite, C) Choose for me | 8 |
+| STA-0001 | Stack | Backend framework? | A) Express, B) FastAPI, C) Gin, D) Choose for me | 9 |
+| DAT-0001 | Data | Database? | A) PostgreSQL, B) SQLite, C) Choose for me | 8 |
 
 ### 3. DECIDE
 Wait for the human to confirm or override each decision. If the human sets a
@@ -88,8 +88,8 @@ If issues exist, fix them. If a decision was wrong, flag it — don't silently c
 
 ## Decision ID Format
 
-IDs use category prefix + sequential number: STACK-001, DATA-002, AUTH-001.
-The prefix is derived from the category name (first 4-5 chars, uppercase).
+IDs use a 3-letter category prefix + 4-digit zero-padded number: STA-0001, DAT-0002, AUT-0001.
+Single-word categories use first 3 letters; multi-word categories use initials of each word.
 
 ## What Makes This Different
 

@@ -2,52 +2,92 @@ package decision
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
-	"sync/atomic"
 	"unicode"
 )
 
-// Counter to ensure uniqueness within a session.
-var idCounter uint64
-
-// NextID generates a unique ID like STACK-001, STACK-002, etc.
-// Uses category prefix + atomic counter. No timestamp, no collision possible within a process.
-func NextID(_ []Decision, category string) string {
-	prefix := categoryPrefix(category)
-	seq := atomic.AddUint64(&idCounter, 1)
-	return fmt.Sprintf("%s-%03d", prefix, seq)
+// categoryPrefix returns a 3-letter uppercase prefix for a category name.
+//
+// Rules:
+//   - Single word: first 3 letters (pad with X if shorter)
+//   - Multi-word: first letter of each word, take first 3 (pad from last word if fewer than 3 words)
+//   - Empty/blank: "UNK"
+func categoryPrefix(category string) string {
+	words := splitWords(category)
+	if len(words) == 0 {
+		return "UNK"
+	}
+	if len(words) == 1 {
+		w := strings.ToUpper(words[0])
+		if len(w) >= 3 {
+			return w[:3]
+		}
+		return (w + "XXX")[:3]
+	}
+	// Multi-word: first letter of each word
+	var prefix string
+	for _, w := range words {
+		if len(w) > 0 {
+			prefix += strings.ToUpper(w[:1])
+		}
+	}
+	if len(prefix) >= 3 {
+		return prefix[:3]
+	}
+	// Pad from last word
+	lastWord := strings.ToUpper(words[len(words)-1])
+	for len(prefix) < 3 && len(lastWord) > 1 {
+		prefix += string(lastWord[1])
+		lastWord = lastWord[1:]
+	}
+	return (prefix + "XXX")[:3]
 }
 
-func categoryPrefix(category string) string {
-	var clean strings.Builder
-	for _, r := range category {
+// splitWords splits a string into words by spaces, hyphens, and underscores,
+// filtering empty strings, and stripping non-alphanumeric characters.
+func splitWords(s string) []string {
+	// Replace hyphens and underscores with spaces
+	s = strings.Map(func(r rune) rune {
+		if r == '-' || r == '_' {
+			return ' '
+		}
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == ' ' {
-			clean.WriteRune(unicode.ToUpper(r))
+			return r
+		}
+		return -1 // strip
+	}, s)
+	parts := strings.Fields(s)
+	var words []string
+	for _, p := range parts {
+		if p != "" {
+			words = append(words, p)
 		}
 	}
-	s := strings.TrimSpace(clean.String())
+	return words
+}
 
-	if len(s) <= 6 && !strings.Contains(s, " ") {
-		return s
-	}
-
-	words := strings.Fields(s)
-	if len(words) > 1 {
-		var initials strings.Builder
-		for _, w := range words {
-			if len(w) > 0 {
-				initials.WriteByte(w[0])
+// NextID generates a unique decision ID like @STA-0001, @DAT-0002, etc.
+// Stored with the @ prefix — same format used to reference it in chat.
+// Scans existing decisions for the highest number with the same prefix.
+func NextID(existing []Decision, category string) string {
+	prefix := "@" + categoryPrefix(category)
+	maxNum := 0
+	for _, d := range existing {
+		if strings.HasPrefix(d.ID, prefix+"-") {
+			numStr := d.ID[len(prefix)+1:]
+			if n, err := strconv.Atoi(numStr); err == nil && n > maxNum {
+				maxNum = n
 			}
 		}
-		r := initials.String()
-		if len(r) > 5 {
-			return r[:5]
-		}
-		return r
 	}
+	return fmt.Sprintf("%s-%04d", prefix, maxNum+1)
+}
 
-	if len(s) > 4 {
-		return s[:4]
-	}
-	return s
+// FeatureID generates a feature ID from a feature name.
+// Stored with the # prefix — same format used to reference it in chat.
+// Uses the same 3-letter prefix rules as categories.
+func FeatureID(name string) string {
+	prefix := categoryPrefix(name)
+	return "#" + prefix
 }

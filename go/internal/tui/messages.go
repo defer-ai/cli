@@ -41,6 +41,7 @@ type SuggestResponseMsg struct {
 }
 type TogglePermissionsMsg struct{ Bypass bool }
 type CheckAllDecidedMsg struct{}
+type SaveFeaturesMsg struct{}
 
 // PermissionRequestMsg is forwarded from the agent/provider layer to the TUI
 // when the Claude subprocess requests permission to use a tool.

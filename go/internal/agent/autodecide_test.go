@@ -11,15 +11,15 @@ import (
 func TestAutoDecideWithPriorities(t *testing.T) {
 	a := NewAgent("test", nil, ".")
 	a.state.Decisions = []decision.Decision{
-		{ID: "STACK-001", Category: "Stack", Question: "Language?", Options: []decision.DecisionOption{
+		{ID: "@STA-0001", Category: "Stack", Question: "Language?", Options: []decision.DecisionOption{
 			{Key: "A", Label: "TypeScript"},
 			{Key: "B", Label: "Choose for me"},
 		}},
-		{ID: "UI-001", Category: "UI", Question: "Framework?", Options: []decision.DecisionOption{
+		{ID: "@UIX-0001", Category: "UI", Question: "Framework?", Options: []decision.DecisionOption{
 			{Key: "A", Label: "React"},
 			{Key: "B", Label: "Vue"},
 		}},
-		{ID: "DATA-001", Category: "Data", Question: "Database?", Options: []decision.DecisionOption{
+		{ID: "@DAT-0001", Category: "Data", Question: "Database?", Options: []decision.DecisionOption{
 			{Key: "A", Label: "PostgreSQL"},
 		}},
 	}
@@ -58,17 +58,17 @@ func TestAutoDecideWithPriorities(t *testing.T) {
 
 	// Stack should be auto-decided (skip)
 	if a.state.Decisions[0].Answer == nil {
-		t.Error("STACK-001 should be auto-decided")
+		t.Error("@STA-0001 should be auto-decided")
 	}
 
 	// UI should still be pending (paranoid)
 	if a.state.Decisions[1].Answer != nil {
-		t.Error("UI-001 should still be pending (paranoid)")
+		t.Error("@UIX-0001 should still be pending (paranoid)")
 	}
 
 	// Data should be auto-decided (medium)
 	if a.state.Decisions[2].Answer == nil {
-		t.Error("DATA-001 should be auto-decided")
+		t.Error("@DAT-0001 should be auto-decided")
 	}
 
 	fmt.Println("Test passed!")

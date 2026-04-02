@@ -18,8 +18,8 @@ func TestSessionsListFindsSession(t *testing.T) {
 	}
 	answer := "Go"
 	store.Decisions = []decision.Decision{
-		{ID: "S-001", Category: "Stack", Question: "Language?", Answer: &answer, Source: "user"},
-		{ID: "S-002", Category: "Stack", Question: "Framework?", Source: "user"},
+		{ID: "@STA-0001", Category: "Stack", Question: "Language?", Answer: &answer, Source: "user"},
+		{ID: "@STA-0002", Category: "Stack", Question: "Framework?", Source: "user"},
 	}
 	if err := decision.SaveStore(dir, store); err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestSessionsExportFormat(t *testing.T) {
 	answer := "TypeScript"
 	store.Decisions = []decision.Decision{
 		{
-			ID:       "S-001",
+			ID:       "@STA-0001",
 			Category: "Stack",
 			Question: "Backend language?",
 			Answer:   &answer,

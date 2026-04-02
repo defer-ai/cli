@@ -594,13 +594,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// Show cascade in conversation
 				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
-					Type: "system",
-					Text: fmt.Sprintf("Changed %s → %s. Invalidated %d dependent decisions: %s",
-						changedDecision.ID, msg.NewAnswer, len(invalidatedIDs), strings.Join(invalidatedIDs, ", ")),
+					Type: "action",
+					Text: fmt.Sprintf("Changed %s → %s", changedDecision.ID, msg.NewAnswer),
+				})
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+					Type: "action",
+					Text: fmt.Sprintf("Invalidated %d dependent decisions: %s", len(invalidatedIDs), strings.Join(invalidatedIDs, ", ")),
 				})
 			} else {
 				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
-					Type: "system",
+					Type: "action",
 					Text: fmt.Sprintf("Changed %s → %s", changedDecision.ID, msg.NewAnswer),
 				})
 			}
@@ -619,7 +622,7 @@ Review ALL these decisions and identify which ones are now INCOMPATIBLE or need 
 %s
 
 For each incompatible decision, output ONLY a JSON array of IDs that should be invalidated:
-["ID-001", "ID-002"]
+["STA-0001", "DAT-0002"]
 
 If no decisions are incompatible, output: []`, changedDecision.ID, changedDecision.Question, msg.NewAnswer, changedDecision.Impact, allDecJSON)
 
@@ -700,8 +703,8 @@ If no decisions are incompatible, output: []`, changedDecision.ID, changedDecisi
 		}
 		if len(invalidated) > 0 {
 			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
-				Type: "system",
-				Text: fmt.Sprintf("Implicit invalidation: %s (%s)", strings.Join(invalidated, ", "), msg.Reason),
+				Type: "action",
+				Text: fmt.Sprintf("Invalidated %d dependent decisions: %s (%s)", len(invalidated), strings.Join(invalidated, ", "), msg.Reason),
 			})
 			// Persist
 			if store, _ := decision.LoadStore(m.cwd); store != nil {
@@ -732,7 +735,7 @@ If no decisions are incompatible, output: []`, changedDecision.ID, changedDecisi
 	case ChatMessageMsg:
 		text := msg.Text
 
-		// Check for direct change commands: "@STACK-001 change to Go with Gin"
+		// Check for direct change commands: "@STA-0001 change to Go with Gin"
 		if changed := m.tryParseChangeCommand(text); changed {
 			return m, nil
 		}
@@ -864,6 +867,17 @@ If the user is just chatting, greeting, or asking questions — respond naturall
 		}
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
+
+	case SaveFeaturesMsg:
+		// Persist decision features to store
+		if store, _ := decision.LoadStore(m.cwd); store != nil {
+			store.Decisions = m.tree.decisions
+			_ = decision.SaveStore(m.cwd, store)
+		}
+		if m.manager != nil {
+			m.manager.SyncDecisions(m.tree.decisions)
+		}
+		return m, nil
 
 	case SuggestDecisionMsg:
 		if m.provider != nil && !m.quitting {
@@ -1052,12 +1066,12 @@ func (m *Model) tryParseChangeCommand(text string) bool {
 		return false
 	}
 
-	// Find the @ID
+	// Find the @ID — IDs are stored with @ prefix
 	var targetID string
 	var restIdx int
 	for i, word := range words {
 		if strings.HasPrefix(word, "@") && len(word) > 1 {
-			targetID = strings.TrimPrefix(word, "@")
+			targetID = word // keep the @ prefix, IDs are stored as @STA-0001
 			restIdx = i + 1
 			break
 		}
@@ -1090,7 +1104,7 @@ func (m *Model) tryParseChangeCommand(text string) bool {
 
 			// Add confirmation to chat
 			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
-				Type: "system",
+				Type: "action",
 				Text: fmt.Sprintf("Updated %s → %s", targetID, newAnswer),
 			})
 

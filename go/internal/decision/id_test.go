@@ -2,107 +2,87 @@ package decision
 
 import (
 	"strings"
-	"sync"
 	"testing"
 )
 
-func TestNextIDUnique(t *testing.T) {
-	// Generate multiple IDs -- all must be unique
-	ids := make(map[string]bool)
-	for i := 0; i < 100; i++ {
-		id := NextID(nil, "Stack")
-		if ids[id] {
-			t.Fatalf("duplicate ID: %s", id)
-		}
-		ids[id] = true
-	}
-}
-
-func TestNextIDPrefix(t *testing.T) {
+func TestCategoryPrefix(t *testing.T) {
 	tests := []struct {
-		category   string
-		wantPrefix string
+		input string
+		want  string
 	}{
-		{"Stack", "STACK-"},
-		{"Data", "DATA-"},
-		{"User Interface", "UI-"},
-		{"Authentication", "AUTH-"},
-		{"UI", "UI-"},
-		{"Misc", "MISC-"},
-		{"API", "API-"},
-		{"A", "A-"},
+		// Single word: first 3 letters
+		{"Stack", "STA"},
+		{"Data", "DAT"},
+		{"Security", "SEC"},
+		{"Auth", "AUT"},
+		{"Architecture", "ARC"},
+		{"Deployment", "DEP"},
+		{"Protocol", "PRO"},
+		{"Rooms", "ROO"},
+		{"Persistence", "PER"},
+		{"Features", "FEA"},
+		{"Misc", "MIS"},
+		{"API", "API"},
+
+		// Short words: pad with X
+		{"UI", "UIX"},
+		{"A", "AXX"},
+		{"DB", "DBX"},
+
+		// Multi-word: first letter of each word
+		{"UI Polish", "UPO"},
+		{"End to End", "ETE"},
+		{"User Interface", "UIN"},
+		{"Data Model Design", "DMD"},
+		{"Build and Deploy", "BAD"},
+
+		// Multi-word with only 2 words (2 initials, pad from last)
+		{"Build Deploy", "BDE"},
+
+		// Special chars stripped
+		{"Build & Deploy", "BDE"},
+
+		// Empty / blank
+		{"", "UNK"},
+		{"   ", "UNK"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.category, func(t *testing.T) {
-			id := NextID(nil, tt.category)
-			if !strings.HasPrefix(id, tt.wantPrefix) {
-				t.Errorf("NextID(%q) = %q, want prefix %q", tt.category, id, tt.wantPrefix)
+		t.Run(tt.input, func(t *testing.T) {
+			got := categoryPrefix(tt.input)
+			if got != tt.want {
+				t.Errorf("categoryPrefix(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestNextIDConcurrent(t *testing.T) {
-	// Parallel ID generation -- no duplicates
-	ids := make(chan string, 1000)
-	for i := 0; i < 10; i++ {
-		go func() {
-			for j := 0; j < 100; j++ {
-				ids <- NextID(nil, "Test")
-			}
-		}()
-	}
-
-	seen := make(map[string]bool)
-	for i := 0; i < 1000; i++ {
-		id := <-ids
-		if seen[id] {
-			t.Fatalf("duplicate concurrent ID: %s", id)
-		}
-		seen[id] = true
-	}
-}
-
-func TestNextIDParallel(t *testing.T) {
-	// 1000 concurrent goroutines generating IDs simultaneously
-	const n = 1000
-	results := make([]string, n)
-	var wg sync.WaitGroup
-	wg.Add(n)
-
-	for i := 0; i < n; i++ {
-		go func(idx int) {
-			defer wg.Done()
-			results[idx] = NextID(nil, "Parallel")
-		}(i)
-	}
-	wg.Wait()
-
-	seen := make(map[string]bool)
-	for _, id := range results {
-		if seen[id] {
-			t.Fatalf("duplicate parallel ID: %s", id)
-		}
-		seen[id] = true
-	}
-}
-
-func TestNextIDFormat(t *testing.T) {
+func TestNextIDBasic(t *testing.T) {
+	// No existing decisions
 	id := NextID(nil, "Stack")
+	if id != "@STA-0001" {
+		t.Errorf("NextID(nil, Stack) = %q, want STA-0001", id)
+	}
+}
 
-	parts := strings.Split(id, "-")
-	if len(parts) != 2 {
-		t.Fatalf("ID %q has %d parts, want 2 (PREFIX-SEQ)", id, len(parts))
+func TestNextIDIncrementsFromExisting(t *testing.T) {
+	existing := []Decision{
+		{ID: "@STA-0001"},
+		{ID: "@STA-0002"},
+		{ID: "@DAT-0001"},
+	}
+	id := NextID(existing, "Stack")
+	if id != "@STA-0003" {
+		t.Errorf("NextID with existing STA-0001,0002 = %q, want STA-0003", id)
 	}
 
-	prefix := parts[0]
-	if prefix != "STACK" {
-		t.Errorf("prefix = %q, want STACK", prefix)
+	id = NextID(existing, "Data")
+	if id != "@DAT-0002" {
+		t.Errorf("NextID with existing DAT-0001 = %q, want DAT-0002", id)
 	}
 
-	seq := parts[1]
-	if len(seq) < 3 {
-		t.Errorf("seq %q has %d chars, want at least 3", seq, len(seq))
+	id = NextID(existing, "Security")
+	if id != "@SEC-0001" {
+		t.Errorf("NextID for new category = %q, want SEC-0001", id)
 	}
 }
 
@@ -114,11 +94,104 @@ func TestNextIDDifferentCategories(t *testing.T) {
 		t.Errorf("IDs from different categories should differ: %s", id1)
 	}
 
-	if !strings.HasPrefix(id1, "STACK-") {
+	if !strings.HasPrefix(id1, "@STA-") {
 		t.Errorf("id1 prefix wrong: %s", id1)
 	}
-	if !strings.HasPrefix(id2, "DATA-") {
+	if !strings.HasPrefix(id2, "@DAT-") {
 		t.Errorf("id2 prefix wrong: %s", id2)
+	}
+}
+
+func TestNextIDFormat(t *testing.T) {
+	id := NextID(nil, "Stack")
+
+	if !strings.HasPrefix(id, "@") {
+		t.Fatalf("ID %q should start with @", id)
+	}
+
+	// Strip @ prefix for format check
+	bare := id[1:]
+	parts := strings.Split(bare, "-")
+	if len(parts) != 2 {
+		t.Fatalf("ID %q has %d parts, want @PREFIX-SEQ", id, len(parts))
+	}
+
+	prefix := parts[0]
+	if len(prefix) != 3 {
+		t.Errorf("prefix %q length = %d, want 3", prefix, len(prefix))
+	}
+	if prefix != strings.ToUpper(prefix) {
+		t.Errorf("prefix %q should be uppercase", prefix)
+	}
+
+	seq := parts[1]
+	if len(seq) != 4 {
+		t.Errorf("seq %q has %d chars, want 4", seq, len(seq))
+	}
+}
+
+func TestNextIDZeroPadding(t *testing.T) {
+	tests := []struct {
+		existing []Decision
+		want     string
+	}{
+		{nil, "@STA-0001"},
+		{[]Decision{{ID: "@STA-0001"}}, "@STA-0002"},
+		{[]Decision{{ID: "@STA-0009"}}, "@STA-0010"},
+		{[]Decision{{ID: "@STA-0099"}}, "@STA-0100"},
+		{[]Decision{{ID: "@STA-0999"}}, "@STA-1000"},
+		{[]Decision{{ID: "@STA-9999"}}, "@STA-10000"},
+	}
+	for _, tt := range tests {
+		got := NextID(tt.existing, "Stack")
+		if got != tt.want {
+			t.Errorf("NextID = %q, want %q", got, tt.want)
+		}
+	}
+}
+
+func TestSplitWords(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"Stack", 1},
+		{"UI Polish", 2},
+		{"Build & Deploy", 2},
+		{"Build-Deploy", 2},
+		{"Build_Deploy", 2},
+		{"", 0},
+		{"   ", 0},
+		{"one-two three_four", 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := splitWords(tt.input)
+			if len(got) != tt.want {
+				t.Errorf("splitWords(%q) = %v (len %d), want len %d", tt.input, got, len(got), tt.want)
+			}
+		})
+	}
+}
+
+func TestFeatureID(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"messaging", "#MES"},
+		{"auth", "#AUT"},
+		{"encryption", "#ENC"},
+		{"UI", "#UIX"},
+		{"user interface", "#UIN"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FeatureID(tt.name)
+			if got != tt.want {
+				t.Errorf("FeatureID(%q) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -132,30 +205,5 @@ func TestIsPending(t *testing.T) {
 	d.Answer = &answer
 	if d.IsPending() {
 		t.Error("expected not pending")
-	}
-}
-
-func TestCategoryPrefix(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"Stack", "STACK"},
-		{"UI", "UI"},
-		{"User Interface", "UI"},
-		{"Authentication", "AUTH"},
-		{"Data Model Design", "DMD"},
-		{"A", "A"},
-		{"Misc", "MISC"},
-		{"API", "API"},
-		{"Build & Deploy", "BD"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := categoryPrefix(tt.input)
-			if got != tt.want {
-				t.Errorf("categoryPrefix(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
 	}
 }

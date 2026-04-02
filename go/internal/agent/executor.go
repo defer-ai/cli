@@ -16,8 +16,8 @@ import (
 	"github.com/defer-ai/cli/internal/decision"
 )
 
-// inlineDecisionRe matches patterns like "DECISION: STACK-001 = Go with Gin" in executor output.
-var inlineDecisionRe = regexp.MustCompile(`DECISION:\s*([A-Z]+-\d+)\s*=\s*(.+)`)
+// inlineDecisionRe matches patterns like "DECISION: @STA-0001 = Go with Gin" in executor output.
+var inlineDecisionRe = regexp.MustCompile(`DECISION:\s*@?([A-Z]+-\d+)\s*=\s*(.+)`)
 
 
 // DomainStatus tracks executor progress.
@@ -265,7 +265,7 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 			e.mu.Unlock()
 			e.onEvent(Event{Type: ExecStateChanged, ExecutorID: e.state.ID})
 
-			// Scan for inline decision updates (e.g. "DECISION: STACK-001 = Go with Gin")
+			// Scan for inline decision updates (e.g. "DECISION: STA-0001 = Go with Gin")
 			e.scanInlineDecisions(ev.Text)
 
 		case api.EventToolCallStart:
@@ -555,7 +555,7 @@ func (e *Executor) normalizeCategoryLocked(cat string) string {
 
 // normalizeQuestion strips parenthetical references and normalizes for dedup comparison.
 func normalizeQuestion(q string) string {
-	// Remove parenthetical references like "(LAYOUT-037 — explicitly pending)"
+	// Remove parenthetical references like "(LAY-0037 — explicitly pending)"
 	result := q
 	for {
 		start := strings.LastIndex(result, "(")
@@ -655,7 +655,7 @@ func (e *Executor) UpdateDecision(id string, answer string) bool {
 	return false
 }
 
-// scanInlineDecisions scans text for patterns like "DECISION: STACK-001 = Go with Gin"
+// scanInlineDecisions scans text for patterns like "DECISION: STA-0001 = Go with Gin"
 // and calls UpdateDecision for each match.
 func (e *Executor) scanInlineDecisions(text string) {
 	matches := inlineDecisionRe.FindAllStringSubmatch(text, -1)
@@ -664,6 +664,10 @@ func (e *Executor) scanInlineDecisions(text string) {
 			id := strings.TrimSpace(m[1])
 			answer := strings.TrimSpace(m[2])
 			if id != "" && answer != "" {
+				// IDs are stored with @ prefix
+				if !strings.HasPrefix(id, "@") {
+					id = "@" + id
+				}
 				e.UpdateDecision(id, answer)
 			}
 		}
@@ -685,9 +689,10 @@ func (e *Executor) parseImplicitChoices(text string) []decision.Decision {
 				Key   string `json:"key"`
 				Label string `json:"label"`
 			} `json:"options"`
-			Answer    string `json:"answer"`
-			Reasoning string `json:"reasoning"`
-			Impact    int    `json:"impact"`
+			Answer    string   `json:"answer"`
+			Reasoning string   `json:"reasoning"`
+			Features  []string `json:"features"`
+			Impact    int      `json:"impact"`
 		}
 		if err := json.Unmarshal([]byte(text[start:end+1]), &raw); err == nil {
 			for _, item := range raw {
@@ -741,6 +746,7 @@ func (e *Executor) parseImplicitChoices(text string) []decision.Decision {
 					Implicit:  true,
 					Source:    "agent",
 					Reasoning: item.Reasoning,
+					Features:  item.Features,
 					Impact:    item.Impact,
 					Date:      today,
 				}

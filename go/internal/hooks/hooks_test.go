@@ -11,7 +11,7 @@ func TestCommandHookSuccess(t *testing.T) {
 	}
 
 	err := RunHooks(PreDecision, hooks, map[string]string{
-		"DEFER_DECISION_ID": "STACK-001",
+		"DEFER_DECISION_ID": "@STA-0001",
 	})
 	if err != nil {
 		t.Errorf("expected no error, got: %v", err)
@@ -79,7 +79,7 @@ func TestURLHookInvalidURL(t *testing.T) {
 	}
 
 	err := RunHooks(PostExecute, hooks, map[string]string{
-		"DEFER_DECISION_ID": "TEST-001",
+		"DEFER_DECISION_ID": "TES-0001",
 	})
 	if err == nil {
 		t.Fatal("expected error for unreachable URL, got nil")

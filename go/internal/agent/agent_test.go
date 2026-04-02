@@ -46,14 +46,14 @@ func TestParseDecisions(t *testing.T) {
 	if len(decs[0].Options) != 3 {
 		t.Errorf("decs[0].Options = %d, want 3", len(decs[0].Options))
 	}
-	if !strings.HasPrefix(decs[0].ID, "STACK-") {
-		t.Errorf("decs[0].ID = %q, want STACK- prefix", decs[0].ID)
+	if !strings.HasPrefix(decs[0].ID, "@STA-") {
+		t.Errorf("decs[0].ID = %q, want STA- prefix", decs[0].ID)
 	}
 	if decs[1].Category != "Data" {
 		t.Errorf("decs[1].Category = %q, want Data", decs[1].Category)
 	}
-	if !strings.HasPrefix(decs[1].ID, "DATA-") {
-		t.Errorf("decs[1].ID = %q, want DATA- prefix", decs[1].ID)
+	if !strings.HasPrefix(decs[1].ID, "@DAT-") {
+		t.Errorf("decs[1].ID = %q, want DAT- prefix", decs[1].ID)
 	}
 	if decs[1].Source != "user" {
 		t.Errorf("decs[1].Source = %q, want user", decs[1].Source)
@@ -75,41 +75,41 @@ func TestParseDecisionsEmpty(t *testing.T) {
 func TestAutoDecide(t *testing.T) {
 	a := NewAgent("test", nil, ".")
 	a.state.Decisions = []decision.Decision{
-		{ID: "STACK-001", Category: "Stack", Question: "Language?", Options: []decision.DecisionOption{
+		{ID: "@STA-0001", Category: "Stack", Question: "Language?", Options: []decision.DecisionOption{
 			{Key: "A", Label: "TypeScript"},
 			{Key: "B", Label: "Choose for me"},
 		}},
-		{ID: "DATA-001", Category: "Data", Question: "Database?", Options: []decision.DecisionOption{
+		{ID: "@DAT-0001", Category: "Data", Question: "Database?", Options: []decision.DecisionOption{
 			{Key: "A", Label: "PostgreSQL"},
 			{Key: "B", Label: "SQLite"},
 			{Key: "C", Label: "Choose for me"},
 		}},
 	}
 
-	a.AutoDecide([]string{"STACK-001"})
+	a.AutoDecide([]string{"@STA-0001"})
 
 	if a.state.Decisions[0].Answer == nil {
-		t.Fatal("STACK-001 should be answered")
+		t.Fatal("@STA-0001 should be answered")
 	}
 	if *a.state.Decisions[0].Answer != "TypeScript" {
-		t.Errorf("STACK-001 answer = %q, want TypeScript", *a.state.Decisions[0].Answer)
+		t.Errorf("@STA-0001 answer = %q, want TypeScript", *a.state.Decisions[0].Answer)
 	}
 	if !a.state.Decisions[0].Delegated {
-		t.Error("STACK-001 should be delegated")
+		t.Error("@STA-0001 should be delegated")
 	}
 	if a.state.Decisions[0].Source != "auto" {
 		t.Errorf("source = %q, want auto", a.state.Decisions[0].Source)
 	}
 
 	if a.state.Decisions[1].Answer != nil {
-		t.Error("DATA-001 should still be pending")
+		t.Error("@DAT-0001 should still be pending")
 	}
 
 	a.AutoDecide(nil)
 	if a.state.Decisions[1].Answer == nil {
-		t.Fatal("DATA-001 should now be answered")
+		t.Fatal("@DAT-0001 should now be answered")
 	}
 	if *a.state.Decisions[1].Answer != "PostgreSQL" {
-		t.Errorf("DATA-001 answer = %q, want PostgreSQL", *a.state.Decisions[1].Answer)
+		t.Errorf("@DAT-0001 answer = %q, want PostgreSQL", *a.state.Decisions[1].Answer)
 	}
 }

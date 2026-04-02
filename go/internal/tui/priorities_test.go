@@ -9,10 +9,10 @@ import (
 
 func priorityDecisions() []decision.Decision {
 	return []decision.Decision{
-		{ID: "S-001", Category: "Stack", Question: "Lang?", Source: "user"},
-		{ID: "S-002", Category: "Stack", Question: "Framework?", Source: "user"},
-		{ID: "D-001", Category: "Data", Question: "DB?", Source: "user"},
-		{ID: "U-001", Category: "UI", Question: "CSS?", Source: "user"},
+		{ID: "@STA-0001", Category: "Stack", Question: "Lang?", Source: "user"},
+		{ID: "@STA-0002", Category: "Stack", Question: "Framework?", Source: "user"},
+		{ID: "@DAT-0001", Category: "Data", Question: "DB?", Source: "user"},
+		{ID: "@UIX-0001", Category: "UI", Question: "CSS?", Source: "user"},
 	}
 }
 

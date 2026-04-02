@@ -14,9 +14,9 @@ func TestNormalizeQuestion(t *testing.T) {
 	}{
 		{"Backend language?", "backend language?"},
 		{"  Backend language?  ", "backend language?"},
-		{"Database (LAYOUT-037 — explicitly pending)", "database"},
+		{"Database (LAY-0037 — explicitly pending)", "database"},
 		{"Storage (pending)", "storage"},
-		{"ORM choice (DATA-003 - explicit)?", "orm choice?"},
+		{"ORM choice (DAT-0003 - explicit)?", "orm choice?"},
 		{"No parens here", "no parens here"},
 		{"Multiple (ref-1) parens (ref-2)", "multiple parens"},
 		{"Keep (normal parenthetical)", "keep (normal parenthetical)"},
@@ -214,7 +214,7 @@ func TestGetCareLevel(t *testing.T) {
 
 func TestStoreDecisionDedup(t *testing.T) {
 	existing := []decision.Decision{
-		{ID: "STACK-001", Category: "Stack", Question: "Backend language?", Answer: strPtr("Go")},
+		{ID: "@STA-0001", Category: "Stack", Question: "Backend language?", Answer: strPtr("Go")},
 	}
 
 	e := makeTestExecutor(existing, []string{"Stack"}, nil)
@@ -233,7 +233,7 @@ func TestStoreDecisionDedup(t *testing.T) {
 
 func TestStoreDecisionOverlapDedup(t *testing.T) {
 	existing := []decision.Decision{
-		{ID: "STACK-001", Category: "Stack", Question: "Backend language choice?", Answer: strPtr("Go")},
+		{ID: "@STA-0001", Category: "Stack", Question: "Backend language choice?", Answer: strPtr("Go")},
 	}
 
 	e := makeTestExecutor(existing, []string{"Stack"}, nil)
@@ -252,7 +252,7 @@ func TestStoreDecisionOverlapDedup(t *testing.T) {
 
 func TestStoreDecisionDifferentNotDeduped(t *testing.T) {
 	existing := []decision.Decision{
-		{ID: "DATA-001", Category: "Data", Question: "Database choice?", Answer: strPtr("PostgreSQL")},
+		{ID: "@DAT-0001", Category: "Data", Question: "Database choice?", Answer: strPtr("PostgreSQL")},
 	}
 
 	e := makeTestExecutor(existing, []string{"Data"}, nil)
@@ -405,51 +405,51 @@ func TestParseImplicitChoicesEmptyQuestion(t *testing.T) {
 
 func TestUpdateDecision(t *testing.T) {
 	existing := []decision.Decision{
-		{ID: "STACK-001", Category: "Stack", Question: "Backend language?", Answer: nil, Source: "user"},
-		{ID: "DATA-001", Category: "Data", Question: "Database?", Answer: strPtr("PostgreSQL"), Source: "agent"},
+		{ID: "@STA-0001", Category: "Stack", Question: "Backend language?", Answer: nil, Source: "user"},
+		{ID: "@DAT-0001", Category: "Data", Question: "Database?", Answer: strPtr("PostgreSQL"), Source: "agent"},
 	}
 
 	e := makeTestExecutor(existing, []string{"Stack", "Data"}, nil)
 
 	// Update existing pending decision
-	ok := e.UpdateDecision("STACK-001", "Go with Gin")
+	ok := e.UpdateDecision("@STA-0001", "Go with Gin")
 	if !ok {
 		t.Fatal("UpdateDecision should return true for existing ID")
 	}
 
 	decs := *e.allDecisions
 	if decs[0].Answer == nil || *decs[0].Answer != "Go with Gin" {
-		t.Errorf("STACK-001 answer = %v, want 'Go with Gin'", decs[0].Answer)
+		t.Errorf("@STA-0001 answer = %v, want 'Go with Gin'", decs[0].Answer)
 	}
 	if decs[0].Source != "agent" {
-		t.Errorf("STACK-001 source = %q, want 'agent'", decs[0].Source)
+		t.Errorf("@STA-0001 source = %q, want 'agent'", decs[0].Source)
 	}
 }
 
 func TestUpdateDecisionOverwrite(t *testing.T) {
 	existing := []decision.Decision{
-		{ID: "DATA-001", Category: "Data", Question: "Database?", Answer: strPtr("PostgreSQL"), Source: "auto"},
+		{ID: "@DAT-0001", Category: "Data", Question: "Database?", Answer: strPtr("PostgreSQL"), Source: "auto"},
 	}
 
 	e := makeTestExecutor(existing, []string{"Data"}, nil)
 
-	ok := e.UpdateDecision("DATA-001", "SQLite")
+	ok := e.UpdateDecision("@DAT-0001", "SQLite")
 	if !ok {
 		t.Fatal("UpdateDecision should return true for existing ID")
 	}
 
 	decs := *e.allDecisions
 	if *decs[0].Answer != "SQLite" {
-		t.Errorf("DATA-001 answer = %q, want 'SQLite'", *decs[0].Answer)
+		t.Errorf("@DAT-0001 answer = %q, want 'SQLite'", *decs[0].Answer)
 	}
 	if decs[0].Source != "agent" {
-		t.Errorf("DATA-001 source = %q, want 'agent'", decs[0].Source)
+		t.Errorf("@DAT-0001 source = %q, want 'agent'", decs[0].Source)
 	}
 }
 
 func TestUpdateDecisionNotFound(t *testing.T) {
 	existing := []decision.Decision{
-		{ID: "STACK-001", Category: "Stack", Question: "Language?"},
+		{ID: "@STA-0001", Category: "Stack", Question: "Language?"},
 	}
 
 	e := makeTestExecutor(existing, []string{"Stack"}, nil)
@@ -462,31 +462,31 @@ func TestUpdateDecisionNotFound(t *testing.T) {
 
 func TestScanInlineDecisions(t *testing.T) {
 	existing := []decision.Decision{
-		{ID: "STACK-001", Category: "Stack", Question: "Backend language?", Answer: nil},
-		{ID: "DATA-001", Category: "Data", Question: "Database?", Answer: nil},
+		{ID: "@STA-0001", Category: "Stack", Question: "Backend language?", Answer: nil},
+		{ID: "@DAT-0001", Category: "Data", Question: "Database?", Answer: nil},
 	}
 
 	e := makeTestExecutor(existing, []string{"Stack", "Data"}, nil)
 
 	text := `I've decided on the following:
-DECISION: STACK-001 = Go with Gin
+DECISION: STA-0001 = Go with Gin
 Some other text here.
-DECISION: DATA-001 = PostgreSQL with pgx`
+DECISION: DAT-0001 = PostgreSQL with pgx`
 
 	e.scanInlineDecisions(text)
 
 	decs := *e.allDecisions
 	if decs[0].Answer == nil || *decs[0].Answer != "Go with Gin" {
-		t.Errorf("STACK-001 answer = %v, want 'Go with Gin'", decs[0].Answer)
+		t.Errorf("@STA-0001 answer = %v, want 'Go with Gin'", decs[0].Answer)
 	}
 	if decs[1].Answer == nil || *decs[1].Answer != "PostgreSQL with pgx" {
-		t.Errorf("DATA-001 answer = %v, want 'PostgreSQL with pgx'", decs[1].Answer)
+		t.Errorf("@DAT-0001 answer = %v, want 'PostgreSQL with pgx'", decs[1].Answer)
 	}
 }
 
 func TestScanInlineDecisionsNoMatch(t *testing.T) {
 	existing := []decision.Decision{
-		{ID: "STACK-001", Category: "Stack", Question: "Backend language?", Answer: nil},
+		{ID: "@STA-0001", Category: "Stack", Question: "Backend language?", Answer: nil},
 	}
 
 	e := makeTestExecutor(existing, []string{"Stack"}, nil)
@@ -496,26 +496,26 @@ func TestScanInlineDecisionsNoMatch(t *testing.T) {
 
 	decs := *e.allDecisions
 	if decs[0].Answer != nil {
-		t.Errorf("STACK-001 should still be pending, got %v", *decs[0].Answer)
+		t.Errorf("@STA-0001 should still be pending, got %v", *decs[0].Answer)
 	}
 }
 
 func TestScanInlineDecisionsPartialMatch(t *testing.T) {
 	existing := []decision.Decision{
-		{ID: "STACK-001", Category: "Stack", Question: "Backend language?", Answer: nil},
+		{ID: "@STA-0001", Category: "Stack", Question: "Backend language?", Answer: nil},
 	}
 
 	e := makeTestExecutor(existing, []string{"Stack"}, nil)
 
 	// Only one decision matches an existing ID
-	text := `DECISION: STACK-001 = Rust
+	text := `DECISION: STA-0001 = Rust
 DECISION: MISSING-999 = something`
 
 	e.scanInlineDecisions(text)
 
 	decs := *e.allDecisions
 	if decs[0].Answer == nil || *decs[0].Answer != "Rust" {
-		t.Errorf("STACK-001 answer = %v, want 'Rust'", decs[0].Answer)
+		t.Errorf("@STA-0001 answer = %v, want 'Rust'", decs[0].Answer)
 	}
 }
 
@@ -525,9 +525,9 @@ func TestInlineDecisionRegex(t *testing.T) {
 		wantID string
 		wantAn string
 	}{
-		{"DECISION: STACK-001 = Go with Gin", "STACK-001", "Go with Gin"},
-		{"DECISION:  DATA-042  =  PostgreSQL ", "DATA-042", "PostgreSQL"},
-		{"DECISION: UI-001 = Tailwind CSS v4", "UI-001", "Tailwind CSS v4"},
+		{"DECISION: STA-0001 = Go with Gin", "STA-0001", "Go with Gin"},
+		{"DECISION:  DAT-0042  =  PostgreSQL ", "DAT-0042", "PostgreSQL"},
+		{"DECISION: UIX-0001 = Tailwind CSS v4", "UIX-0001", "Tailwind CSS v4"},
 	}
 
 	for _, tt := range tests {
@@ -556,7 +556,7 @@ func TestInlineDecisionRegexNoMatch(t *testing.T) {
 		"regular text",
 		"DECISION: no-match = something",     // lowercase ID
 		"DECISION: 123 = something",           // no prefix
-		"decision: STACK-001 = something",     // lowercase DECISION
+		"decision: STA-0001 = something",     // lowercase DECISION
 	}
 
 	for _, input := range noMatch {
