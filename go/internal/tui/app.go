@@ -460,6 +460,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			m.executorsLaunched = true
 			m.tree.overallStatus = "executing"
+			m.tree.chatThinking = true
+			m.tree.chatThinkStart = time.Now()
 		} else if !allAnswered {
 			m.tree.overallStatus = "thinking"
 		} else {
@@ -543,6 +545,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AllExecutorsDoneMsg:
 		m.tree.overallStatus = "done"
+		m.tree.chatThinking = false
 		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "All domains complete. Tab to view decision tree."})
 		m.notifications.Push("All domains complete.", NotifyHigh, 0)
 		cmds = append(cmds, ListenForEvents(m.eventChan))
@@ -595,6 +598,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					Text: fmt.Sprintf("Changed %s → %s", changedDecision.ID, msg.NewAnswer),
 				})
 			}
+
+			// Show thinking indicator while processing the change
+			m.tree.chatThinking = true
+			m.tree.chatThinkStart = time.Now()
 
 			// For high-impact changes (>= 8), check for implicit invalidation
 			// across the full decision set using the agent
@@ -671,6 +678,8 @@ If no decisions are incompatible, output: []`, changedDecision.ID, changedDecisi
 				})
 				m.executorsLaunched = true
 				m.tree.overallStatus = "executing"
+				m.tree.chatThinking = true
+				m.tree.chatThinkStart = time.Now()
 				m.notifications.Push("All decisions answered. Launching executors...", NotifyMedium, 5*time.Second)
 				cmds = append(cmds, ListenForEvents(m.eventChan))
 				return m, tea.Batch(cmds...)

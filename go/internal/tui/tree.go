@@ -1237,12 +1237,10 @@ func (m TreeModel) viewTreePane(w, h int) string {
 		lines = append(lines, "  "+DimStyle.Render(fmt.Sprintf("Filtered: %d results", total)))
 	}
 
-	// Activity line: show per-domain status pills when available, otherwise fallback
+	// Activity line: show last tool activity or thinking indicator
 	lines = append(lines, buildMiddleBorder(innerWidth))
-	if len(m.domainStatuses) > 0 {
-		lines = append(lines, "  "+m.renderDomainPills(innerWidth-4))
-	} else if m.activityLine != "" {
-		lines = append(lines, "  "+DimStyle.Render(trunc(m.activityLine, innerWidth-4)))
+	if m.activityLine != "" {
+		lines = append(lines, " "+DimStyle.Render(trunc(m.activityLine, innerWidth-2)))
 	} else if m.chatThinking {
 		elapsed := time.Since(m.chatThinkStart)
 		timeStr := fmt.Sprintf("%.0fs", elapsed.Seconds())
