@@ -98,7 +98,7 @@ Configuration:
 		}
 
 		m := tui.NewModel(task, p, cwd)
-		prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+		prog := tea.NewProgram(m, tea.WithAltScreen())
 		_, err = prog.Run()
 		return err
 	},
