@@ -1424,12 +1424,31 @@ func (m TreeModel) viewDetailPane(w, h int) string {
 		lines = append(lines, "")
 	}
 
-	// Why text
+	// Why text — render as markdown
 	if m.whyText != "" && m.whyText != "..." && m.whyText != "Shuffling options..." && m.whyText != "Generating..." {
-		lines = append(lines, "  "+DimStyle.Render(trunc(m.whyText, innerWidth-4)))
-		lines = append(lines, "")
+		if m.mdRenderer != nil {
+			if md, err := m.mdRenderer.Render(m.whyText); err == nil {
+				for _, ml := range strings.Split(strings.TrimRight(md, "\n"), "\n") {
+					visWidth := lipgloss.Width(ml)
+					if visWidth > innerWidth-2 {
+						for _, wl := range wrapText(ml, innerWidth-2) {
+							lines = append(lines, " "+wl)
+						}
+					} else {
+						lines = append(lines, " "+ml)
+					}
+				}
+				lines = append(lines, "")
+			} else {
+				// Fallback: plain text wrapped
+				for _, wl := range wrapText(m.whyText, innerWidth-2) {
+					lines = append(lines, " "+DimStyle.Render(wl))
+				}
+				lines = append(lines, "")
+			}
+		}
 	} else if m.whyText == "..." || m.whyText == "Shuffling options..." || m.whyText == "Generating..." {
-		lines = append(lines, "  "+AccentStyle.Render(m.whyText))
+		lines = append(lines, " "+AccentStyle.Render(m.whyText))
 		lines = append(lines, "")
 	}
 
@@ -1671,12 +1690,29 @@ func (m TreeModel) viewDetail() string {
 		lines = append(lines, "")
 	}
 
-	// Why text / loading indicator
+	// Why text — render as markdown
 	if m.whyText != "" && m.whyText != "..." && m.whyText != "Shuffling options..." && m.whyText != "Generating..." {
-		lines = append(lines, "  "+DimStyle.Render(trunc(m.whyText, 500)))
+		if m.mdRenderer != nil {
+			if md, err := m.mdRenderer.Render(m.whyText); err == nil {
+				for _, ml := range strings.Split(strings.TrimRight(md, "\n"), "\n") {
+					visWidth := lipgloss.Width(ml)
+					if visWidth > innerWidth-2 {
+						for _, wl := range wrapText(ml, innerWidth-2) {
+							lines = append(lines, " "+wl)
+						}
+					} else {
+						lines = append(lines, " "+ml)
+					}
+				}
+			} else {
+				for _, wl := range wrapText(m.whyText, innerWidth-2) {
+					lines = append(lines, " "+DimStyle.Render(wl))
+				}
+			}
+		}
 		lines = append(lines, "")
 	} else if m.whyText == "..." || m.whyText == "Shuffling options..." || m.whyText == "Generating..." {
-		lines = append(lines, "  "+AccentStyle.Render(m.whyText))
+		lines = append(lines, " "+AccentStyle.Render(m.whyText))
 		lines = append(lines, "")
 	}
 
