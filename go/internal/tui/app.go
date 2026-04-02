@@ -49,8 +49,7 @@ type Model struct {
 	mascotTick        int
 	notifications     *NotificationManager
 	executorsLaunched bool
-	lastCtrlC       time.Time
-	quitting        bool // set on double ctrl+c, prevents new goroutine spawns
+	quitting        bool // set on quit, prevents new goroutine spawns
 
 	// Permission overlay
 	pendingPermission *PermissionRequestMsg
@@ -284,16 +283,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// Double Ctrl+C to quit
+		// Ctrl+Q to quit
+		if msg.String() == "ctrl+q" {
+			m.quitting = true
+			m.cancel()
+			return m, tea.Quit
+		}
+		// Ctrl+C shows a warning
 		if msg.String() == "ctrl+c" {
-			now := time.Now()
-			if now.Sub(m.lastCtrlC) < 1500*time.Millisecond {
-				m.quitting = true
-				m.cancel() // cancel context → all goroutines using m.ctx will stop
-				return m, tea.Quit
-			}
-			m.lastCtrlC = now
-			m.notifications.Push("Press Ctrl+C again to exit.", NotifyMedium, 3*time.Second)
+			m.notifications.Push("Press ctrl+q to quit.", NotifyMedium, 3*time.Second)
 			return m, nil
 		}
 

@@ -2,8 +2,8 @@ package tui
 
 import (
 	"context"
+	"strings"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/defer-ai/cli/internal/agent"
@@ -598,53 +598,21 @@ func TestAllExecutorsDone(t *testing.T) {
 	}
 }
 
-func TestDoubleCtrlCQuits(t *testing.T) {
+func TestCtrlCShowsWarning(t *testing.T) {
 	m := NewModel("", nil, t.TempDir())
-	m.view = ViewTree
-	m.tree.decisions = fakeDecisions()
 
-	// First Ctrl+C
 	var cmd tea.Cmd
 	m, cmd = updateModel(t, m, keyCtrlC())
-	if cmd != nil {
-		msg := processCmd(t, cmd)
-		if msg != nil {
-			t.Errorf("first ctrl+c should not produce quit, got %T", msg)
-		}
-	}
-
-	// Second Ctrl+C within 1.5s
-	m, cmd = updateModel(t, m, keyCtrlC())
-	if cmd == nil {
-		t.Fatal("second ctrl+c should produce tea.Quit cmd")
-	}
-
-	msg := processCmd(t, cmd)
-	if _, ok := msg.(tea.QuitMsg); !ok {
-		t.Errorf("expected tea.QuitMsg, got %T", msg)
-	}
-}
-
-func TestDoubleCtrlCSlow(t *testing.T) {
-	m := NewModel("", nil, t.TempDir())
-	m.view = ViewTree
-	m.tree.decisions = fakeDecisions()
-
-	// First Ctrl+C
-	m, _ = updateModel(t, m, keyCtrlC())
-
-	// Simulate time passing beyond 1.5s
-	m.lastCtrlC = time.Now().Add(-2 * time.Second)
-
-	// Second Ctrl+C after delay - should NOT quit (new "first" press)
-	var cmd tea.Cmd
-	m, cmd = updateModel(t, m, keyCtrlC())
-
+	// Ctrl+C should NOT quit — just show a warning
 	if cmd != nil {
 		msg := processCmd(t, cmd)
 		if _, ok := msg.(tea.QuitMsg); ok {
-			t.Error("ctrl+c after long delay should not quit")
+			t.Error("ctrl+c should not quit, should show warning")
 		}
+	}
+	// Should have a notification
+	if n := m.notifications.Current(); n == nil || !strings.Contains(n.Text, "ctrl+q") {
+		t.Error("ctrl+c should push a notification about ctrl+q")
 	}
 }
 

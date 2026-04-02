@@ -456,7 +456,7 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 		m.searchMode = true
 		m.searchInput.Focus()
 		return m, nil
-	case "ctrl+f":
+	case "f", "ctrl+f":
 		m.jumpSearchMode = true
 		m.jumpSearchInput.Reset()
 		m.jumpSearchInput.Focus()
@@ -946,9 +946,10 @@ func (m TreeModel) viewChat() string {
 	lines = append(lines, buildMiddleBorder(innerWidth))
 	chatFooterActions := []footerAction{
 		{"enter", "send"},
-		{"@ID", "reference"},
-		{"tab", "back to tree"},
-		{"ctrl+c\u00d72", "quit"},
+		{"@ID/#TAG", "reference"},
+		{"ctrl+o", "expand"},
+		{"tab", "tree"},
+		{"ctrl+q", "quit"},
 	}
 	lines = append(lines, renderFooter(chatFooterActions, innerWidth))
 
@@ -1286,7 +1287,7 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	if m.jumpSearchMode {
 		footerActions = []footerAction{
 			{"type", "to find"},
-			{"\u2191\u2193", "select"},
+			{"j/k", "select"},
 			{"enter", "jump"},
 			{"esc", "close"},
 		}
@@ -1298,13 +1299,13 @@ func (m TreeModel) viewTreePane(w, h int) string {
 		}
 	} else {
 		footerActions = []footerAction{
-			{"\u2191\u2193", "navigate"},
+			{"j/k", "navigate"},
 			{"enter", "inspect"},
 			{"/", "filter"},
-			{"ctrl+f", "find"},
+			{"f", "find"},
 			{"g", "group"},
 			{"tab", "chat"},
-			{"ctrl+c\u00d72", "quit"},
+			{"ctrl+q", "quit"},
 		}
 	}
 	lines = append(lines, renderFooter(footerActions, innerWidth))
@@ -1453,11 +1454,13 @@ func (m TreeModel) viewDetailPane(w, h int) string {
 	// Footer
 	lines = append(lines, buildMiddleBorder(innerWidth))
 	detailFooterActions := []footerAction{
-		{"\u2191\u2193", "pick"},
+		{"j/k", "pick"},
 		{"enter", "confirm"},
 		{"c", "custom"},
+		{"s", "shuffle"},
 		{"f", "features"},
 		{"w", "why"},
+		{"a", "ask"},
 		{"q", "back"},
 	}
 	lines = append(lines, renderFooter(detailFooterActions, innerWidth))
@@ -1717,7 +1720,7 @@ func (m TreeModel) viewDetail() string {
 		}
 	} else {
 		detailFooterActions = []footerAction{
-			{"\u2191\u2193", "pick"},
+			{"j/k", "pick"},
 			{"enter", "confirm"},
 			{"c", "custom"},
 			{"s", "shuffle"},
