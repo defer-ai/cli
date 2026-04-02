@@ -773,6 +773,12 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	}
 	sortDecisionsByCategory(visibleDecs)
 
+	// Build ID set for dependency lookups
+	idSet := make(map[string]bool)
+	for _, d := range visibleDecs {
+		idSet[d.ID] = true
+	}
+
 	var flat []flatItem
 	lastCat := ""
 	decIdx := 0
@@ -877,34 +883,44 @@ func (m TreeModel) viewTreePane(w, h int) string {
 			answer = DimStyle.Render("(pending)")
 		}
 
-		// Impact indicator: ▰▰▰ for high impact decisions
-		impactStr := ""
+		// Impact indicator: fixed-width 3 chars so columns stay aligned
+		var impactStr string
 		if d.Impact >= 7 {
-			impactStr = RedStyle.Render("▰▰▰") + " "
+			impactStr = RedStyle.Render("!!!")
 		} else if d.Impact >= 4 {
-			impactStr = YellowStyle.Render("▰▰") + " "
+			impactStr = YellowStyle.Render("!! ")
 		} else if d.Impact >= 1 {
-			impactStr = DimStyle.Render("▰") + " "
+			impactStr = DimStyle.Render("!  ")
+		} else {
+			impactStr = "   "
+		}
+
+		// Dependency indent: if this decision depends on another, indent it
+		indent := ""
+		if len(d.DependsOn) > 0 {
+			indent = "  "
 		}
 
 		idStr := pad(d.ID, idW)
-		qStr := trunc(d.Question, qW)
+		qStr := trunc(d.Question, qW-len(indent))
 
 		var row string
 		if isCur {
-			row = fmt.Sprintf("  %s%s %s%s %s  %s",
+			row = fmt.Sprintf("  %s%s %s %s%s%s  %s",
 				cursor,
 				iconStyle.Render(icon),
 				impactStr,
+				indent,
 				BoldWhite.Render(idStr),
 				BoldWhite.Render(qStr),
 				DimStyle.Render(answer),
 			)
 		} else {
-			row = fmt.Sprintf("  %s%s %s%s %s  %s",
+			row = fmt.Sprintf("  %s%s %s %s%s%s  %s",
 				cursor,
 				iconStyle.Render(icon),
 				impactStr,
+				indent,
 				idStr,
 				qStr,
 				DimStyle.Render(answer),
