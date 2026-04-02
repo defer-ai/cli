@@ -651,7 +651,7 @@ If the user is just chatting, greeting, or asking questions — respond naturall
 			}
 
 			go func() {
-				resp := runSimpleChat(ctx, m.provider, sysPrompt, text)
+				resp := runStreamingChat(ctx, m.provider, sysPrompt, text, ch)
 				safeSend(ctx, ch, ChatResponseMsg{Text: resp})
 			}()
 			cmds = append(cmds, ListenForEvents(m.eventChan))
@@ -1042,6 +1042,8 @@ func stripJSONBlocks(text string) string {
 
 // runSimpleChat runs a one-shot completion and returns the text response.
 // Blocks until done. Safe to call from goroutines — respects context cancellation.
+// runSimpleChat runs a completion and returns the text. Does NOT stream tool events.
+// Use runStreamingChat when you need tool activity to show in the UI.
 func runSimpleChat(ctx context.Context, provider api.Provider, systemPrompt, userPrompt string) string {
 	events := make(chan api.Event, 100)
 	go provider.RunCompletion(ctx, systemPrompt, userPrompt, events)
@@ -1052,6 +1054,33 @@ func runSimpleChat(ctx context.Context, provider api.Provider, systemPrompt, use
 		}
 		if ev.Type == api.EventDone || ev.Type == api.EventError {
 			break
+		}
+	}
+	if text == "" {
+		return "(no response)"
+	}
+	return text
+}
+
+// runStreamingChat runs a completion while forwarding tool events to the UI channel.
+// This gives users visibility into what the agent is doing (reading files, running commands, etc).
+func runStreamingChat(ctx context.Context, provider api.Provider, systemPrompt, userPrompt string, uiChan chan<- tea.Msg) string {
+	events := make(chan api.Event, 100)
+	go provider.RunCompletion(ctx, systemPrompt, userPrompt, events)
+	var text string
+	for ev := range events {
+		switch ev.Type {
+		case api.EventTextDelta:
+			text += ev.Text
+		case api.EventToolCallStart:
+			if ev.ToolCall != nil {
+				safeSend(ctx, uiChan, ToolActivityMsg{Description: ev.ToolCall.HumanDescription()})
+			}
+		case api.EventDone, api.EventError:
+			if text == "" {
+				return "(no response)"
+			}
+			return text
 		}
 	}
 	if text == "" {

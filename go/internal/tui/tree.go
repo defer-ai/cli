@@ -633,12 +633,13 @@ func (m TreeModel) viewChat() string {
 			}
 		case "user":
 			chatLines = append(chatLines, "")
-			wrapped := wrapText(highlightDecisionRefs(entry.Text), maxTextWidth-2)
+			wrapped := wrapText(entry.Text, maxTextWidth-4)
 			for i, wl := range wrapped {
+				styledLine := UserMsgStyle.Render(" " + wl + " ")
 				if i == 0 {
-					chatLines = append(chatLines, "  "+BoldWhite.Render("> ")+wl)
+					chatLines = append(chatLines, "  "+UserMsgStyle.Render(" > ")+styledLine)
 				} else {
-					chatLines = append(chatLines, "    "+wl)
+					chatLines = append(chatLines, "  "+UserMsgStyle.Render("   ")+styledLine)
 				}
 			}
 			chatLines = append(chatLines, "")

@@ -21,8 +21,14 @@ var (
 	RedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	BlueStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
 
+	// User message style — subtle background to differentiate from AI
+	UserMsgStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("15")).
+			Background(lipgloss.Color("236")).
+			Bold(true)
+
 	// Border colors
-	BorderColor       = lipgloss.Color("240")
+	BorderColor = lipgloss.Color("240")
 	ActiveBorderColor = Accent
 
 	// Title style for the top border label
