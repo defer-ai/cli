@@ -102,9 +102,6 @@ func buildBorderedBox(content string, innerWidth int, title, rightStatus string)
 		bStyle.Render(strings.Repeat(horizontal, bottomFill+2)) +
 		bStyle.Render(bottomRight)
 
-	// Build middle border (for dividers)
-	_ = buildMiddleBorder // referenced below
-
 	// Build content lines with side borders
 	lines := strings.Split(content, "\n")
 	var sb strings.Builder

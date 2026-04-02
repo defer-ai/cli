@@ -179,7 +179,6 @@ defer sessions list        List all sessions in directory tree
 defer sessions delete      Delete .defer/ in current directory
 defer sessions export      Print DECISIONS.md to stdout
 defer --debug "task"       Headless mode (no TUI, prints to stdout)
-defer --mcp "task"         Enable MCP server connections
 defer --model opus "task"  Use a specific model (sonnet, opus, haiku, or ID)
 defer --version            Show version
 ```
@@ -311,17 +310,17 @@ go/
     init.go                      defer init scaffolding (5 tool targets)
     debug.go                     Headless debug mode (--debug)
   internal/
-    api/
-      provider.go                Provider interface + auto-detection (9 providers)
-      claude_code.go             Claude Code subprocess provider
-      openai.go                  OpenAI-compatible HTTP provider
-      toolexec.go                Tool execution (file I/O, shell commands)
     agent/
       agent.go                   Decomposition agent (parses decisions from LLM)
       executor.go                Domain executor (plan/execute/verify/extract)
       manager.go                 Coordinator (auto-decide, sync, launch, cancel)
       prompts.go                 System prompts (decompose, plan, execute, etc.)
       events.go                  Event types for agent -> TUI communication
+    api/
+      provider.go                Provider interface + auto-detection (9 providers)
+      claude_code.go             Claude Code subprocess provider
+      openai.go                  OpenAI-compatible HTTP provider
+      toolexec.go                Tool execution (file I/O, shell commands)
     config/
       config.go                  Settings cascade (global -> project -> CLI)
     decision/
@@ -333,6 +332,9 @@ go/
       hooks.go                   Lifecycle hooks (bash commands + webhooks)
     keybindings/
       keybindings.go             Configurable keybindings (~/.defer/keybindings.json)
+    mcp/
+      client.go                  MCP client (JSON-RPC 2.0 over stdio)
+      config.go                  MCP server configuration
     permissions/
       permissions.go             Care-level-aware tool permissions
     skills/
@@ -350,8 +352,6 @@ go/
       styles.go                  Lip Gloss styles + bordered box renderer
       notifications.go           Priority-based notification system
       messages.go                All tea.Msg types + safeSend helper
-    mcp/
-      client.go                  MCP client (Model Context Protocol)
 ```
 
 ## Development

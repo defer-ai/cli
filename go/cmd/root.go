@@ -18,7 +18,6 @@ var (
 	provider string
 	apiKey   string
 	debug    bool
-	mcpFlag  bool
 )
 
 var rootCmd = &cobra.Command{
@@ -111,7 +110,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&provider, "provider", "", "AI provider (openai, groq, mistral, together, ollama, or URL)")
 	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "API key (overrides environment variable)")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Run headless (no TUI), print all output to stdout")
-	rootCmd.PersistentFlags().BoolVar(&mcpFlag, "mcp", false, "Enable MCP (Model Context Protocol) server connections")
 	rootCmd.AddCommand(initCmd)
 }
 
