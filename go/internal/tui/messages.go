@@ -2,10 +2,12 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/defer-ai/cli/internal/agent"
+	"github.com/defer-ai/cli/internal/api"
 	"github.com/defer-ai/cli/internal/decision"
 )
 
@@ -39,6 +41,15 @@ type SuggestResponseMsg struct {
 }
 type TogglePermissionsMsg struct{ Bypass bool }
 type CheckAllDecidedMsg struct{}
+
+// PermissionRequestMsg is forwarded from the agent/provider layer to the TUI
+// when the Claude subprocess requests permission to use a tool.
+type PermissionRequestMsg struct {
+	ToolName    string
+	Description string          // human-friendly description
+	Input       json.RawMessage
+	ResponseCh  chan api.PermissionResponse
+}
 type ImplicitInvalidationMsg struct {
 	IDs    []string
 	Reason string
@@ -57,6 +68,16 @@ func BridgeAgentEvent(ev agent.Event) tea.Msg {
 		return ExecutorDecisionStoredMsg{ExecutorID: ev.ExecutorID, Decisions: ev.Decisions}
 	case agent.ExecToolActivity:
 		return ToolActivityMsg{Description: ev.ToolActivity}
+	case agent.ExecPermissionRequest:
+		if ev.PermissionReq != nil {
+			return PermissionRequestMsg{
+				ToolName:    ev.PermissionReq.ToolName,
+				Description: permissionDescription(ev.PermissionReq),
+				Input:       ev.PermissionReq.Input,
+				ResponseCh:  ev.PermissionReq.ResponseCh,
+			}
+		}
+		return nil
 	case agent.AllExecutorsDone:
 		return AllExecutorsDoneMsg{}
 	default:
@@ -87,4 +108,14 @@ func DoTick() tea.Cmd {
 	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
 		return TickMsg{Time: t}
 	})
+}
+
+// permissionDescription generates a human-readable description of a permission request.
+func permissionDescription(req *api.PermissionRequest) string {
+	tc := &api.ToolCall{
+		ID:    req.ToolUseID,
+		Name:  req.ToolName,
+		Input: req.Input,
+	}
+	return tc.HumanDescription()
 }

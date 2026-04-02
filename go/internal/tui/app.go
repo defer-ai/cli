@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/defer-ai/cli/internal/agent"
 	"github.com/defer-ai/cli/internal/api"
 	"github.com/defer-ai/cli/internal/decision"
@@ -50,6 +51,9 @@ type Model struct {
 	executorsLaunched bool
 	lastCtrlC       time.Time
 	quitting        bool // set on double ctrl+c, prevents new goroutine spawns
+
+	// Permission overlay
+	pendingPermission *PermissionRequestMsg
 
 	// Priorities (persisted)
 	domainPriorities map[string]agent.CareLevel
@@ -210,6 +214,15 @@ func NewScanModel(provider api.Provider, cwd string) Model {
 			case api.EventTextDelta:
 				fullText += ev.Text
 				safeSend(scanCtx, ch, AgentStateChangedMsg{})
+			case api.EventPermissionRequest:
+				if ev.PermissionReq != nil {
+					safeSend(scanCtx, ch, PermissionRequestMsg{
+						ToolName:    ev.PermissionReq.ToolName,
+						Description: permissionDescription(ev.PermissionReq),
+						Input:       ev.PermissionReq.Input,
+						ResponseCh:  ev.PermissionReq.ResponseCh,
+					})
+				}
 			case api.EventDone:
 				decs := agent.ParseScanDecisions(fullText)
 				// Mark all as discovered
@@ -321,6 +334,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notifications.Push("Press Ctrl+C again to exit.", NotifyMedium, 3*time.Second)
 			return m, nil
 		}
+
+		// Intercept keys when a permission overlay is active
+		if m.pendingPermission != nil {
+			switch msg.String() {
+			case "y", "enter":
+				m.pendingPermission.ResponseCh <- api.PermissionResponse{Allow: true}
+				m.pendingPermission = nil
+			case "n", "esc":
+				m.pendingPermission.ResponseCh <- api.PermissionResponse{Allow: false, Message: "User denied"}
+				m.pendingPermission = nil
+			}
+			// Swallow all key events while permission overlay is shown
+			return m, nil
+		}
+
+	case PermissionRequestMsg:
+		m.pendingPermission = &msg
+		cmds = append(cmds, ListenForEvents(m.eventChan))
+		return m, tea.Batch(cmds...)
 
 	case TickMsg:
 		m.mascotTick++
@@ -899,17 +931,116 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 }
 
 func (m Model) View() string {
+	var base string
 	switch m.view {
 	case ViewPriorities:
-		return m.priorities.View()
+		base = m.priorities.View()
 
 	case ViewConversation, ViewTree:
 		m.tree.height = m.height
 		m.tree.width = m.width
-		return m.tree.View()
+		base = m.tree.View()
+
+	default:
+		base = ""
 	}
 
-	return ""
+	// If a permission overlay is pending, render it on top of the base view
+	if m.pendingPermission != nil {
+		base = m.overlayPermission(base, m.width, m.height)
+	}
+
+	return base
+}
+
+// overlayPermission renders the permission request box centered over the base view.
+func (m Model) overlayPermission(base string, width, height int) string {
+	if m.pendingPermission == nil {
+		return base
+	}
+
+	// Build the overlay content
+	toolLine := BoldAccent.Render(m.pendingPermission.ToolName) + ": " + m.pendingPermission.Description
+	// Truncate if too wide
+	maxContentWidth := width - 8
+	if maxContentWidth < 30 {
+		maxContentWidth = 30
+	}
+	if lipgloss.Width(toolLine) > maxContentWidth {
+		// Truncate the description part
+		desc := m.pendingPermission.Description
+		maxDesc := maxContentWidth - lipgloss.Width(m.pendingPermission.ToolName) - 6 // ": " + "..."
+		if maxDesc > 3 {
+			desc = desc[:maxDesc] + "..."
+		}
+		toolLine = BoldAccent.Render(m.pendingPermission.ToolName) + ": " + desc
+	}
+
+	prompt := "Allow this tool to run?"
+	keys := GreenStyle.Render("y") + " allow    " + RedStyle.Render("n") + " deny"
+
+	content := "\n" + toolLine + "\n\n" + prompt + "\n\n" + keys + "\n"
+
+	boxWidth := lipgloss.Width(toolLine) + 4
+	if boxWidth < 40 {
+		boxWidth = 40
+	}
+	if boxWidth > width-4 {
+		boxWidth = width - 4
+	}
+
+	box := buildBorderedBox(content, boxWidth, "Permission Required", "")
+
+	// Split base and box into lines for overlay
+	baseLines := strings.Split(base, "\n")
+	boxLines := strings.Split(box, "\n")
+
+	// Center the box vertically and horizontally
+	boxHeight := len(boxLines)
+	startRow := (height - boxHeight) / 2
+	if startRow < 0 {
+		startRow = 0
+	}
+
+	boxVisualWidth := 0
+	for _, bl := range boxLines {
+		w := lipgloss.Width(bl)
+		if w > boxVisualWidth {
+			boxVisualWidth = w
+		}
+	}
+	startCol := (width - boxVisualWidth) / 2
+	if startCol < 0 {
+		startCol = 0
+	}
+
+	// Ensure base has enough lines
+	for len(baseLines) < height {
+		baseLines = append(baseLines, strings.Repeat(" ", width))
+	}
+
+	// Overlay box lines onto base
+	for i, boxLine := range boxLines {
+		row := startRow + i
+		if row >= len(baseLines) {
+			break
+		}
+
+		baseLine := baseLines[row]
+		// Pad baseLine if needed
+		baseVisWidth := lipgloss.Width(baseLine)
+		if baseVisWidth < width {
+			baseLine += strings.Repeat(" ", width-baseVisWidth)
+		}
+
+		// Build: leading base chars + box line + trailing base chars
+		// Since we're working with ANSI strings, we use a simpler approach:
+		// pad left + box + pad right (replacing the base)
+		left := strings.Repeat(" ", startCol)
+		baseLines[row] = left + boxLine
+	}
+
+	return strings.Join(baseLines, "\n")
 }
 
 // tryParseChangeCommand detects "@ID change to X" or "@ID = X" patterns and updates the decision.
@@ -1148,6 +1279,10 @@ func runSimpleChat(ctx context.Context, provider api.Provider, systemPrompt, use
 		if ev.Type == api.EventTextDelta {
 			text += ev.Text
 		}
+		// Auto-allow permission requests in simple completions (internal agent calls)
+		if ev.Type == api.EventPermissionRequest && ev.PermissionReq != nil {
+			ev.PermissionReq.ResponseCh <- api.PermissionResponse{Allow: true}
+		}
 		if ev.Type == api.EventDone || ev.Type == api.EventError {
 			break
 		}
@@ -1171,6 +1306,15 @@ func runStreamingChat(ctx context.Context, provider api.Provider, systemPrompt, 
 		case api.EventToolCallStart:
 			if ev.ToolCall != nil {
 				safeSend(ctx, uiChan, ToolActivityMsg{Description: ev.ToolCall.HumanDescription()})
+			}
+		case api.EventPermissionRequest:
+			if ev.PermissionReq != nil {
+				safeSend(ctx, uiChan, PermissionRequestMsg{
+					ToolName:    ev.PermissionReq.ToolName,
+					Description: permissionDescription(ev.PermissionReq),
+					Input:       ev.PermissionReq.Input,
+					ResponseCh:  ev.PermissionReq.ResponseCh,
+				})
 			}
 		case api.EventDone, api.EventError:
 			if text == "" {

@@ -100,6 +100,11 @@ func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Eve
 			a.mu.Unlock()
 			onEvent(Event{Type: AgentStateChanged})
 
+		case api.EventPermissionRequest:
+			if ev.PermissionReq != nil {
+				onEvent(Event{Type: ExecPermissionRequest, PermissionReq: ev.PermissionReq})
+			}
+
 		case api.EventError:
 			a.mu.Lock()
 			a.state.Status = StatusError
@@ -159,6 +164,10 @@ func (a *Agent) runDecompositionSubprocessRetry(ctx context.Context, onEvent fun
 		switch ev.Type {
 		case api.EventTextDelta:
 			fullText += ev.Text
+		case api.EventPermissionRequest:
+			if ev.PermissionReq != nil {
+				onEvent(Event{Type: ExecPermissionRequest, PermissionReq: ev.PermissionReq})
+			}
 		case api.EventDone:
 			decisions := parseDecisions(fullText, a.state.Decisions)
 			if len(decisions) == 0 {

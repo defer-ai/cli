@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,22 +19,39 @@ import (
 type EventType int
 
 const (
-	EventTextDelta     EventType = iota // Claude produced text
-	EventToolCallStart                  // Claude wants to call a tool
-	EventToolCallDone                   // Tool execution finished
-	EventDecisionFound                  // An implicit decision was logged
-	EventDone                           // Agent loop finished
-	EventError                          // Something went wrong
+	EventTextDelta         EventType = iota // Claude produced text
+	EventToolCallStart                      // Claude wants to call a tool
+	EventToolCallDone                       // Tool execution finished
+	EventDecisionFound                      // An implicit decision was logged
+	EventPermissionRequest                  // Subprocess needs permission to use a tool
+	EventDone                               // Agent loop finished
+	EventError                              // Something went wrong
 )
+
+// PermissionRequest represents a tool permission request from the Claude subprocess.
+type PermissionRequest struct {
+	RequestID  string
+	ToolName   string
+	ToolUseID  string
+	Input      json.RawMessage
+	ResponseCh chan PermissionResponse // caller writes here to approve/deny
+}
+
+// PermissionResponse is the user's decision on a permission request.
+type PermissionResponse struct {
+	Allow   bool
+	Message string // reason for denial (used when Allow is false)
+}
 
 // Event is emitted by the agent loop.
 type Event struct {
-	Type       EventType
-	Text       string             // for TextDelta
-	ToolCall   *ToolCall          // for ToolCallStart
-	ToolResult *ToolResult        // for ToolCallDone
-	Decision   *decision.Decision // for DecisionFound
-	Error      error              // for Error
+	Type          EventType
+	Text          string             // for TextDelta
+	ToolCall      *ToolCall          // for ToolCallStart
+	ToolResult    *ToolResult        // for ToolCallDone
+	Decision      *decision.Decision // for DecisionFound
+	PermissionReq *PermissionRequest // for PermissionRequest
+	Error         error              // for Error
 }
 
 // ClaudeCodeProvider runs Claude Code as a subprocess.
@@ -87,8 +105,6 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 		"--output-format", "stream-json",
 		"--verbose",
 		"--model", p.model,
-		"--dangerously-skip-permissions",
-		"--allowedTools", "Bash,Read,Write,Edit,Glob,Grep,Agent,WebSearch,WebFetch,ToolSearch,EnterPlanMode,ExitPlanMode,TaskCreate,TaskUpdate",
 	}
 
 	if p.sessionID != "" {
@@ -103,6 +119,12 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 	cmd.Env = os.Environ()
 
 	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		events <- Event{Type: EventError, Error: err}
+		return
+	}
+
+	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
 		events <- Event{Type: EventError, Error: err}
 		return
@@ -159,6 +181,10 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 			if sid, ok := event["session_id"].(string); ok {
 				p.sessionID = sid
 			}
+
+		case "control_request":
+			p.handleControlRequest(event, stdinPipe, events)
+			continue
 
 		case "content_block_delta":
 			if delta, ok := event["delta"].(map[string]interface{}); ok {
@@ -245,6 +271,83 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 	}
 
 	events <- Event{Type: EventDone}
+}
+
+// handleControlRequest parses a control_request event, emits a PermissionRequest event,
+// and spawns a goroutine that waits for the user response and writes it to stdin.
+func (p *ClaudeCodeProvider) handleControlRequest(event map[string]interface{}, stdinPipe io.WriteCloser, events chan<- Event) {
+	requestID, _ := event["request_id"].(string)
+
+	// Parse the nested request object
+	reqObj, _ := event["request"].(map[string]interface{})
+	if reqObj == nil {
+		return
+	}
+
+	toolName, _ := reqObj["tool_name"].(string)
+	toolUseID, _ := reqObj["tool_use_id"].(string)
+
+	var inputRaw json.RawMessage
+	if inp, ok := reqObj["input"]; ok {
+		inputRaw, _ = json.Marshal(inp)
+	}
+
+	responseCh := make(chan PermissionResponse, 1)
+	permReq := &PermissionRequest{
+		RequestID:  requestID,
+		ToolName:   toolName,
+		ToolUseID:  toolUseID,
+		Input:      inputRaw,
+		ResponseCh: responseCh,
+	}
+
+	events <- Event{Type: EventPermissionRequest, PermissionReq: permReq}
+
+	// Goroutine waits for the response and writes it to the subprocess stdin.
+	// The subprocess BLOCKS until this response is written.
+	go func() {
+		resp := <-responseCh
+
+		var controlResp map[string]interface{}
+		if resp.Allow {
+			controlResp = map[string]interface{}{
+				"type": "control_response",
+				"response": map[string]interface{}{
+					"subtype":    "success",
+					"request_id": requestID,
+					"response": map[string]interface{}{
+						"behavior":     "allow",
+						"updatedInput": map[string]interface{}{},
+						"toolUseID":    toolUseID,
+					},
+				},
+			}
+		} else {
+			msg := resp.Message
+			if msg == "" {
+				msg = "User denied"
+			}
+			controlResp = map[string]interface{}{
+				"type": "control_response",
+				"response": map[string]interface{}{
+					"subtype":    "success",
+					"request_id": requestID,
+					"response": map[string]interface{}{
+						"behavior":  "deny",
+						"message":   msg,
+						"toolUseID": toolUseID,
+					},
+				},
+			}
+		}
+
+		data, err := json.Marshal(controlResp)
+		if err != nil {
+			return
+		}
+		data = append(data, '\n')
+		stdinPipe.Write(data)
+	}()
 }
 
 // ResetSession clears the session ID for a fresh context.

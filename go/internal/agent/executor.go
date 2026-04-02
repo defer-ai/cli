@@ -221,6 +221,14 @@ func (e *Executor) simpleCompletion(ctx context.Context, systemPrompt, userMsg s
 				ToolActivity: ev.ToolCall.HumanDescription(),
 			})
 		}
+		// Forward permission requests to the TUI
+		if ev.Type == api.EventPermissionRequest && ev.PermissionReq != nil {
+			e.onEvent(Event{
+				Type:          ExecPermissionRequest,
+				ExecutorID:    e.state.ID,
+				PermissionReq: ev.PermissionReq,
+			})
+		}
 		if ev.Type == api.EventDone || ev.Type == api.EventError {
 			if ev.Error != nil {
 				return text, ev.Error
@@ -266,6 +274,15 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 					Type:         ExecToolActivity,
 					ExecutorID:   e.state.ID,
 					ToolActivity: ev.ToolCall.HumanDescription(),
+				})
+			}
+
+		case api.EventPermissionRequest:
+			if ev.PermissionReq != nil {
+				e.onEvent(Event{
+					Type:          ExecPermissionRequest,
+					ExecutorID:    e.state.ID,
+					PermissionReq: ev.PermissionReq,
 				})
 			}
 
@@ -338,6 +355,14 @@ func (e *Executor) fix(ctx context.Context, issues, decSummary string) string {
 		case api.EventDecisionFound:
 			if ev.Decision != nil {
 				e.storeDecision(*ev.Decision)
+			}
+		case api.EventPermissionRequest:
+			if ev.PermissionReq != nil {
+				e.onEvent(Event{
+					Type:          ExecPermissionRequest,
+					ExecutorID:    e.state.ID,
+					PermissionReq: ev.PermissionReq,
+				})
 			}
 		case api.EventDone, api.EventError:
 			return fullText
