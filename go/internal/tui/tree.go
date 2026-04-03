@@ -1093,6 +1093,8 @@ func (m TreeModel) View() string {
 		return m.viewTree()
 	}
 
+	h-- // reserve 1 line for global status bar
+
 	// Side-by-side layout — focused panel gets more space
 	var treeW, chatW int
 	if m.focusPanel == FocusTree {
@@ -1127,7 +1129,18 @@ func (m TreeModel) View() string {
 		rightPanel = chatPanel
 	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+
+	// Global status bar below all panels
+	globalActions := []footerAction{
+		{"tab", "next panel"},
+		{"shift+tab", "prev panel"},
+		{"esc", "stop agent"},
+		{"ctrl+q", "quit"},
+	}
+	globalBar := renderFooter(globalActions, w)
+
+	return panels + "\n" + globalBar
 }
 
 // ========== SIDE-BY-SIDE PANEL RENDERERS ==========
@@ -1422,7 +1435,6 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 			{"enter", "inspect"},
 			{"/", "filter"},
 			{"g", "group"},
-			{"tab", "switch"},
 		}
 	}
 	lines = append(lines, renderFooter(footerActions, innerWidth))
@@ -1788,7 +1800,6 @@ func (m TreeModel) renderChatPanel(w, h int) string {
 	chatFooterActions := []footerAction{
 		{"enter", "send"},
 		{"j/k", "scroll"},
-		{"tab", "switch"},
 	}
 	lines = append(lines, renderFooter(chatFooterActions, innerWidth))
 
@@ -1823,7 +1834,6 @@ func (m TreeModel) renderResolverPanel(w, h int, resolverLines []string) string 
 		{"j/k", "pick"},
 		{"enter", "confirm"},
 		{"n/p", "cycle"},
-		{"tab", "switch"},
 	}
 	lines = append(lines, renderFooter(footerActions, innerWidth))
 
