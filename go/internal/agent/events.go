@@ -16,15 +16,18 @@ const (
 	ExecToolActivity                      // executor tool call (for live feed)
 	ExecPermissionRequest                 // executor needs permission for a tool
 	ExecWaitingForDecisions               // executor paused, waiting for pending decisions
+	ExecResearchRequest                   // executor wants the main agent to research something
 	AllExecutorsDone                      // all domain executors finished
 )
 
 // Event is sent from agent goroutines to the TUI.
 type Event struct {
-	Type          EventType
-	ExecutorID    string              // for executor events
-	Decisions     []decision.Decision // for DecisionsReady / DecisionStored
-	ToolActivity  string              // human-readable tool description for feed
-	PermissionReq *api.PermissionRequest // for ExecPermissionRequest
-	Error         error
+	Type               EventType
+	ExecutorID         string              // for executor events
+	Decisions          []decision.Decision // for DecisionsReady / DecisionStored
+	ToolActivity       string              // human-readable tool description for feed
+	PermissionReq      *api.PermissionRequest // for ExecPermissionRequest
+	ResearchQuery      string              // for ExecResearchRequest
+	ResearchResponseCh chan string          // executor blocks on this for research results
+	Error              error
 }

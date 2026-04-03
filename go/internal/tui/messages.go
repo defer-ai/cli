@@ -40,6 +40,10 @@ type SuggestResponseMsg struct {
 	ID      string
 	Options []decision.DecisionOption
 }
+type ResearchRequestMsg struct {
+	Query      string
+	ResponseCh chan string
+}
 type TogglePermissionsMsg struct{ Bypass bool }
 type CheckAllDecidedMsg struct{}
 type SaveFeaturesMsg struct{}
@@ -82,6 +86,11 @@ func BridgeAgentEvent(ev agent.Event) tea.Msg {
 		return nil
 	case agent.ExecWaitingForDecisions:
 		return ExecWaitingMsg{ExecutorID: ev.ExecutorID}
+	case agent.ExecResearchRequest:
+		return ResearchRequestMsg{
+			Query:      ev.ResearchQuery,
+			ResponseCh: ev.ResearchResponseCh,
+		}
 	case agent.AllExecutorsDone:
 		return AllExecutorsDoneMsg{}
 	default:

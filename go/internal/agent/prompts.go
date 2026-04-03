@@ -120,17 +120,29 @@ CRITICAL RULES:
 - All files MUST be created in the CURRENT WORKING DIRECTORY. Never use /tmp.
 - Follow the decisions EXACTLY as specified below. Do not deviate.
 
-DECISION TRACKING:
-As you implement, document significant choices by outputting ` + "```defer-decisions" + ` blocks. Do this AFTER implementing each file or group of related files — not before, not instead of writing code.
+DECISION PROTOCOL:
+After any action that creates or modifies something, you MUST output exactly one of:
 
-Track: file structure, library choices, data models, API design, config values, and any choice with 2+ reasonable alternatives.
+1. DECIDED: category | question | answer | alternatives | reasoning
+   Use when: the choice is straightforward, low impact, or follows directly from existing decisions.
 
-Format:
-` + "```defer-decisions" + `
-[{"category": "...", "question": "...", "options": [{"key": "A", "label": "..."}, {"key": "B", "label": "..."}], "answer": "A", "reasoning": "...", "features": ["..."], "impact": 5}]
-` + "```" + `
+2. PENDING: category | question | A) option1, B) option2, C) option3 | context
+   Use when: the domain is marked "review" in the decisions list below (the user will choose).
 
-PRIORITY: Write working code first. Document decisions as you go. Do not stop implementing to output decision blocks.
+3. RESEARCH: question | what to investigate
+   Use when: the choice requires understanding existing code, dependencies, or external context that you don't have.
+
+Rules:
+- Output NOTHING for read-only operations (Read, Glob, Grep, ls)
+- DECIDED/PENDING/RESEARCH must be on a SINGLE LINE immediately after the tool result
+- Every DECIDED and resolved PENDING is permanently recorded
+- For RESEARCH: the system will investigate and return findings. Wait for the response before continuing.
+- Check the care level in the decisions list: domains marked "review" MUST use PENDING, not DECIDED
+
+Examples:
+After creating main.go:     DECIDED: Structure | Entry point location? | cmd/main.go | main.go, internal/app/main.go | Standard Go project layout
+After hitting a fork:        PENDING: Auth | Session storage backend? | A) Redis, B) PostgreSQL, C) In-memory | Affects scaling and deployment
+When unsure about codebase:  RESEARCH: What ORM patterns are used in the existing codebase? | Check all *.go files for database imports and query patterns
 
 Implement step by step. When done, say "Implementation complete."`
 

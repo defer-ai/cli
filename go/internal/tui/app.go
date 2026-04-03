@@ -595,6 +595,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 
+	case ResearchRequestMsg:
+		// Spawn the chat agent to research the topic
+		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+			Type: "system",
+			Text: fmt.Sprintf("Researching: %s", msg.Query),
+		})
+		if m.provider != nil && !m.quitting {
+			ch := m.eventChan
+			ctx := m.ctx
+			responseCh := msg.ResponseCh
+			go func() {
+				resp := runSimpleChat(ctx, m.provider,
+					"You are a research assistant. Investigate the question thoroughly using Read, Glob, Grep tools. Be concise but complete.",
+					msg.Query)
+				responseCh <- resp
+				safeSend(ctx, ch, ChatResponseMsg{Text: "Research: " + resp})
+			}()
+		}
+		cmds = append(cmds, ListenForEvents(m.eventChan))
+		return m, tea.Batch(cmds...)
+
 	case AllExecutorsDoneMsg:
 		m.tree.overallStatus = "done"
 		m.tree.chatThinking = false

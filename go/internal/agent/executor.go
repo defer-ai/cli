@@ -19,6 +19,11 @@ import (
 // inlineDecisionRe matches patterns like "DECISION: @STA-0001 = Go with Gin" in executor output.
 var inlineDecisionRe = regexp.MustCompile(`DECISION:\s*@?([A-Z]+-\d+)\s*=\s*(.+)`)
 
+// New decision protocol regexes
+var decidedRe = regexp.MustCompile(`DECIDED:\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*(.+)`)
+var pendingRe = regexp.MustCompile(`PENDING:\s*([^|]+)\|\s*([^|]+)\|\s*(.+)\|\s*(.+)`)
+var researchRe = regexp.MustCompile(`RESEARCH:\s*([^|]+)\|\s*(.+)`)
+
 
 // DomainStatus tracks executor progress.
 type DomainStatus int
@@ -69,7 +74,7 @@ type Executor struct {
 	knownCategories  []string
 	state            ExecState
 	onEvent          func(Event)
-	parsedBlockCount int           // tracks how many defer-decisions blocks have been parsed
+	researchResults  []string      // collected research findings to inject in next round
 	ContinueCh       chan struct{} // TUI signals this when all pending decisions are resolved
 }
 
@@ -162,6 +167,13 @@ func (e *Executor) Execute(ctx context.Context) {
 	var fullOutput string
 	for round := 0; round < 5; round++ {
 		decSummary := e.decisionSummary()
+
+		// Inject research findings from previous round
+		if len(e.researchResults) > 0 {
+			decSummary += "\n\nResearch findings:\n" + strings.Join(e.researchResults, "\n")
+			e.researchResults = nil
+		}
+
 		prevDecCount := len(*e.allDecisions)
 
 		e.setStatus(DomainExecuting, fmt.Sprintf("Implementing (round %d)...", round+1), "")
@@ -314,8 +326,14 @@ func (e *Executor) simpleCompletion(ctx context.Context, systemPrompt, userMsg s
 func (e *Executor) execute(ctx context.Context, decSummary string) string {
 	systemPrompt := fmt.Sprintf(ExecutePromptTemplate, e.domain, CarePrompts[e.careLevel])
 
-	userMsg := fmt.Sprintf("Task: %s\n\nProject directory: %s\nDomain: %s\nDecisions:\n%s\n\nIMPORTANT: Before writing code, use Glob and Read to check what files already exist. Continue from where the previous round left off. Do not recreate existing files.\n\nImplement the %s domain now. All files must go in %s or its subdirectories.",
-		e.task, e.cwd, e.domain, decSummary, e.domain, e.cwd)
+	// Build care level context for the prompt
+	var careLevelCtx strings.Builder
+	for cat, level := range e.priorities {
+		careLevelCtx.WriteString(fmt.Sprintf("%s: %s\n", cat, string(level)))
+	}
+
+	userMsg := fmt.Sprintf("Task: %s\n\nProject directory: %s\nDomain: %s\n\nCare levels per domain:\n%s\nDecisions:\n%s\n\nIMPORTANT: Before writing code, use Glob and Read to check what files already exist. Continue from where the previous round left off. Do not recreate existing files.\n\nImplement the %s domain now. All files must go in %s or its subdirectories.",
+		e.task, e.cwd, e.domain, careLevelCtx.String(), decSummary, e.domain, e.cwd)
 
 	events := make(chan api.Event, 100)
 
@@ -337,11 +355,72 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 			e.mu.Unlock()
 			e.onEvent(Event{Type: ExecStateChanged, ExecutorID: e.state.ID})
 
-			// Parse inline defer-decisions blocks from streaming output
-			e.parseInlineDecisionBlocks(fullText)
-
 			// Scan for inline decision updates (e.g. "DECISION: STA-0001 = Go with Gin")
 			e.scanInlineDecisions(ev.Text)
+
+			// Check for DECIDED: lines
+			if matches := decidedRe.FindStringSubmatch(ev.Text); len(matches) == 6 {
+				category := strings.TrimSpace(matches[1])
+				question := strings.TrimSpace(matches[2])
+				answer := strings.TrimSpace(matches[3])
+				alternatives := strings.TrimSpace(matches[4])
+				reasoning := strings.TrimSpace(matches[5])
+
+				opts := parseAlternatives(answer, alternatives)
+
+				d := decision.Decision{
+					ID:        decision.NextID(*e.allDecisions, category),
+					Category:  e.normalizeCategoryLocked(category),
+					Question:  question,
+					Answer:    &answer,
+					Options:   opts,
+					Reasoning: reasoning,
+					Source:    "agent",
+					Impact:    3, // default for inline decisions
+					Date:      time.Now().Format("2006-01-02"),
+				}
+				e.storeDecisionAndSave(d)
+			}
+
+			// Check for PENDING: lines
+			if matches := pendingRe.FindStringSubmatch(ev.Text); len(matches) == 5 {
+				category := strings.TrimSpace(matches[1])
+				question := strings.TrimSpace(matches[2])
+				optionsStr := strings.TrimSpace(matches[3])
+				context := strings.TrimSpace(matches[4])
+
+				opts := parsePendingOptions(optionsStr)
+
+				d := decision.Decision{
+					ID:       decision.NextID(*e.allDecisions, category),
+					Category: e.normalizeCategoryLocked(category),
+					Question: question,
+					Options:  opts,
+					Context:  context,
+					Source:   "agent",
+					Date:     time.Now().Format("2006-01-02"),
+				}
+				e.storeDecisionAndSave(d) // stored as PENDING (no answer)
+			}
+
+			// Check for RESEARCH: lines
+			if matches := researchRe.FindStringSubmatch(ev.Text); len(matches) == 3 {
+				query := strings.TrimSpace(matches[1]) + " " + strings.TrimSpace(matches[2])
+				responseCh := make(chan string, 1)
+				e.onEvent(Event{
+					Type:               ExecResearchRequest,
+					ExecutorID:         e.state.ID,
+					ResearchQuery:      query,
+					ResearchResponseCh: responseCh,
+				})
+				// Don't block — collect the result asynchronously for the next round
+				go func() {
+					result := <-responseCh
+					e.mu.Lock()
+					e.researchResults = append(e.researchResults, result)
+					e.mu.Unlock()
+				}()
+			}
 
 		case api.EventToolCallStart:
 			if ev.ToolCall != nil {
@@ -683,31 +762,26 @@ func significantWords(s string, stop map[string]bool) []string {
 	return words
 }
 
+func (e *Executor) storeDecisionAndSave(d decision.Decision) {
+	e.storeDecision(d) // existing method (dedup, normalize, care level)
+
+	// Immediately persist to disk
+	store, _ := decision.LoadStore(e.cwd)
+	if store == nil {
+		store, _ = decision.CreateStore(e.cwd, e.task)
+	}
+	if store != nil {
+		e.mu.Lock()
+		store.Decisions = *e.allDecisions
+		e.mu.Unlock()
+		decision.SaveStore(e.cwd, store)
+	}
+}
+
 func (e *Executor) storeDecisions(decs []decision.Decision) {
 	for _, d := range decs {
 		e.storeDecision(d)
 	}
-}
-
-// parseInlineDecisionBlocks finds defer-decisions blocks in streaming text
-// and stores any new decisions found. Only processes blocks not yet parsed.
-func (e *Executor) parseInlineDecisionBlocks(text string) {
-	re := regexp.MustCompile("(?s)```defer-decisions\\s*\n([\\s\\S]*?)\n```")
-	matches := re.FindAllStringSubmatch(text, -1)
-
-	// Only process blocks we haven't seen yet
-	for i := e.parsedBlockCount; i < len(matches); i++ {
-		decs := e.parseImplicitChoices("[" + matches[i][1] + "]")
-		if len(decs) == 0 {
-			// Try parsing the raw match content directly
-			decs = e.parseImplicitChoices(matches[i][1])
-		}
-		for idx := range decs {
-			decs[idx].Source = "agent"
-		}
-		e.storeDecisions(decs)
-	}
-	e.parsedBlockCount = len(matches)
 }
 
 // UpdateDecision finds a decision in allDecisions by ID and updates its answer.
@@ -827,4 +901,32 @@ func (e *Executor) parseImplicitChoices(text string) []decision.Decision {
 	}
 
 	return result
+}
+
+// parseAlternatives builds options from the chosen answer and alternatives string.
+func parseAlternatives(chosen string, alts string) []decision.DecisionOption {
+	opts := []decision.DecisionOption{{Key: "A", Label: chosen}}
+	for i, alt := range strings.Split(alts, ",") {
+		label := strings.TrimSpace(alt)
+		if label != "" && label != chosen {
+			opts = append(opts, decision.DecisionOption{
+				Key:   string(rune('B' + i)),
+				Label: label,
+			})
+		}
+	}
+	return opts
+}
+
+// parsePendingOptions parses "A) option1, B) option2, C) option3" into options.
+func parsePendingOptions(optStr string) []decision.DecisionOption {
+	var opts []decision.DecisionOption
+	re := regexp.MustCompile(`([A-Z])\)\s*([^,]+)`)
+	for _, m := range re.FindAllStringSubmatch(optStr, -1) {
+		opts = append(opts, decision.DecisionOption{
+			Key:   m[1],
+			Label: strings.TrimSpace(m[2]),
+		})
+	}
+	return opts
 }
