@@ -392,8 +392,8 @@ func (e *Executor) plan(ctx context.Context, decSummary string) {
 	msg := fmt.Sprintf("Task: %s\n\nALREADY DECIDED (do NOT repeat these):\n%s\n\nKNOWN CATEGORIES (you MUST use only these): %s\n\nWhat NEW implementation decisions still need to be made? Do NOT rephrase or reference existing decisions. Only list decisions that are NOT in the 'already decided' list above.",
 		e.task, decSummary, catList)
 
-	planPrompt := PlanPrompt + fmt.Sprintf("\n\nCRITICAL: The category field MUST be one of: %s. Do NOT invent new categories. Do NOT repeat or rephrase any decision from the ALREADY DECIDED list.", catList)
-	resp, err := e.textOnlyCompletion(ctx, planPrompt, msg)
+	planPrompt := PlanPrompt + fmt.Sprintf("\n\nCRITICAL: The category field MUST be one of: %s. Do NOT invent new categories. Do NOT repeat or rephrase any decision from the ALREADY DECIDED list.\n\nAfter exploring the codebase, output ONLY a JSON array of new decisions. No other text.", catList)
+	resp, err := e.simpleCompletion(ctx, planPrompt, msg)
 	if err != nil {
 		return // best effort
 	}
@@ -459,7 +459,7 @@ func (e *Executor) extract(ctx context.Context, output string) {
 	}
 	msg := fmt.Sprintf("Domain: %s\n\nImplementation output:\n%s", e.domain, truncated)
 
-	resp, err := e.textOnlyCompletion(ctx, ExtractPrompt, msg)
+	resp, err := e.simpleCompletion(ctx, ExtractPrompt, msg)
 	if err != nil {
 		return
 	}
