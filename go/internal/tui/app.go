@@ -15,6 +15,7 @@ import (
 	"github.com/defer-ai/cli/internal/agent"
 	"github.com/defer-ai/cli/internal/api"
 	"github.com/defer-ai/cli/internal/decision"
+	"github.com/defer-ai/cli/internal/update"
 )
 
 // View represents which screen is active.
@@ -61,7 +62,8 @@ type Model struct {
 	mascotTick        int
 	notifications     *NotificationManager
 	executorsLaunched bool
-	quitting        bool // set on quit, prevents new goroutine spawns
+	quitting          bool // set on quit, prevents new goroutine spawns
+	updateAvailable   string // empty = up to date, else latest version like "2.0.3"
 
 	// Permission overlay
 	pendingPermission *PermissionRequestMsg
@@ -221,6 +223,18 @@ func savePriorities(cwd string, priorities map[string]agent.CareLevel, task stri
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{DoTick()}
 
+	// Non-blocking update check
+	if m.version != "" && m.version != "dev" {
+		version := m.version
+		cmds = append(cmds, func() tea.Msg {
+			latest, _, err := update.CheckForUpdate(version)
+			if err != nil || latest == "" {
+				return nil
+			}
+			return UpdateAvailableMsg{Version: latest}
+		})
+	}
+
 	if m.task != "" {
 		// Manager already created in NewModel, just start decomposition
 		if m.manager != nil {
@@ -247,6 +261,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.priorities.height = msg.Height
 		m.tree.width = msg.Width
 		m.tree.height = msg.Height
+		return m, nil
+
+	case UpdateAvailableMsg:
+		m.updateAvailable = msg.Version
 		return m, nil
 
 	case tea.KeyMsg:
@@ -1119,6 +1137,10 @@ func (m Model) renderHeader(width int) string {
 		status = "ready"
 	}
 	info = append(info, DimStyle.Render("status: ")+status)
+
+	if m.updateAvailable != "" {
+		info = append(info, YellowStyle.Render("Update available: v"+m.updateAvailable)+" "+DimStyle.Render("— run ")+AccentStyle.Render("defer update"))
+	}
 
 	// Join mascot and info side by side
 	mascotWidth := 0

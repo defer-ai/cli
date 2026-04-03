@@ -26,6 +26,7 @@ type ToolActivityMsg struct{ Description string }
 type TaskSubmittedMsg struct{ Task string }
 type PrioritiesConfirmedMsg struct{ Priorities map[string]agent.CareLevel }
 type TickMsg struct{ Time time.Time }
+type UpdateAvailableMsg struct{ Version string }
 
 // Tree action messages (emitted by TreeModel, handled by app)
 type ReviseDecisionMsg struct{ ID, NewAnswer string }
