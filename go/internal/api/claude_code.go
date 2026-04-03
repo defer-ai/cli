@@ -113,19 +113,17 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 		"--output-format", "stream-json",
 		"--verbose",
 		"--model", p.model,
-		"--permission-mode", "default",
+		"--dangerously-skip-permissions",
 	}
+	// AllowedTools restricts which tools the subprocess can use per-phase:
+	// - Decomposition: read-only (no Write/Edit)
+	// - Execution: full access (user confirmed decisions)
+	// - Chat: read-only
 	if len(p.AllowedTools) > 0 {
 		args = append(args, "--allowedTools", strings.Join(p.AllowedTools, ","))
 	}
 
-	// Resume Claude session if we have one (from .defer/), fresh otherwise.
-	// When .defer/ is deleted, sessionID is empty → fresh session.
-	if p.sessionID != "" {
-		args = append(args, "--resume", p.sessionID)
-	} else {
-		args = append(args, "--system-prompt", systemPrompt)
-	}
+	args = append(args, "--system-prompt", systemPrompt)
 
 	args = append(args, userPrompt)
 
@@ -201,6 +199,10 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 
 		case "control_request":
 			p.handleControlRequest(event, stdinPipe, events)
+			continue
+
+		// Log unhandled event types for debugging
+		case "":
 			continue
 
 		case "content_block_delta":

@@ -89,12 +89,6 @@ export default function Home() {
             </p>
             <p className="text-foreground">$ defer</p>
           </div>
-          <div className="border-t border-border/50 pt-4">
-            <p className="text-muted text-xs mb-2">
-              # Onboard an existing project
-            </p>
-            <p className="text-foreground">$ defer scan</p>
-          </div>
         </div>
 
       </section>
@@ -209,16 +203,14 @@ export default function Home() {
         <div className="p-5 border border-border rounded-xl bg-surface">
           <p className="text-xs text-muted mb-3 font-mono">DECISIONS.md</p>
           <div className="overflow-x-auto">
-            <p className="text-xs font-mono text-accent mb-2">
-              ## Decisions
-            </p>
-            <table className="w-full text-xs font-mono mb-4">
+            <table className="w-full text-xs font-mono">
               <thead>
                 <tr className="text-left text-muted border-b border-border">
                   <th className="pb-2 pr-4">ID</th>
                   <th className="pb-2 pr-4">Category</th>
                   <th className="pb-2 pr-4">Question</th>
                   <th className="pb-2 pr-4">Answer</th>
+                  <th className="pb-2 pr-4">Source</th>
                 </tr>
               </thead>
               <tbody className="text-foreground/70">
@@ -227,45 +219,28 @@ export default function Home() {
                   <td className="py-2 pr-4">Stack</td>
                   <td className="py-2 pr-4">Backend language?</td>
                   <td className="py-2 pr-4">Node.js (TypeScript)</td>
+                  <td className="py-2 pr-4 text-green-400">user</td>
                 </tr>
                 <tr className="border-b border-border/50">
                   <td className="py-2 pr-4 text-accent">@DAT-0001</td>
                   <td className="py-2 pr-4">Data</td>
                   <td className="py-2 pr-4">Database?</td>
-                  <td className="py-2 pr-4 italic text-muted">
-                    DELEGATED: PostgreSQL
-                  </td>
+                  <td className="py-2 pr-4">PostgreSQL</td>
+                  <td className="py-2 pr-4 text-gray-400">delegated</td>
                 </tr>
-              </tbody>
-            </table>
-            <p className="text-xs font-mono text-gray-500 mb-2">
-              ## AI Choices
-            </p>
-            <table className="w-full text-xs font-mono">
-              <thead>
-                <tr className="text-left text-muted border-b border-border">
-                  <th className="pb-2 pr-4">ID</th>
-                  <th className="pb-2 pr-4">Category</th>
-                  <th className="pb-2 pr-4">What was decided</th>
-                  <th className="pb-2 pr-4">Reasoning</th>
-                </tr>
-              </thead>
-              <tbody className="text-foreground/50">
                 <tr className="border-b border-border/50">
                   <td className="py-2 pr-4 text-gray-500">@NAM-0001</td>
                   <td className="py-2 pr-4">Naming</td>
-                  <td className="py-2 pr-4">camelCase for routes</td>
-                  <td className="py-2 pr-4 text-muted">
-                    framework convention
-                  </td>
+                  <td className="py-2 pr-4">Route naming convention?</td>
+                  <td className="py-2 pr-4">camelCase</td>
+                  <td className="py-2 pr-4 text-gray-500">extracted</td>
                 </tr>
                 <tr>
                   <td className="py-2 pr-4 text-gray-500">@ERR-0001</td>
                   <td className="py-2 pr-4">Error</td>
-                  <td className="py-2 pr-4">422 for validation</td>
-                  <td className="py-2 pr-4 text-muted">
-                    more semantically correct
-                  </td>
+                  <td className="py-2 pr-4">Validation status code?</td>
+                  <td className="py-2 pr-4">422</td>
+                  <td className="py-2 pr-4 text-gray-500">extracted</td>
                 </tr>
               </tbody>
             </table>

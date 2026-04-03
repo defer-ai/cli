@@ -50,6 +50,7 @@ type TreeModel struct {
 	chatFocused    bool            // true = keys go to chat, false = keys go to tree
 	chatThinking   bool            // true while waiting for agent response
 	chatThinkStart time.Time       // when thinking started
+	chatScrollUp   int             // lines scrolled up from bottom (0 = at bottom)
 	completions    []string        // current @ID autocomplete matches
 	completionIdx  int             // selected completion (-1 = none)
 	activityLine   string          // last tool activity for status bar
@@ -175,6 +176,15 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 				}
 			}
 			return m, nil
+		case "pgup", "shift+up":
+			m.chatScrollUp += 5
+			return m, nil
+		case "pgdown", "shift+down":
+			m.chatScrollUp -= 5
+			if m.chatScrollUp < 0 {
+				m.chatScrollUp = 0
+			}
+			return m, nil
 		case "esc":
 			m.mode = tmTree
 			m.chatFocused = false
@@ -210,6 +220,7 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 			if strings.TrimSpace(m.chatInput.Value()) != "" {
 				input := strings.TrimSpace(m.chatInput.Value())
 				m.chatLog = append(m.chatLog, ChatEntry{Type: "user", Text: input})
+				m.chatScrollUp = 0 // snap to bottom on send
 				m.chatInput.Reset()
 				m.chatInput.Focus() // keep input focused after sending
 				m.chatThinking = true
@@ -924,12 +935,25 @@ func (m TreeModel) viewChat() string {
 		chatLines = append(chatLines, " "+AccentStyle.Render("● Thinking... ")+DimStyle.Render("("+timeStr+")"))
 	}
 
-	// Anchor content to bottom — empty space goes above, content fills from bottom
-	start := 0
-	if len(chatLines) > chatContentH {
-		start = len(chatLines) - chatContentH
+	// Anchor content to bottom with scroll offset
+	// chatScrollUp = 0 means at bottom, >0 means scrolled up
+	scrollUp := m.chatScrollUp
+	if scrollUp > len(chatLines)-chatContentH {
+		scrollUp = len(chatLines) - chatContentH
 	}
-	visible := chatLines[start:]
+	if scrollUp < 0 {
+		scrollUp = 0
+	}
+
+	end := len(chatLines) - scrollUp
+	start := end - chatContentH
+	if start < 0 {
+		start = 0
+	}
+	if end < 0 {
+		end = 0
+	}
+	visible := chatLines[start:end]
 
 	// Fill empty space ABOVE the content (pushes content to bottom)
 	emptyAbove := chatContentH - len(visible)

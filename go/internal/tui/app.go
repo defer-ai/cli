@@ -256,9 +256,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancel()
 			return m, tea.Quit
 		}
-		// Ctrl+C shows a warning (visible in both chat and tree)
+		// Ctrl+C shows a warning (avoid duplicates)
 		if msg.String() == "ctrl+c" {
-			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Press ctrl+q to quit."})
+			// Only add if last chat entry isn't already this message
+			alreadyShown := len(m.tree.chatLog) > 0 && m.tree.chatLog[len(m.tree.chatLog)-1].Text == "Press ctrl+q to quit."
+			if !alreadyShown {
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Press ctrl+q to quit."})
+			}
 			m.notifications.Push("Press ctrl+q to quit.", NotifyMedium, 3*time.Second)
 			return m, nil
 		}
@@ -471,10 +475,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// New topic — add as a top-level entry
 			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "topic", Text: msg.Description})
 		} else {
-			// Subtool — attach to the last topic as a child
+			// Subtool — attach to the last topic as a child (skip duplicates)
 			attached := false
 			for i := len(m.tree.chatLog) - 1; i >= 0; i-- {
 				if m.tree.chatLog[i].Type == "topic" {
+					children := m.tree.chatLog[i].Children
+					// Deduplicate: skip if last child has same text
+					if len(children) > 0 && children[len(children)-1].Text == msg.Description {
+						attached = true
+						break
+					}
 					m.tree.chatLog[i].Children = append(m.tree.chatLog[i].Children, ChatEntry{Type: "subtool", Text: msg.Description})
 					attached = true
 					break

@@ -22,7 +22,6 @@ cd go && go build -ldflags "-s -w" -o defer .
 
 ```bash
 defer "build a secret sharing tool"    # new project
-defer scan                              # onboard existing project
 defer                                   # resume last session
 ```
 
@@ -83,20 +82,20 @@ The tree is the secondary view, accessible via `tab`. On wide terminals (>100 co
   +-------------------------------------------------------------------+
   |                                                                   |
   |  Stack                                                            |
-  |  > * STACK-001  Backend framework?         -> Go with Gin         |
-  |    * STACK-002  Database?                  -> PostgreSQL          |
-  |    * STACK-003  ORM?                       -> sqlc                |
+  |  > * @STA-0001  Backend framework?         -> Go with Gin        |
+  |    * @STA-0002  Database?                  -> PostgreSQL          |
+  |    * @STA-0003  ORM?                       -> sqlc                |
   |                                                                   |
   |  Security                                                         |
-  |    + SECU-001   Encryption method?         -> AES-256-GCM        |
-  |    o SECU-002   Key management?            (pending)             |
+  |    + @SEC-0001  Encryption method?         -> AES-256-GCM        |
+  |    o @SEC-0002  Key management?            (pending)             |
   |                                                                   |
   |  UI                                                               |
-  |    * UI-001     Component library?         -> shadcn/ui          |
-  |    * UI-002     Styling approach?          -> Tailwind CSS       |
+  |    * @UII-0001  Component library?         -> shadcn/ui          |
+  |    * @UII-0002  Styling approach?          -> Tailwind CSS       |
   |                                                                   |
   +-- Stack: executing  Security: planning  UI: done -----------------+
-  |  @SECU-002 what are the tradeoffs?                               |
+  |  @SEC-0002 what are the tradeoffs?                               |
   +-- enter inspect  / filter  f find  g group  ctrl+q quit ----------+
 ```
 
@@ -204,7 +203,7 @@ Defer uses prefixed IDs to reference decisions and features throughout the syste
 
 - Single-word category: first 3 letters, uppercased. "Stack" becomes `STA`, "Data" becomes `DAT`.
 - Multi-word category: first letter of each word, take first 3. "User Interface" becomes `UI` + padding.
-- Words shorter than 3 characters are padded with `X`.
+- Words shorter than 3 characters are padded by repeating the last character (e.g., "UI" becomes `UII`, "DB" becomes `DBB`).
 - Empty or blank names produce `UNK`.
 
 IDs are stored with their prefix -- `@STA-0001` in JSON, in chat, and in DECISIONS.md. You reference them the same way everywhere.
@@ -260,7 +259,7 @@ Create `~/.defer/keybindings.json` to override default bindings:
   "shuffle": ["s"],
   "why": ["w"],
   "ask": ["a"],
-  "quit": ["ctrl+c"],
+  "quit": ["ctrl+q"],
   "care.up": ["l", "right"],
   "care.down": ["h", "left"]
 }
@@ -293,7 +292,7 @@ All hooks receive these environment variables: `DEFER_EVENT`, `DEFER_DECISION_ID
 
 ## Custom Skills (Prompt Overrides)
 
-The defer process is built from 6 skills:
+The defer process is built from 5 skills:
 
 | Skill | Purpose |
 |-------|---------|
@@ -302,7 +301,6 @@ The defer process is built from 6 skills:
 | `execute` | Implement a domain given decisions |
 | `extract` | Extract implicit decisions from implementation |
 | `verify` | Review domain implementation for correctness |
-| `scan` | Analyze existing codebase to discover decisions |
 
 You can override any skill per-project by creating a `.md` file with YAML frontmatter in `.defer/skills/`:
 
@@ -362,7 +360,6 @@ Auto-detected from environment, or set explicitly with flags:
 ```
 defer "task"                Start a new project with the given task
 defer                       Resume the last session in the current directory
-defer scan                  Discover decisions in an existing project
 defer init [target]         Scaffold config for: claude-code, cursor, copilot, codex, universal
 defer sessions list         List all sessions in directory tree
 defer sessions delete       Delete .defer/ in current directory
@@ -395,7 +392,7 @@ The codebase lives under `go/` and is organized into these packages:
 
 | Package | Purpose |
 |---------|---------|
-| `cmd` | CLI entry point, cobra commands (root, scan, sessions, init, debug) |
+| `cmd` | CLI entry point, cobra commands (root, sessions, init, debug) |
 | `internal/agent` | Decomposition agent, domain executor, manager coordinator, system prompts, events |
 | `internal/api` | Provider interface, auto-detection, Claude Code subprocess, OpenAI-compatible HTTP, tool execution |
 | `internal/config` | Settings cascade (global -> project -> CLI flags) |
