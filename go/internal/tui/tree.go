@@ -1808,7 +1808,9 @@ func (m TreeModel) renderResolver(innerWidth int) []string {
 		}
 	}
 	if len(pending) == 0 {
-		return nil
+		return []string{
+			" " + DimStyle.Render("No pending decisions."),
+		}
 	}
 
 	idx := m.resolverIdx
