@@ -990,9 +990,9 @@ func (m TreeModel) viewChat() string {
 		}
 		lines = append(lines, "  "+strings.Join(parts, "  "))
 	}
-	// Width = panel inner width minus our 1-char left padding minus prompt width
+	// Width = inner width - left padding(1) - prompt width - cursor(1)
 	promptW := lipgloss.Width(m.chatInput.Prompt)
-	m.chatInput.Width = innerWidth - 1 - promptW
+	m.chatInput.Width = innerWidth - 2 - promptW
 	lines = append(lines, " "+m.chatInput.View())
 
 	// Footer
