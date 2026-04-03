@@ -328,6 +328,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case AgentDecisionsReadyMsg:
+		if len(msg.Decisions) == 0 {
+			// Decomposition failed to produce decisions — notify user
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+				Type: "system",
+				Text: "Could not identify decisions. Try describing your project in more detail.",
+			})
+			m.tree.chatThinking = false
+			cmds = append(cmds, ListenForEvents(m.eventChan))
+			return m, tea.Batch(cmds...)
+		}
+
 		m.tree.decisions = msg.Decisions
 		// Persist decisions immediately so resume works
 		store, _ := decision.LoadStore(m.cwd)
@@ -759,20 +770,41 @@ If the user is just chatting, greeting, or asking questions — respond naturall
 					execStatus = m.tree.overallStatus
 				}
 
+				// Build recent conversation context (last 10 user/agent messages)
+				var convContext strings.Builder
+				msgCount := 0
+				for i := len(m.tree.chatLog) - 1; i >= 0 && msgCount < 10; i-- {
+					entry := m.tree.chatLog[i]
+					if entry.Type == "user" {
+						convContext.WriteString(fmt.Sprintf("User: %s\n", entry.Text))
+						msgCount++
+					} else if entry.Type == "agent" {
+						text := entry.Text
+						if len(text) > 200 {
+							text = text[:200] + "..."
+						}
+						convContext.WriteString(fmt.Sprintf("You: %s\n", text))
+						msgCount++
+					}
+				}
+
 				sysPrompt = fmt.Sprintf(`You are the defer assistant managing project decisions.
 
 Status: %d answered, %d pending, %d invalidated. Execution: %s.
 Task: %s
 
 IMPORTANT:
+- You are part of an ongoing conversation. Read the recent history below.
+- An executor agent is ALSO running in parallel, implementing the project based on confirmed decisions.
+- If all decisions are answered and execution is running, the project IS being built.
+- Do NOT say "I haven't started" or "you need to confirm" if decisions are already answered.
 - Only reference decisions by their CURRENT state shown below
-- Decisions marked PENDING need user input before implementation can proceed
-- Decisions marked INVALIDATED had their answers cleared due to a dependency change
-- Do NOT ask conversational questions — if something is unclear, say what needs to be decided
 - Be concise
 
+Recent conversation:
+%s
 Current decisions:
-%s`, answeredCount, pendingCount, invalidatedCount, execStatus, m.task, decContext.String())
+%s`, answeredCount, pendingCount, invalidatedCount, execStatus, m.task, convContext.String(), decContext.String())
 			}
 
 			// Use read-only provider when no task is set (pre-decomposition)
