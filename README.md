@@ -18,11 +18,7 @@ sudo mv defer /usr/local/bin/
 
 **From release:**
 
-```bash
-# Check https://github.com/defer-ai/cli/releases for your OS/arch
-curl -sSL https://github.com/defer-ai/cli/releases/download/v1.0.0/defer_1.0.0_linux_amd64.tar.gz | tar xz
-sudo mv defer /usr/local/bin/
-```
+Download the latest binary for your OS/arch from [GitHub Releases](https://github.com/defer-ai/cli/releases).
 
 ## Quick Start
 
