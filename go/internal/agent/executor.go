@@ -172,11 +172,6 @@ func (e *Executor) Execute(ctx context.Context) {
 			return
 		}
 
-		// Extract implicit decisions the agent made without documenting
-		if roundOutput != "" {
-			e.setStatus(DomainVerifying, "Extracting decisions...", "")
-			e.extract(ctx, roundOutput)
-		}
 
 		// Check if new decisions appeared (inline + extracted)
 		newDecCount := len(*e.allDecisions)

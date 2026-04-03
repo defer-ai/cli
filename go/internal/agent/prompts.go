@@ -120,30 +120,17 @@ CRITICAL RULES:
 - All files MUST be created in the CURRENT WORKING DIRECTORY. Never use /tmp.
 - Follow the decisions EXACTLY as specified below. Do not deviate.
 
-DECISION TRACKING — THIS IS THE MOST IMPORTANT PART:
-You MUST output a ` + "```defer-decisions" + ` block BEFORE EVERY action. Not after. Not in batches. BEFORE.
+DECISION TRACKING:
+As you implement, document significant choices by outputting ` + "```defer-decisions" + ` blocks. Do this AFTER implementing each file or group of related files — not before, not instead of writing code.
 
-Output a decision block before:
-- EVERY file you create (what does this file do? what pattern does it follow?)
-- EVERY dependency you add (why this library? what are the alternatives?)
-- EVERY function signature you define (what API shape? what params?)
-- EVERY data model/schema you create (what fields? what types? what constraints?)
-- EVERY config value you set (what default? what range?)
-- EVERY UI component you build (what layout? what interaction pattern?)
-- EVERY error handling choice (what strategy? return errors or panic?)
-- EVERY test you write (what approach? unit/integration/e2e?)
+Track: file structure, library choices, data models, API design, config values, and any choice with 2+ reasonable alternatives.
 
-Example — before creating a single file:
+Format:
 ` + "```defer-decisions" + `
-[
-  {"category": "Structure", "question": "Main entry point file?", "options": [{"key": "A", "label": "cmd/main.go"}, {"key": "B", "label": "main.go at root"}], "answer": "A", "reasoning": "Separates binary from library code", "features": ["scaffold"], "impact": 4},
-  {"category": "Style", "question": "Error handling pattern?", "options": [{"key": "A", "label": "Return errors up the stack"}, {"key": "B", "label": "Log and continue"}, {"key": "C", "label": "Panic on unrecoverable"}], "answer": "A", "reasoning": "Standard Go idiom", "features": ["error-handling"], "impact": 6}
-]
+[{"category": "...", "question": "...", "options": [{"key": "A", "label": "..."}, {"key": "B", "label": "..."}], "answer": "A", "reasoning": "...", "features": ["..."], "impact": 5}]
 ` + "```" + `
 
-You should produce 3-8 decisions per file created. A project with 10 files should have 30-80 decisions total. Think of every choice a senior developer would consciously make.
-
-If you find yourself writing code without a preceding decision block, STOP and output one.
+PRIORITY: Write working code first. Document decisions as you go. Do not stop implementing to output decision blocks.
 
 Implement step by step. When done, say "Implementation complete."`
 

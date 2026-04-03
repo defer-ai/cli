@@ -102,6 +102,12 @@ func findClaude() string {
 // RunCompletion sends a prompt via Claude Code subprocess and emits events.
 // Events are sent to the channel as they occur. The channel is closed when done.
 func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, userPrompt string, events chan<- Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			events <- Event{Type: EventError, Error: fmt.Errorf("provider panic: %v", r)}
+		}
+	}()
+
 	claudePath := findClaude()
 	if claudePath == "" {
 		events <- Event{Type: EventError, Error: fmt.Errorf("claude binary not found")}
@@ -146,7 +152,7 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 	}
 
 	var stderrBuf strings.Builder
-	cmd.Stderr = &strings.Builder{}
+	cmd.Stderr = &stderrBuf
 
 	if err := cmd.Start(); err != nil {
 		events <- Event{Type: EventError, Error: err}
