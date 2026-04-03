@@ -1507,18 +1507,28 @@ func (m TreeModel) renderLeftDetailPanel(innerWidth, h int, active bool) string 
 		lines = append(lines, "")
 	}
 
-	// Why text (brief)
+	// Why text — rendered as markdown
 	if m.whyText != "" && m.whyText != "..." && m.whyText != "Shuffling options..." {
-		whyLines := wrapText(m.whyText, innerWidth-2)
-		maxWhyLines := 6
-		if len(whyLines) > maxWhyLines {
-			whyLines = whyLines[:maxWhyLines]
-			whyLines = append(whyLines, DimStyle.Render("..."))
+		if m.mdRenderer != nil {
+			if md, err := m.mdRenderer.Render(m.whyText); err == nil {
+				for _, ml := range strings.Split(strings.TrimRight(md, "\n"), "\n") {
+					visWidth := lipgloss.Width(ml)
+					if visWidth > innerWidth-2 {
+						for _, wl := range wrapText(ml, innerWidth-2) {
+							lines = append(lines, " "+wl)
+						}
+					} else {
+						lines = append(lines, " "+ml)
+					}
+				}
+				lines = append(lines, "")
+			} else {
+				for _, wl := range wrapText(m.whyText, innerWidth-2) {
+					lines = append(lines, " "+DimStyle.Render(wl))
+				}
+				lines = append(lines, "")
+			}
 		}
-		for _, wl := range whyLines {
-			lines = append(lines, " "+DimStyle.Render(wl))
-		}
-		lines = append(lines, "")
 	} else if m.whyText == "..." || m.whyText == "Shuffling options..." {
 		lines = append(lines, " "+AccentStyle.Render(m.whyText))
 		lines = append(lines, "")
