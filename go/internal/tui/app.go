@@ -812,7 +812,7 @@ Current decisions:
 			if m.task == "" {
 				if cc, ok := m.provider.(*api.ClaudeCodeProvider); ok {
 					restricted := api.NewClaudeCodeProviderWithCWD(cc.GetModel(), m.cwd)
-					restricted.AllowedTools = []string{"Read", "Glob", "Grep", "Bash", "Agent", "WebSearch", "WebFetch"}
+					restricted.AllowedTools = []string{"Read", "Glob", "Grep", "WebSearch", "WebFetch"}
 					chatProvider = restricted
 				}
 			}

@@ -93,7 +93,7 @@ func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Eve
 	if cc, ok := provider.(*api.ClaudeCodeProvider); ok {
 		restricted := api.NewClaudeCodeProviderWithCWD(cc.GetModel(), a.cwd)
 		// No Write/Edit during decomposition — only read/explore tools
-		restricted.AllowedTools = []string{"Read", "Glob", "Grep", "Bash", "Agent", "WebSearch", "WebFetch"}
+		restricted.AllowedTools = []string{"Read", "Glob", "Grep", "WebSearch", "WebFetch"}
 		provider = restricted
 	}
 
@@ -170,7 +170,7 @@ func (a *Agent) runDecompositionSubprocessRetry(ctx context.Context, onEvent fun
 	provider := a.provider
 	if cc, ok := provider.(*api.ClaudeCodeProvider); ok {
 		restricted := api.NewClaudeCodeProviderWithCWD(cc.GetModel(), a.cwd)
-		restricted.AllowedTools = []string{"Read", "Glob", "Grep", "Bash", "Agent", "WebSearch", "WebFetch"}
+		restricted.AllowedTools = []string{"Read", "Glob", "Grep", "WebSearch", "WebFetch"}
 		provider = restricted
 	}
 	go provider.RunCompletion(ctx, DecomposePrompt, prompt, events)
