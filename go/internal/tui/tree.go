@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
@@ -47,7 +46,7 @@ type TreeModel struct {
 	width, height  int
 	mascotTick     int
 	chatLog        []ChatEntry     // chat panel
-	chatInput      textarea.Model // chat input (textarea for word wrap)
+	chatInput      textinput.Model // chat input
 	chatFocused    bool            // true = keys go to chat, false = keys go to tree
 	chatThinking   bool            // true while waiting for agent response
 	chatThinkStart time.Time       // when thinking started
@@ -81,14 +80,10 @@ func NewTreeModel() TreeModel {
 		glamour.WithWordWrap(0), // we handle wrapping ourselves
 	)
 
-	ci := textarea.New()
+	ci := textinput.New()
 	ci.Placeholder = "Ask anything..."
 	ci.Prompt = AccentStyle.Render("> ")
 	ci.CharLimit = 0
-	ci.MaxHeight = 3       // grows as you type, max 3 lines
-	ci.ShowLineNumbers = false
-	ci.FocusedStyle.CursorLine = lipgloss.NewStyle() // no highlight on current line
-	ci.BlurredStyle.CursorLine = lipgloss.NewStyle()
 
 	ti := textinput.New()
 	ti.Placeholder = "Type here..."
@@ -935,16 +930,8 @@ func (m TreeModel) viewChat() string {
 		}
 		lines = append(lines, "  "+strings.Join(parts, "  "))
 	}
-	m.chatInput.SetWidth(innerWidth - 2)
-	inputView := m.chatInput.View()
-	// Trim trailing empty lines from textarea (it renders full MaxHeight)
-	inputLines := strings.Split(inputView, "\n")
-	for len(inputLines) > 1 && strings.TrimSpace(inputLines[len(inputLines)-1]) == "" {
-		inputLines = inputLines[:len(inputLines)-1]
-	}
-	for _, il := range inputLines {
-		lines = append(lines, " "+il)
-	}
+	m.chatInput.Width = innerWidth - 4
+	lines = append(lines, " "+m.chatInput.View())
 
 	// Footer
 	lines = append(lines, buildMiddleBorder(innerWidth))
