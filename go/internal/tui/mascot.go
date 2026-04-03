@@ -78,10 +78,10 @@ var moodAnims = map[MascotMood]eyeAnim{
 }
 
 const (
-	srcSize = 28
-	scale   = 4
+	srcSize = 30
+	scale   = 3
 	dspSize = srcSize / scale
-	eyeGap  = 2
+	eyeGap  = 3
 )
 
 // RenderMascot returns a multi-line string of the mascot at the given tick.

@@ -143,7 +143,9 @@ func (e *Executor) setStatus(s DomainStatus, output, errMsg string) {
 	e.onEvent(Event{Type: ExecStateChanged, ExecutorID: e.state.ID})
 }
 
-// Execute runs the full domain lifecycle, pausing when decisions need resolution.
+// Execute runs the full domain lifecycle. There is no separate "plan" phase —
+// the agent discovers and resolves decisions as it implements, pausing whenever
+// new decisions need resolution.
 func (e *Executor) Execute(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -151,48 +153,28 @@ func (e *Executor) Execute(ctx context.Context) {
 		}
 	}()
 
-	// Phase 1: Deep planning — multiple rounds until no new decisions emerge
-	for round := 0; round < 3; round++ {
-		e.setStatus(DomainPlanning, fmt.Sprintf("Planning (round %d)...", round+1), "")
-		decSummary := e.decisionSummary()
-		prevCount := len(*e.allDecisions)
-
-		e.plan(ctx, decSummary)
-
-		// Wait for all pending decisions to be resolved
-		if e.waitForPendingDecisions(ctx) {
-			return // cancelled
-		}
-
-		// If no new decisions were discovered, planning is complete
-		newCount := len(*e.allDecisions)
-		if newCount == prevCount {
-			break
-		}
-
-		e.onEvent(Event{
-			Type:         ExecToolActivity,
-			ExecutorID:   e.state.ID,
-			ToolActivity: fmt.Sprintf("Round %d: discovered %d new decisions", round+1, newCount-prevCount),
-		})
+	// Wait for any existing pending decisions first
+	if e.waitForPendingDecisions(ctx) {
+		return
 	}
 
-	// Refresh summary after all planning rounds
+	// Unified execution — the agent implements step by step, outputting
+	// defer-decisions blocks before each significant choice. When new
+	// pending decisions are detected (via parseInlineDecisionBlocks),
+	// the TUI shows them and the executor pauses after execution completes.
 	decSummary := e.decisionSummary()
-
-	// Phase 2: Execution — only now does the agent write code
 	e.setStatus(DomainExecuting, "", "")
 	fullOutput := e.execute(ctx, decSummary)
 	if e.state.Status == DomainError {
 		return
 	}
 
-	// If new decisions appeared during execution, wait for them
+	// If decisions appeared during execution, wait for resolution
 	if e.waitForPendingDecisions(ctx) {
 		return
 	}
 
-	// Phase 3: Verification
+	// Verification
 	e.setStatus(DomainVerifying, "Verifying...", "")
 	issues := e.verify(ctx, fullOutput, decSummary)
 	if issues != "" {
