@@ -40,12 +40,12 @@ You: "build a secret sharing tool"
          | If anything is unclear, it becomes a decision -- never a question
          |
     2. PRIORITIZE
-         | You set care levels per domain
+         | Care levels are set inline when the first decisions arrive
          | auto -> agent decides, you challenge (gray in tree)
          | review -> you confirm each decision (yellow)
          |
     3. DECIDE
-         | Navigate the decision tree (tab to switch from conversation)
+         | Navigate the decision tree (tab to switch panel focus)
          | Inspect, challenge, override any decision
          | Chat with @ID references for context
          |
@@ -73,32 +73,25 @@ The conversation view is where you:
 - Use `@ID why?` to ask about a specific decision's tradeoffs
 - Watch the agent work (tool calls, file writes, test runs stream in real-time)
 
-Press `tab` to switch to the decision tree. Press `tab` again to come back.
+Press `tab` to switch focus between panels.
 
-## The Decision Tree
+## Side-by-Side Layout
 
-The tree is the secondary view, accessible via `tab`. On wide terminals (>100 columns), selecting a decision shows a split-pane with the detail on the right. On narrow terminals, detail opens full-screen.
+On wide terminals (>80 columns), the decision tree and chat are always visible side by side. `tab` switches focus between the left (tree) and right (chat) panels. On narrow terminals, only the focused panel is shown.
+
+The right panel has two regions: the chat log on top, and the pending resolver at the bottom. The resolver shows pending decisions as a wizard (e.g., 1/2, 2/3) so you can resolve them inline without leaving the chat.
 
 ```
-  defer                               3/8 decisions -- 5 pending
-  +-------------------------------------------------------------------+
-  |                                                                   |
-  |  Stack                                                            |
-  |  > * @STA-0001  Backend framework?         -> Go with Gin        |
-  |    * @STA-0002  Database?                  -> PostgreSQL          |
-  |    * @STA-0003  ORM?                       -> sqlc                |
-  |                                                                   |
-  |  Security                                                         |
-  |    + @SEC-0001  Encryption method?         -> AES-256-GCM        |
-  |    o @SEC-0002  Key management?            (pending)             |
-  |                                                                   |
-  |  UI                                                               |
-  |    * @UII-0001  Component library?         -> shadcn/ui          |
-  |    * @UII-0002  Styling approach?          -> Tailwind CSS       |
-  |                                                                   |
-  +-- Stack: executing  Security: planning  UI: done -----------------+
-  |  @SEC-0002 what are the tradeoffs?                               |
-  +-- enter inspect  / filter  f find  g group  ctrl+q quit ----------+
+┌── Decision Tree ──────┐ ┌── Chat ────────────────┐
+│ Stack                 │ │ > build a todo app      │
+│   ▪ STA-0001 Lang?   │ │                         │
+│   ▪ STA-0002 FW?     │ │ ● Glob(files **/*)      │
+│ Auth                  │ │ Found 6 decisions       │
+│   ○ AUT-0001 Method?  │ ├─────────────────────────┤
+│                       │ │ Pending 1/2             │
+│                       │ │ ○ Auth method?           │
+│                       │ │ > A) JWT  B) Session     │
+└───────────────────────┘ └─────────────────────────┘
 ```
 
 Status indicators:
@@ -111,18 +104,23 @@ Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 
 ## Keybindings
 
-### Tree View
+### Global
+
+| Key | Action |
+|-----|--------|
+| `tab` | Switch focus between tree panel (left) and chat panel (right) |
+| `ctrl+q` | Quit |
+| `ctrl+c` | Shows warning (press `ctrl+q` to actually quit) |
+
+### Tree Panel (left)
 
 | Key | Action |
 |-----|--------|
 | `j` / `k` or arrows | Navigate decisions |
-| `enter` | Inspect decision (split-pane on wide terminals) |
+| `enter` | Inspect decision |
 | `/` | Filter decisions by ID, category, or question |
 | `f` or `ctrl+f` | Find and jump to a decision, category, or feature |
 | `g` | Toggle grouping between category and feature |
-| `tab` | Switch to conversation |
-| `ctrl+q` | Quit |
-| `ctrl+c` | Shows warning (press `ctrl+q` to actually quit) |
 
 ### Decision Detail
 
@@ -137,25 +135,24 @@ Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 | `f` | Edit feature tags (comma-separated) |
 | `q` / `esc` | Back to tree |
 
-### Conversation
+### Chat Panel (right)
 
 | Key | Action |
 |-----|--------|
 | `enter` | Send message |
 | `@` + type | Autocomplete decision IDs |
-| `tab` | Cycle autocomplete / switch to tree (when no completions) |
+| `tab` | Cycle autocomplete (when completions visible), otherwise switch panel |
 | `ctrl+o` | Toggle expand/collapse on last agent topic |
-| `esc` | Back to tree |
-
-### Care Level Picker
-
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Navigate domains |
-| `h` / `l` or arrows | Toggle auto/review |
-| `enter` | Confirm all levels |
+| `j` / `k` | Navigate resolver options (when input is empty) |
+| `n` / `p` | Cycle through pending decisions in resolver |
 
 All keybindings are configurable via `~/.defer/keybindings.json`.
+
+## Pending Resolver
+
+The pending resolver is the bottom section of the right (chat) panel. When the agent discovers decisions that require your input, they appear here as a wizard -- one at a time, showing progress (e.g., "Pending 1/3").
+
+Each pending decision shows its question and concrete options. Use `j`/`k` (when the chat input is empty) to navigate options and `enter` to confirm. Use `n`/`p` to cycle to the next or previous pending decision. Care levels are also set inline here when the first decisions arrive -- no separate picker screen.
 
 ## Care Levels
 
@@ -253,7 +250,9 @@ Create `~/.defer/keybindings.json` to override default bindings:
   "inspect": ["enter"],
   "back": ["q", "esc"],
   "search": ["/"],
-  "chat": ["tab"],
+  "focus.switch": ["tab"],
+  "resolver.next": ["n"],
+  "resolver.prev": ["p"],
   "custom": ["c"],
   "shuffle": ["s"],
   "why": ["w"],
@@ -399,7 +398,8 @@ The codebase lives under `go/` and is organized into these packages:
 | `internal/permissions` | Care-level-aware tool permissions |
 | `internal/skills` | Skill file loading (.md with YAML frontmatter), directory discovery |
 | `internal/templates` | Defer philosophy spec, tool-specific config templates (5 targets) |
-| `internal/tui` | Bubbletea TUI: app, tree, priorities, welcome, mascot, styles, notifications, messages |
+| `internal/tui` | Bubbletea TUI: app, tree, priorities, welcome, mascot (box-drawn, 4 lines tall), styles, notifications, messages |
+| `internal/update` | Version update checking |
 
 Session state is persisted in `.defer/`:
 

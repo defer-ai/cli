@@ -53,8 +53,9 @@ export default function Home() {
       <section className="max-w-3xl mx-auto px-6 py-10">
         <h2 className="text-2xl font-bold mb-3">See it work</h2>
         <p className="text-muted mb-8">
-          You give it a task. It decomposes it into decisions, asks you
-          each one, then executes with full context.
+          Both panels are always visible — tree on the left, chat on the
+          right. You give it a task, it decomposes it into decisions, and
+          you resolve them with full context.
         </p>
         <Demo />
       </section>
@@ -103,7 +104,8 @@ export default function Home() {
             </h3>
             <p className="text-sm text-muted leading-relaxed">
               Describe your project. The agent decomposes it into decisions
-              with concrete options, grouped by domain. You set care levels,
+              with concrete options, grouped by domain. Mark each domain as{" "}
+              <strong>auto</strong> or <strong>review</strong>,
               inspect tradeoffs, and override anything. Reference decisions with{" "}
               <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
                 @STA-0001
@@ -132,11 +134,12 @@ export default function Home() {
             </h3>
             <p className="text-sm text-muted leading-relaxed">
               Every choice is recorded, whether you made it or the AI did.
-              Press{" "}
+              Both panels are always visible — tree on the left, chat on
+              the right. Press{" "}
               <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
                 tab
               </code>{" "}
-              to see the decision tree. Icons show status:{" "}
+              to switch focus between them. Icons show status:{" "}
               <span className="text-green-400">+</span> yours,{" "}
               <span className="text-gray-400">*</span> auto-decided,{" "}
               <span className="text-yellow-400">o</span> pending.
@@ -252,32 +255,7 @@ export default function Home() {
       <section className="max-w-3xl mx-auto px-6 py-10">
         <h2 className="text-2xl font-bold mb-3">Shortcuts</h2>
         <div className="p-5 border border-border rounded-xl bg-surface font-mono text-xs space-y-1">
-          <p className="text-muted"># Chat</p>
-          <p>
-            <span className="text-accent">tab</span>
-            <span className="text-muted">
-              {"      "}Switch between chat and tree
-            </span>
-          </p>
-          <p>
-            <span className="text-accent">@ID</span>
-            <span className="text-muted">
-              {"      "}Reference a decision
-            </span>
-            {"  "}
-            <span className="text-accent">#TAG</span>
-            <span className="text-muted"> Reference a feature</span>
-          </p>
-          <p>
-            <span className="text-accent">ctrl+o</span>
-            <span className="text-muted">
-              {"   "}Expand/collapse message
-            </span>
-            {"  "}
-            <span className="text-accent">ctrl+q</span>
-            <span className="text-muted"> Quit</span>
-          </p>
-          <p className="mt-2 text-muted"># Decision tree</p>
+          <p className="text-muted"># Tree panel (left)</p>
           <p>
             <span className="text-accent">j/k</span>
             <span className="text-muted">
@@ -290,11 +268,43 @@ export default function Home() {
             <span className="text-accent">/</span>
             <span className="text-muted"> Filter</span>
             {"  "}
-            <span className="text-accent">f</span>
-            <span className="text-muted"> Find</span>
-            {"  "}
             <span className="text-accent">g</span>
             <span className="text-muted"> Group by feature</span>
+          </p>
+          <p className="mt-2 text-muted"># Chat panel (right)</p>
+          <p>
+            <span className="text-accent">enter</span>
+            <span className="text-muted">
+              {"    "}Send message
+            </span>
+            {"  "}
+            <span className="text-accent">pgup</span>
+            <span className="text-muted"> Scroll</span>
+            {"  "}
+            <span className="text-accent">n/p</span>
+            <span className="text-muted"> Cycle pending</span>
+          </p>
+          <p>
+            <span className="text-accent">@ID</span>
+            <span className="text-muted">
+              {"      "}Reference a decision
+            </span>
+            {"  "}
+            <span className="text-accent">#TAG</span>
+            <span className="text-muted"> Reference a feature</span>
+          </p>
+          <p className="mt-2 text-muted"># Global</p>
+          <p>
+            <span className="text-accent">tab</span>
+            <span className="text-muted">
+              {"      "}Switch focus between panels
+            </span>
+            {"  "}
+            <span className="text-accent">ctrl+q</span>
+            <span className="text-muted"> Quit</span>
+            {"  "}
+            <span className="text-accent">esc</span>
+            <span className="text-muted"> Stop agent</span>
           </p>
           <p className="mt-2 text-muted"># Decision detail</p>
           <p>

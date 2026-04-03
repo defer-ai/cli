@@ -228,11 +228,11 @@ export function Demo() {
             </div>
           )}
 
-          {/* Domains */}
+          {/* Decision tree with inline domain care levels */}
           {ord(phase, "domains") && (
-            <div className="space-y-2 border-t border-border/30 pt-3">
-              <div className="text-white font-bold">Found 6 decisions across 3 domains</div>
-              <div className="space-y-1.5 mt-2">
+            <div className="space-y-1 border-t border-border/30 pt-3">
+              <div className="text-white font-bold text-[11px] mb-2">Decision tree <span className="font-normal text-gray-500">— 6 decisions, 3 domains</span></div>
+              <div className="space-y-1 mb-3">
                 {domains.map((d, i) => (
                   <div key={d.name} className="flex items-center gap-2">
                     <span className="text-gray-400 w-14">{d.name}</span>
@@ -245,41 +245,36 @@ export function Demo() {
                     ) : <span className={`text-[10px] ml-2 ${d.mode === "review" ? "text-orange-500" : "text-gray-600"}`}>{d.mode}</span>}
                   </div>
                 ))}
+                {phase === "domains" && <button onClick={() => setPhase("tree")} className={BTN + " mt-2"}>confirm care levels</button>}
               </div>
-              {phase === "domains" && <button onClick={() => setPhase("tree")} className={BTN + " mt-2"}>confirm</button>}
-            </div>
-          )}
-
-          {/* Decision tree - items fade in one by one */}
-          {ord(phase, "tree") && (
-            <div className="space-y-1 border-t border-border/30 pt-3">
-              <div className="text-white font-bold text-[11px] mb-2">Decision tree</div>
-              {autoEntries.map((e) => (
-                <div key={e.question} className={`transition-opacity duration-500 ${e.idx < treeVisible || ord(phase, "pick-1") ? "opacity-100" : "opacity-0"}`}>
-                  {autoEntries.indexOf(e) === 0 || autoEntries[autoEntries.indexOf(e) - 1]?.domain !== e.domain ? (
-                    <div className="text-gray-500 text-[10px]">{e.domain}</div>
-                  ) : null}
-                  <div className="text-gray-500 pl-2">
-                    <span>{"▪ "}</span>{e.question} <span className="text-gray-600">{e.answer}</span>
+              {ord(phase, "tree") && <>
+                {autoEntries.map((e) => (
+                  <div key={e.question} className={`transition-opacity duration-500 ${e.idx < treeVisible || ord(phase, "pick-1") ? "opacity-100" : "opacity-0"}`}>
+                    {autoEntries.indexOf(e) === 0 || autoEntries[autoEntries.indexOf(e) - 1]?.domain !== e.domain ? (
+                      <div className="text-gray-500 text-[10px]">{e.domain}</div>
+                    ) : null}
+                    <div className="text-gray-500 pl-2">
+                      <span>{"▪ "}</span>{e.question} <span className="text-gray-600">{e.answer}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {reviewEntries.map((e, ri) => (
-                <div key={e.question} className={`transition-opacity duration-500 ${e.idx < treeVisible || ord(phase, "pick-1") ? "opacity-100" : "opacity-0"}`}>
-                  {ri === 0 && <div className="text-gray-500 text-[10px]">{e.domain}</div>}
-                  <div className="pl-2">
-                    <span className="text-yellow-400">{"○ "}</span>
-                    <span className={e.answer ? "text-green-400" : "text-yellow-400"}>
-                      {e.question}{e.answer && <span className="text-gray-600"> {e.answer}</span>}
-                    </span>
+                ))}
+                {reviewEntries.map((e, ri) => (
+                  <div key={e.question} className={`transition-opacity duration-500 ${e.idx < treeVisible || ord(phase, "pick-1") ? "opacity-100" : "opacity-0"}`}>
+                    {ri === 0 && <div className="text-gray-500 text-[10px]">{e.domain}</div>}
+                    <div className="pl-2">
+                      <span className="text-yellow-400">{"○ "}</span>
+                      <span className={e.answer ? "text-green-400" : "text-yellow-400"}>
+                        {e.question}{e.answer && <span className="text-gray-600"> {e.answer}</span>}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {phase === "tree" && reviewCount > 0 && treeVisible >= totalTreeEntries && <>
-                <div className="text-yellow-400 mt-2 text-[11px]">Paused -- {reviewCount} decisions need your input</div>
-                <button onClick={() => setPhase("pick-1")} className={BTN + " mt-1"}>resolve decisions</button>
+                ))}
+                {phase === "tree" && reviewCount > 0 && treeVisible >= totalTreeEntries && <>
+                  <div className="text-yellow-400 mt-2 text-[11px]">Paused -- {reviewCount} decisions need your input (n/p to cycle)</div>
+                  <button onClick={() => setPhase("pick-1")} className={BTN + " mt-1"}>resolve decisions</button>
+                </>}
+                {phase === "tree" && reviewCount === 0 && treeVisible >= totalTreeEntries && <button onClick={() => setPhase("executing")} className={BTN + " mt-2"}>execute</button>}
               </>}
-              {phase === "tree" && reviewCount === 0 && treeVisible >= totalTreeEntries && <button onClick={() => setPhase("executing")} className={BTN + " mt-2"}>execute</button>}
             </div>
           )}
 
@@ -456,7 +451,7 @@ export function Demo() {
           {/* Done */}
           {phase === "done" && (
             <div className="space-y-2 border-t border-border/30 pt-3">
-              <div className="text-green-400 font-bold">{"✓ "}Implementation complete. Tab to view decision tree.</div>
+              <div className="text-green-400 font-bold">{"✓ "}Implementation complete. Tab to switch focus.</div>
               <button onClick={reset} className={BTN + " mt-1"}>replay</button>
             </div>
           )}
@@ -468,7 +463,7 @@ export function Demo() {
         <span className="text-gray-600 text-[10px] font-mono">
           {phase === "idle" ? "ready" : phase === "typing" || phase === "enter" ? "input" : phase.startsWith("thinking") ? "thinking" : phase === "executing" || phase === "resuming" ? "executing" : phase === "done" ? "done" : isDetail ? "inspecting" : "asking"}
         </span>
-        <span className="text-gray-600 text-[10px] font-mono">click to interact</span>
+        <span className="text-gray-600 text-[10px] font-mono">n/p cycle pending | click to interact</span>
       </div>
 
       <style jsx>{`
