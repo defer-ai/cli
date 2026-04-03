@@ -9,19 +9,16 @@ import (
 type MascotMood int
 
 const (
-	MoodIdle MascotMood = iota
-	MoodThinking
-	MoodExecuting
+	MoodIdle   MascotMood = iota
+	MoodActive            // thinking, executing, planning, verifying — all use this
 	MoodDone
 	MoodError
 )
 
 func StatusToMood(status string) MascotMood {
 	switch status {
-	case "thinking", "decomposing":
-		return MoodThinking
-	case "executing", "planning", "verifying":
-		return MoodExecuting
+	case "thinking", "decomposing", "executing", "planning", "verifying":
+		return MoodActive
 	case "done":
 		return MoodDone
 	case "error":
@@ -57,12 +54,7 @@ var moodFrames = map[MascotMood]eyeFrame{
 		pupilRatio: 0.65, topLid: 8, topLidAngle: 0,
 		bottomLid: 0, bottomLidAngle: math.Pi,
 	},
-	MoodThinking: {
-		pupilRatio: 0.75, topLid: 37.5, topLidAngle: 0,
-		bottomLid: 37.5, bottomLidAngle: 0,
-		overlay: "twirl",
-	},
-	MoodExecuting: {
+	MoodActive: {
 		pupilRatio: 0.75, topLid: 37.5, topLidAngle: 0,
 		bottomLid: 37.5, bottomLidAngle: 0,
 		overlay: "twirl",
@@ -80,11 +72,10 @@ var moodFrames = map[MascotMood]eyeFrame{
 }
 
 var moodAnims = map[MascotMood]eyeAnim{
-	MoodIdle:      {lidRadius: 3, cutoffMult: 1.2},
-	MoodThinking:  {lidRadius: 2.5, cutoffMult: 1.2},
-	MoodExecuting: {lidRadius: 2.5, cutoffMult: 1.2},
-	MoodDone:      {lidRadius: 4, cutoffMult: 1.2},
-	MoodError:     {lidRadius: 2.5, cutoffMult: 1.2},
+	MoodIdle:   {lidRadius: 3, cutoffMult: 1.2},
+	MoodActive: {lidRadius: 2.5, cutoffMult: 1.2},
+	MoodDone:   {lidRadius: 4, cutoffMult: 1.2},
+	MoodError:  {lidRadius: 2.5, cutoffMult: 1.2},
 }
 
 const (
@@ -99,8 +90,8 @@ func RenderMascot(mood MascotMood, tick int) string {
 	frame := moodFrames[mood]
 	anim := moodAnims[mood]
 
-	// Animate twirl angle for thinking/executing
-	if mood == MoodThinking || mood == MoodExecuting {
+	// Animate twirl angle for active mood
+	if mood == MoodActive {
 		frame.twirlAngle = float64(tick) * 0.17 // ~10 degrees per tick
 	}
 

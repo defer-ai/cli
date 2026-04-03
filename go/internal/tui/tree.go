@@ -814,6 +814,10 @@ func (m TreeModel) viewChat() string {
 				remaining := childCount - maxChildLines
 				chatLines = append(chatLines, " "+DimStyle.Render(fmt.Sprintf("  ... %d more (ctrl+o to expand)", remaining)))
 			}
+			// Trailing space after topic block
+			if childCount > 0 {
+				chatLines = append(chatLines, "")
+			}
 
 		case "tool":
 			// Standalone tool (no parent topic)
@@ -914,6 +918,11 @@ func (m TreeModel) viewChat() string {
 	// Then render the actual content
 	for _, cl := range visible {
 		lines = append(lines, cl)
+	}
+
+	// Ensure a gap between content and input
+	if len(visible) > 0 {
+		lines = append(lines, "")
 	}
 
 	// Input divider + completions overlay + input

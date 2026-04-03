@@ -1063,7 +1063,12 @@ func (m Model) View() string {
 // overlayPermission renders the permission request box centered over the base view.
 // renderHeader renders the mascot + info section above the main panel.
 func (m Model) renderHeader(width int) string {
-	mascot := RenderMascot(StatusToMood(m.tree.overallStatus), m.mascotTick)
+	// Determine mascot mood from multiple sources
+	mood := StatusToMood(m.tree.overallStatus)
+	if mood == MoodIdle && m.tree.chatThinking {
+		mood = MoodActive // chat is waiting for a response
+	}
+	mascot := RenderMascot(mood, m.mascotTick)
 	mascotLines := strings.Split(mascot, "\n")
 
 	// Info panel on the right of the mascot
@@ -1124,7 +1129,8 @@ func (m Model) renderHeader(width int) string {
 		headerLines = append(headerLines, " "+left+gap+right)
 	}
 
-	return strings.Join(headerLines, "\n")
+	// Add top padding so mascot doesn't clip with terminal top
+	return "\n" + strings.Join(headerLines, "\n")
 }
 
 func (m Model) overlayPermission(base string, width, height int) string {
