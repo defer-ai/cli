@@ -863,6 +863,8 @@ Rules:
 - Every uncertainty = a decision with options. NEVER ask questions as text.
 - Order by impact (highest first). Tag with features.
 - If the codebase is empty, all decisions are new.
+- Be THOROUGH. Aim for 20-40 decisions. Cover: language, framework, file structure, data models, API design, auth, error handling, UI patterns, testing, deployment, config, naming conventions, dependencies.
+- Think like a senior developer planning every detail before writing code.
 
 If the user is just chatting or asking questions — respond naturally WITHOUT TASK: prefix and WITHOUT defer-decisions block.`
 			} else {
