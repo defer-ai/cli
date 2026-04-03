@@ -100,7 +100,7 @@ func TestDiscoverSkillDirsThreeLevels(t *testing.T) {
 func TestMergeSkillsDefaultsOnly(t *testing.T) {
 	defaults := map[string]Skill{
 		"decompose": {Name: "decompose", Prompt: "default prompt"},
-		"plan":      {Name: "plan", Prompt: "plan prompt"},
+		"verify":    {Name: "verify", Prompt: "verify prompt"},
 	}
 
 	merged := MergeSkills(defaults, nil)
@@ -116,7 +116,7 @@ func TestMergeSkillsDefaultsOnly(t *testing.T) {
 func TestMergeSkillsOverrideByName(t *testing.T) {
 	defaults := map[string]Skill{
 		"decompose": {Name: "decompose", Prompt: "default prompt"},
-		"plan":      {Name: "plan", Prompt: "plan prompt"},
+		"verify":    {Name: "verify", Prompt: "verify prompt"},
 	}
 
 	loaded := []Skill{
@@ -132,8 +132,8 @@ func TestMergeSkillsOverrideByName(t *testing.T) {
 	if merged["decompose"].Prompt != "custom prompt" {
 		t.Errorf("decompose prompt = %q, want %q (should be overridden)", merged["decompose"].Prompt, "custom prompt")
 	}
-	if merged["plan"].Prompt != "plan prompt" {
-		t.Errorf("plan prompt = %q, want %q (should be unchanged)", merged["plan"].Prompt, "plan prompt")
+	if merged["verify"].Prompt != "verify prompt" {
+		t.Errorf("verify prompt = %q, want %q (should be unchanged)", merged["verify"].Prompt, "verify prompt")
 	}
 	if merged["my-skill"].Prompt != "new skill prompt" {
 		t.Errorf("my-skill prompt = %q, want %q", merged["my-skill"].Prompt, "new skill prompt")

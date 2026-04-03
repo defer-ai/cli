@@ -176,22 +176,40 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 
 	// Tab toggles focus panel in wide layout, or mode in narrow layout.
 	// Exception: chat mode with active completions uses tab for cycling.
-	if key == "tab" && !((m.mode == tmChat || (isWide && m.focusPanel == FocusChat)) && len(m.completions) > 0) {
+	if (key == "tab" || key == "shift+tab") && !((m.mode == tmChat || (isWide && m.focusPanel == FocusChat)) && len(m.completions) > 0) {
 		if isWide {
-			// Wide: cycle focus through tree → chat → resolver → tree
-			switch m.focusPanel {
-			case FocusTree:
-				m.focusPanel = FocusChat
-				m.chatFocused = true
-				m.chatInput.Focus()
-			case FocusChat:
-				m.focusPanel = FocusResolver
-				m.chatFocused = false
-				m.chatInput.Blur()
-			case FocusResolver:
-				m.focusPanel = FocusTree
-				m.chatFocused = false
-				m.chatInput.Blur()
+			if key == "tab" {
+				// Forward: tree → chat → resolver → tree
+				switch m.focusPanel {
+				case FocusTree:
+					m.focusPanel = FocusChat
+					m.chatFocused = true
+					m.chatInput.Focus()
+				case FocusChat:
+					m.focusPanel = FocusResolver
+					m.chatFocused = false
+					m.chatInput.Blur()
+				case FocusResolver:
+					m.focusPanel = FocusTree
+					m.chatFocused = false
+					m.chatInput.Blur()
+				}
+			} else {
+				// Reverse: tree → resolver → chat → tree
+				switch m.focusPanel {
+				case FocusTree:
+					m.focusPanel = FocusResolver
+					m.chatFocused = false
+					m.chatInput.Blur()
+				case FocusChat:
+					m.focusPanel = FocusTree
+					m.chatFocused = false
+					m.chatInput.Blur()
+				case FocusResolver:
+					m.focusPanel = FocusChat
+					m.chatFocused = true
+					m.chatInput.Focus()
+				}
 			}
 		} else {
 			// Narrow: toggle tmTree <-> tmChat
@@ -1884,21 +1902,6 @@ func (m TreeModel) renderResolver(innerWidth int) []string {
 	}
 
 	return lines
-}
-
-// renderCareBar renders a visual auto/review toggle bar.
-func renderCareBar(width int) string {
-	if width < 10 {
-		width = 10
-	}
-	barW := width - 20
-	if barW < 4 {
-		barW = 4
-	}
-	filled := barW / 2
-	empty := barW - filled
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", empty)
-	return DimStyle.Render("[auto ") + AccentStyle.Render(bar) + DimStyle.Render(" review]")
 }
 
 // ========== FULL-SCREEN CHAT VIEW ==========

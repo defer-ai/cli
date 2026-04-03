@@ -50,7 +50,7 @@ You: "build a secret sharing tool"
          | Chat with @ID references for context
          |
     4. IMPLEMENT
-         | Executor: plan -> implement -> verify -> extract
+         | Executor: implement -> verify -> extract
          | Autonomous execution, no "should I continue?" prompts
          | If you change a decision mid-run, it re-implements
          | Changing a high-impact decision invalidates dependents
@@ -73,25 +73,26 @@ The conversation view is where you:
 - Use `@ID why?` to ask about a specific decision's tradeoffs
 - Watch the agent work (tool calls, file writes, test runs stream in real-time)
 
-Press `tab` to switch focus between panels.
+Press `tab` to cycle focus (tree -> chat -> resolver), `shift+tab` to reverse.
 
-## Side-by-Side Layout
+## Three-Panel Layout
 
-On wide terminals (>80 columns), the decision tree and chat are always visible side by side. `tab` switches focus between the left (tree) and right (chat) panels. On narrow terminals, only the focused panel is shown.
+On wide terminals (>80 columns), the decision tree and chat are always visible side by side. There are three focus targets: tree (left), chat (right top), and resolver (right bottom). `tab` cycles focus forward (tree -> chat -> resolver -> tree), `shift+tab` cycles in reverse. On narrow terminals, only the focused panel is shown.
 
 The right panel has two regions: the chat log on top, and the pending resolver at the bottom. The resolver shows pending decisions as a wizard (e.g., 1/2, 2/3) so you can resolve them inline without leaving the chat.
 
 ```
-┌── Decision Tree ──────┐ ┌── Chat ────────────────┐
+┌── Tree ───────────────┐ ┌── Chat ────────────────┐
 │ Stack                 │ │ > build a todo app      │
 │   ▪ STA-0001 Lang?   │ │                         │
 │   ▪ STA-0002 FW?     │ │ ● Glob(files **/*)      │
 │ Auth                  │ │ Found 6 decisions       │
-│   ○ AUT-0001 Method?  │ ├─────────────────────────┤
+│   ○ AUT-0001 Method?  │ ├── Resolver ─────────────┤
 │                       │ │ Pending 1/2             │
 │                       │ │ ○ Auth method?           │
 │                       │ │ > A) JWT  B) Session     │
 └───────────────────────┘ └─────────────────────────┘
+  tab cycles: Tree → Chat → Resolver → Tree
 ```
 
 Status indicators:
@@ -108,7 +109,8 @@ Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 
 | Key | Action |
 |-----|--------|
-| `tab` | Switch focus between tree panel (left) and chat panel (right) |
+| `tab` | Cycle focus forward: tree -> chat -> resolver -> tree |
+| `shift+tab` | Cycle focus in reverse: tree -> resolver -> chat -> tree |
 | `ctrl+q` | Quit |
 | `ctrl+c` | Shows warning (press `ctrl+q` to actually quit) |
 
@@ -141,7 +143,7 @@ Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 |-----|--------|
 | `enter` | Send message |
 | `@` + type | Autocomplete decision IDs |
-| `tab` | Cycle autocomplete (when completions visible), otherwise switch panel |
+| `tab` | Cycle autocomplete (when completions visible), otherwise switch focus |
 | `ctrl+o` | Toggle expand/collapse on last agent topic |
 | `j` / `k` | Navigate resolver options (when input is empty) |
 | `n` / `p` | Cycle through pending decisions in resolver |
@@ -290,12 +292,11 @@ All hooks receive these environment variables: `DEFER_EVENT`, `DEFER_DECISION_ID
 
 ## Custom Skills (Prompt Overrides)
 
-The defer process is built from 5 skills:
+The defer process is built from 4 skills:
 
 | Skill | Purpose |
 |-------|---------|
 | `decompose` | Break task into decisions |
-| `plan` | Identify remaining implementation decisions |
 | `execute` | Implement a domain given decisions |
 | `extract` | Extract implicit decisions from implementation |
 | `verify` | Review domain implementation for correctness |

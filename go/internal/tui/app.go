@@ -979,16 +979,8 @@ Current decisions:
 						m.task = "(from conversation)"
 					}
 				}
-				// Show the non-decision text
-				cleaned := stripJSONBlocks(msg.Text)
-				// Also strip the TASK: line
-				if hasTaskPrefix {
-					if parts := strings.SplitN(cleaned, "\n", 2); len(parts) > 1 {
-						cleaned = strings.TrimSpace(parts[1])
-					} else {
-						cleaned = ""
-					}
-				}
+				// Show the non-decision, non-internal text
+				cleaned := cleanAgentResponse(msg.Text, hasTaskPrefix)
 				if strings.TrimSpace(cleaned) != "" {
 					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: cleaned})
 				}
@@ -999,12 +991,9 @@ Current decisions:
 
 			if hasTaskPrefix {
 				// Got TASK: but no decisions — fallback to separate decomposition
-				if parts := strings.SplitN(trimmed, "\n", 2); len(parts) > 1 {
-					responseText := strings.TrimSpace(parts[1])
-					cleaned := stripJSONBlocks(responseText)
-					if strings.TrimSpace(cleaned) != "" {
-						m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: cleaned})
-					}
+				cleaned := cleanAgentResponse(msg.Text, true)
+				if strings.TrimSpace(cleaned) != "" {
+					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: cleaned})
 				}
 				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Identifying decisions..."})
 				m.tree.chatThinking = true
@@ -1507,6 +1496,46 @@ func (m Model) signalExecutorContinue() {
 			}
 		}
 	}
+}
+
+// cleanAgentResponse strips internal agent reasoning from the response text.
+// Removes: JSON blocks, TASK: prefix, markdown headers (##), empty repo notices,
+// decision format hints, and other internal text not meant for the user.
+func cleanAgentResponse(text string, hasTaskPrefix bool) string {
+	// Strip JSON/decision blocks
+	cleaned := stripJSONBlocks(text)
+
+	// Strip TASK: line
+	if hasTaskPrefix {
+		if parts := strings.SplitN(strings.TrimSpace(cleaned), "\n", 2); len(parts) > 1 {
+			cleaned = strings.TrimSpace(parts[1])
+		} else {
+			cleaned = ""
+		}
+	}
+
+	// Strip internal reasoning lines
+	var result []string
+	for _, line := range strings.Split(cleaned, "\n") {
+		trimmed := strings.TrimSpace(line)
+		// Skip markdown headers that look like internal reasoning
+		if strings.HasPrefix(trimmed, "## ") || strings.HasPrefix(trimmed, "# ") {
+			continue
+		}
+		// Skip TASK: lines that weren't caught above
+		if strings.HasPrefix(trimmed, "TASK:") {
+			continue
+		}
+		// Skip "Empty repo" and similar internal notes
+		if strings.Contains(strings.ToLower(trimmed), "empty repo") ||
+			strings.Contains(strings.ToLower(trimmed), "all decisions are new") ||
+			strings.Contains(strings.ToLower(trimmed), "answer the decisions above") ||
+			strings.Contains(strings.ToLower(trimmed), "let me map out") {
+			continue
+		}
+		result = append(result, line)
+	}
+	return strings.TrimSpace(strings.Join(result, "\n"))
 }
 
 func (m Model) countPending() int {

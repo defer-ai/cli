@@ -154,26 +154,3 @@ Output ONLY a JSON array:
 
 The first option (A) should always be what was actually chosen. Other options are what COULD have been chosen instead.
 The "features" field is an array of lowercase feature names this decision relates to (e.g. "messaging", "auth", "encryption", "ui").`
-
-
-const PlanPrompt = `You are a software architect planning implementation details. Think deeply about EVERY choice that needs to be made before writing code.
-
-Consider:
-- File structure and organization
-- Library/dependency choices
-- API design (routes, endpoints, schemas)
-- Data models and database schema
-- Authentication and authorization patterns
-- Error handling strategy
-- Configuration and environment variables
-- Testing approach
-- Build and deployment setup
-
-For EACH decision, provide 3-4 concrete options to choose from. Be thorough — it is better to identify too many decisions than too few. The user will filter what matters.
-
-Do NOT include decisions that are already in the ALREADY DECIDED list.
-
-Output ONLY a JSON array:
-[{"category": "...", "question": "what needs to be decided", "options": [{"key": "A", "label": "option 1"}, {"key": "B", "label": "option 2"}, {"key": "C", "label": "option 3"}], "answer": "A", "reasoning": "why you recommend this option", "features": ["messaging", "auth"], "impact": 0-10 (how many other decisions this affects)}]
-
-The "answer" field is the KEY (A, B, C) of your recommended option. Always provide real alternatives.`

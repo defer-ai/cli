@@ -100,7 +100,7 @@ The prompt.`
 func TestDefaultSkillsReturnsAll6(t *testing.T) {
 	defaults := DefaultSkills()
 
-	expected := []string{"decompose", "plan", "execute", "extract", "verify"}
+	expected := []string{"decompose", "execute", "extract", "verify"}
 	if len(defaults) != len(expected) {
 		t.Errorf("DefaultSkills() returned %d skills, want %d", len(defaults), len(expected))
 	}
@@ -141,9 +141,6 @@ func TestDefaultSkillsPromptsMatchAgent(t *testing.T) {
 	}
 	if !strings.Contains(defaults["extract"].Prompt, "extract every decision") {
 		t.Error("extract prompt should contain 'extract every decision'")
-	}
-	if !strings.Contains(defaults["plan"].Prompt, "software architect") {
-		t.Error("plan prompt should contain 'software architect'")
 	}
 	if !strings.Contains(defaults["execute"].Prompt, "implementing a software project") {
 		t.Error("execute prompt should contain 'implementing a software project'")

@@ -146,7 +146,7 @@ func LoadSkillFile(path string) (*Skill, error) {
 	}, nil
 }
 
-// DefaultSkills returns the built-in skills (decompose, plan, execute, extract, verify, scan).
+// DefaultSkills returns the built-in skills (decompose, execute, extract, verify).
 func DefaultSkills() map[string]Skill {
 	return map[string]Skill{
 		"decompose": {
@@ -157,16 +157,6 @@ func DefaultSkills() map[string]Skill {
 				"name":        "decompose",
 				"description": "Break task into decisions",
 				"when-to-use": "When starting a new task",
-			},
-		},
-		"plan": {
-			Name:        "plan",
-			Description: "Identify remaining implementation decisions",
-			Prompt:      agent.PlanPrompt,
-			Metadata: map[string]string{
-				"name":        "plan",
-				"description": "Identify remaining implementation decisions",
-				"when-to-use": "After decompose, to fill in missing decisions",
 			},
 		},
 		"execute": {

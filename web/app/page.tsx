@@ -297,11 +297,17 @@ export default function Home() {
           <p>
             <span className="text-accent">tab</span>
             <span className="text-muted">
-              {"      "}Switch focus between panels
+              {"      "}Cycle focus (tree → chat → resolver)
             </span>
             {"  "}
+            <span className="text-accent">shift+tab</span>
+            <span className="text-muted"> Reverse</span>
+          </p>
+          <p>
             <span className="text-accent">ctrl+q</span>
-            <span className="text-muted"> Quit</span>
+            <span className="text-muted">
+              {"   "}Quit
+            </span>
             {"  "}
             <span className="text-accent">esc</span>
             <span className="text-muted"> Stop agent</span>

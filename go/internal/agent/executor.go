@@ -284,29 +284,6 @@ func (e *Executor) simpleCompletion(ctx context.Context, systemPrompt, userMsg s
 	return text, nil
 }
 
-// textOnlyCompletion runs a one-shot completion with no tools — forces text-only output.
-// Used for plan() and extract() where we need JSON output, not tool exploration.
-func (e *Executor) textOnlyCompletion(ctx context.Context, systemPrompt, userMsg string) (string, error) {
-	cp := e.freshProvider()
-	if cc, ok := cp.(*api.ClaudeCodeProvider); ok {
-		cc.AllowedTools = []string{"none"} // sentinel — no real tools available
-	}
-	events := make(chan api.Event, 100)
-	go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
-	var text string
-	for ev := range events {
-		if ev.Type == api.EventTextDelta {
-			text += ev.Text
-		}
-		if ev.Type == api.EventDone || ev.Type == api.EventError {
-			if ev.Error != nil {
-				return text, ev.Error
-			}
-			break
-		}
-	}
-	return text, nil
-}
 
 func (e *Executor) execute(ctx context.Context, decSummary string) string {
 	systemPrompt := fmt.Sprintf(ExecutePromptTemplate, e.domain, CarePrompts[e.careLevel])
@@ -367,24 +344,6 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 		}
 	}
 	return fullText
-}
-
-func (e *Executor) plan(ctx context.Context, decSummary string) {
-	catList := strings.Join(e.knownCategories, ", ")
-	msg := fmt.Sprintf("Task: %s\n\nALREADY DECIDED (do NOT repeat these):\n%s\n\nKNOWN CATEGORIES (you MUST use only these): %s\n\nWhat NEW implementation decisions still need to be made? Do NOT rephrase or reference existing decisions. Only list decisions that are NOT in the 'already decided' list above.",
-		e.task, decSummary, catList)
-
-	planPrompt := PlanPrompt + fmt.Sprintf("\n\nCRITICAL: The category field MUST be one of: %s. Do NOT invent new categories. Do NOT repeat or rephrase any decision from the ALREADY DECIDED list.\n\nAfter exploring the codebase, output ONLY a JSON array of new decisions. No other text.", catList)
-	resp, err := e.simpleCompletion(ctx, planPrompt, msg)
-	if err != nil {
-		return // best effort
-	}
-
-	decs := e.parseImplicitChoices(resp)
-	for i := range decs {
-		decs[i].Reasoning = "[planned] " + decs[i].Reasoning
-	}
-	e.storeDecisions(decs)
 }
 
 func (e *Executor) verify(ctx context.Context, output, decSummary string) string {
