@@ -334,8 +334,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancel()
 			return m, tea.Quit
 		}
-		// Ctrl+C shows a warning
+		// Ctrl+C shows a warning (visible in both chat and tree)
 		if msg.String() == "ctrl+c" {
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Press ctrl+q to quit."})
 			m.notifications.Push("Press ctrl+q to quit.", NotifyMedium, 3*time.Second)
 			return m, nil
 		}
