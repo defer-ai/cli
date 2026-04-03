@@ -71,11 +71,10 @@ func splitWords(s string) []string {
 	return words
 }
 
-// NextID generates a unique decision ID like @STA-0001, @DAT-0002, etc.
-// Stored with the @ prefix — same format used to reference it in chat.
-// Scans existing decisions for the highest number with the same prefix.
+// NextID generates a unique decision ID like STA-0001, DAT-0002, etc.
+// Stored without prefix. The UI adds @ when displaying/referencing.
 func NextID(existing []Decision, category string) string {
-	prefix := "@" + categoryPrefix(category)
+	prefix := categoryPrefix(category)
 	maxNum := 0
 	for _, d := range existing {
 		if strings.HasPrefix(d.ID, prefix+"-") {
@@ -89,9 +88,7 @@ func NextID(existing []Decision, category string) string {
 }
 
 // FeatureID generates a feature ID from a feature name.
-// Stored with the # prefix — same format used to reference it in chat.
-// Uses the same 3-letter prefix rules as categories.
+// Stored without prefix. The UI adds # when displaying/referencing.
 func FeatureID(name string) string {
-	prefix := categoryPrefix(name)
-	return "#" + prefix
+	return categoryPrefix(name)
 }

@@ -725,7 +725,7 @@ If no decisions are incompatible, output: []`, changedDecision.ID, changedDecisi
 	case ChatMessageMsg:
 		text := msg.Text
 
-		// Check for direct change commands: "@STA-0001 change to Go with Gin"
+		// Check for direct change commands: "STA-0001 change to Go with Gin"
 		if changed := m.tryParseChangeCommand(text); changed {
 			return m, nil
 		}
@@ -1212,7 +1212,7 @@ func (m *Model) tryParseChangeCommand(text string) bool {
 	var restIdx int
 	for i, word := range words {
 		if strings.HasPrefix(word, "@") && len(word) > 1 {
-			targetID = word // keep the @ prefix, IDs are stored as @STA-0001
+			targetID = strings.TrimPrefix(word, "@") // strip @ — IDs stored without prefix
 			restIdx = i + 1
 			break
 		}

@@ -9,16 +9,16 @@ import (
 
 func managerDecisions() []decision.Decision {
 	return []decision.Decision{
-		{ID: "@STA-0001", Category: "Stack", Question: "Language?",
+		{ID: "STA-0001", Category: "Stack", Question: "Language?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}, {Key: "B", Label: "Choose for me"}},
 			Source: "user"},
-		{ID: "@STA-0002", Category: "Stack", Question: "Framework?",
+		{ID: "STA-0002", Category: "Stack", Question: "Framework?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Gin"}, {Key: "B", Label: "Choose for me"}},
 			Source: "user"},
-		{ID: "@UII-0001", Category: "UI", Question: "CSS approach?",
+		{ID: "UII-0001", Category: "UI", Question: "CSS approach?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Tailwind"}, {Key: "B", Label: "CSS Modules"}},
 			Source: "user"},
-		{ID: "@DAT-0001", Category: "Data", Question: "Database?",
+		{ID: "DAT-0001", Category: "Data", Question: "Database?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "PostgreSQL"}, {Key: "B", Label: "SQLite"}},
 			Source: "user"},
 	}
@@ -51,10 +51,10 @@ func TestAutoDecidePriorities(t *testing.T) {
 		wantAuto bool
 		desc     string
 	}{
-		{"@STA-0001", true, "skip domain auto-decides"},
-		{"@STA-0002", true, "skip domain auto-decides (second)"},
-		{"@UII-0001", false, "paranoid domain stays pending"},
-		{"@DAT-0001", false, "medium domain keeps first decision per category pending"},
+		{"STA-0001", true, "skip domain auto-decides"},
+		{"STA-0002", true, "skip domain auto-decides (second)"},
+		{"UII-0001", false, "paranoid domain stays pending"},
+		{"DAT-0001", false, "medium domain keeps first decision per category pending"},
 	}
 
 	for _, tt := range tests {
@@ -144,13 +144,13 @@ func TestAutoDecidePicksFirstNonChooseForMe(t *testing.T) {
 
 	decs := mgr.Agent().Decisions()
 	for _, d := range decs {
-		if d.ID == "@STA-0001" {
+		if d.ID == "STA-0001" {
 			if d.Answer == nil {
-				t.Fatal("@STA-0001 should be answered")
+				t.Fatal("STA-0001 should be answered")
 			}
 			// Should pick "Go" not "Choose for me"
 			if *d.Answer != "Go" {
-				t.Errorf("@STA-0001 answer = %q, want Go (first non-choose)", *d.Answer)
+				t.Errorf("STA-0001 answer = %q, want Go (first non-choose)", *d.Answer)
 			}
 		}
 	}
@@ -196,7 +196,7 @@ func TestSyncDecisionsAddsNew(t *testing.T) {
 	treeDecs := make([]decision.Decision, len(mgr.allDecs))
 	copy(treeDecs, mgr.allDecs)
 	treeDecs = append(treeDecs, decision.Decision{
-		ID:       "@NEW-0001",
+		ID:       "NEW-0001",
 		Category: "New",
 		Question: "New question?",
 		Source:   "user",
@@ -210,12 +210,12 @@ func TestSyncDecisionsAddsNew(t *testing.T) {
 
 	found := false
 	for _, d := range mgr.allDecs {
-		if d.ID == "@NEW-0001" {
+		if d.ID == "NEW-0001" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("@NEW-0001 not added to allDecs")
+		t.Error("NEW-0001 not added to allDecs")
 	}
 }
 
@@ -270,7 +270,7 @@ func TestAutoDecideLeadingTrailingSpaces(t *testing.T) {
 	m := NewManager(nil, "/tmp/test")
 	a := NewAgent("test", nil, "/tmp/test")
 	a.state.Decisions = []decision.Decision{
-		{ID: "@STA-0001", Category: "  Stack  ", Question: "Lang?",
+		{ID: "STA-0001", Category: "  Stack  ", Question: "Lang?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}}, Source: "user"},
 	}
 	a.state.Status = StatusDone

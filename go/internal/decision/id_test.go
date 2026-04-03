@@ -59,29 +59,29 @@ func TestCategoryPrefix(t *testing.T) {
 func TestNextIDBasic(t *testing.T) {
 	// No existing decisions
 	id := NextID(nil, "Stack")
-	if id != "@STA-0001" {
+	if id != "STA-0001" {
 		t.Errorf("NextID(nil, Stack) = %q, want STA-0001", id)
 	}
 }
 
 func TestNextIDIncrementsFromExisting(t *testing.T) {
 	existing := []Decision{
-		{ID: "@STA-0001"},
-		{ID: "@STA-0002"},
-		{ID: "@DAT-0001"},
+		{ID: "STA-0001"},
+		{ID: "STA-0002"},
+		{ID: "DAT-0001"},
 	}
 	id := NextID(existing, "Stack")
-	if id != "@STA-0003" {
+	if id != "STA-0003" {
 		t.Errorf("NextID with existing STA-0001,0002 = %q, want STA-0003", id)
 	}
 
 	id = NextID(existing, "Data")
-	if id != "@DAT-0002" {
+	if id != "DAT-0002" {
 		t.Errorf("NextID with existing DAT-0001 = %q, want DAT-0002", id)
 	}
 
 	id = NextID(existing, "Security")
-	if id != "@SEC-0001" {
+	if id != "SEC-0001" {
 		t.Errorf("NextID for new category = %q, want SEC-0001", id)
 	}
 }
@@ -94,10 +94,10 @@ func TestNextIDDifferentCategories(t *testing.T) {
 		t.Errorf("IDs from different categories should differ: %s", id1)
 	}
 
-	if !strings.HasPrefix(id1, "@STA-") {
+	if !strings.HasPrefix(id1, "STA-") {
 		t.Errorf("id1 prefix wrong: %s", id1)
 	}
-	if !strings.HasPrefix(id2, "@DAT-") {
+	if !strings.HasPrefix(id2, "DAT-") {
 		t.Errorf("id2 prefix wrong: %s", id2)
 	}
 }
@@ -105,15 +105,9 @@ func TestNextIDDifferentCategories(t *testing.T) {
 func TestNextIDFormat(t *testing.T) {
 	id := NextID(nil, "Stack")
 
-	if !strings.HasPrefix(id, "@") {
-		t.Fatalf("ID %q should start with @", id)
-	}
-
-	// Strip @ prefix for format check
-	bare := id[1:]
-	parts := strings.Split(bare, "-")
+	parts := strings.Split(id, "-")
 	if len(parts) != 2 {
-		t.Fatalf("ID %q has %d parts, want @PREFIX-SEQ", id, len(parts))
+		t.Fatalf("ID %q has %d parts, want PREFIX-SEQ", id, len(parts))
 	}
 
 	prefix := parts[0]
@@ -135,12 +129,12 @@ func TestNextIDZeroPadding(t *testing.T) {
 		existing []Decision
 		want     string
 	}{
-		{nil, "@STA-0001"},
-		{[]Decision{{ID: "@STA-0001"}}, "@STA-0002"},
-		{[]Decision{{ID: "@STA-0009"}}, "@STA-0010"},
-		{[]Decision{{ID: "@STA-0099"}}, "@STA-0100"},
-		{[]Decision{{ID: "@STA-0999"}}, "@STA-1000"},
-		{[]Decision{{ID: "@STA-9999"}}, "@STA-10000"},
+		{nil, "STA-0001"},
+		{[]Decision{{ID: "STA-0001"}}, "STA-0002"},
+		{[]Decision{{ID: "STA-0009"}}, "STA-0010"},
+		{[]Decision{{ID: "STA-0099"}}, "STA-0100"},
+		{[]Decision{{ID: "STA-0999"}}, "STA-1000"},
+		{[]Decision{{ID: "STA-9999"}}, "STA-10000"},
 	}
 	for _, tt := range tests {
 		got := NextID(tt.existing, "Stack")
@@ -179,11 +173,11 @@ func TestFeatureID(t *testing.T) {
 		name string
 		want string
 	}{
-		{"messaging", "#MES"},
-		{"auth", "#AUT"},
-		{"encryption", "#ENC"},
-		{"UI", "#UII"},
-		{"user interface", "#UIN"},
+		{"messaging", "MES"},
+		{"auth", "AUT"},
+		{"encryption", "ENC"},
+		{"UI", "UII"},
+		{"user interface", "UIN"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

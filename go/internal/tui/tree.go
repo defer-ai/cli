@@ -229,8 +229,8 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 				m.completionIdx = -1
 
 				// Check for @DECISION-ID references
-				// Parse: "@STA-0001 change to Go" → ReviseDecisionMsg
-				// Parse: "@STA-0001 why?" → WhyDecisionMsg
+				// Parse: "STA-0001 change to Go" → ReviseDecisionMsg
+				// Parse: "STA-0001 why?" → WhyDecisionMsg
 				// Otherwise: general chat message
 				return m, func() tea.Msg { return ChatMessageMsg{Text: input} }
 			}
@@ -584,10 +584,7 @@ func getCompletions(decisions []decision.Decision, partial string) []string {
 	lower := strings.ToLower(partial)
 	var matches []string
 	for _, d := range decisions {
-		// IDs are stored with @ prefix; match against both with and without
-		id := strings.ToLower(d.ID)
-		bareID := strings.TrimPrefix(id, "@")
-		if strings.HasPrefix(id, lower) || strings.HasPrefix(bareID, lower) {
+		if strings.HasPrefix(strings.ToLower(d.ID), lower) {
 			matches = append(matches, d.ID)
 			if len(matches) >= 5 {
 				break

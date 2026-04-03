@@ -666,7 +666,7 @@ func (e *Executor) scanInlineDecisions(text string) {
 			if id != "" && answer != "" {
 				// IDs are stored with @ prefix
 				if !strings.HasPrefix(id, "@") {
-					id = "@" + id
+					// IDs stored without prefix
 				}
 				e.UpdateDecision(id, answer)
 			}

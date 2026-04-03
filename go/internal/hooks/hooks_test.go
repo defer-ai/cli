@@ -11,7 +11,7 @@ func TestCommandHookSuccess(t *testing.T) {
 	}
 
 	err := RunHooks(PreDecision, hooks, map[string]string{
-		"DEFER_DECISION_ID": "@STA-0001",
+		"DEFER_DECISION_ID": "STA-0001",
 	})
 	if err != nil {
 		t.Errorf("expected no error, got: %v", err)

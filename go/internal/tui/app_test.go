@@ -37,7 +37,7 @@ func strPtr(s string) *string { return &s }
 func fakeDecisions() []decision.Decision {
 	return []decision.Decision{
 		{
-			ID: "@STA-0001", Category: "Stack", Question: "Backend language?",
+			ID: "STA-0001", Category: "Stack", Question: "Backend language?",
 			Options: []decision.DecisionOption{
 				{Key: "A", Label: "TypeScript"},
 				{Key: "B", Label: "Python"},
@@ -46,7 +46,7 @@ func fakeDecisions() []decision.Decision {
 			Source: "user",
 		},
 		{
-			ID: "@STA-0002", Category: "Stack", Question: "Frontend framework?",
+			ID: "STA-0002", Category: "Stack", Question: "Frontend framework?",
 			Options: []decision.DecisionOption{
 				{Key: "A", Label: "React"},
 				{Key: "B", Label: "Vue"},
@@ -55,7 +55,7 @@ func fakeDecisions() []decision.Decision {
 			Source: "user",
 		},
 		{
-			ID: "@UII-0001", Category: "UI", Question: "CSS approach?",
+			ID: "UII-0001", Category: "UI", Question: "CSS approach?",
 			Options: []decision.DecisionOption{
 				{Key: "A", Label: "Tailwind"},
 				{Key: "B", Label: "CSS Modules"},
@@ -284,15 +284,15 @@ func TestPrioritiesToTree(t *testing.T) {
 
 func TestAutoDecideSkipsParanoid(t *testing.T) {
 	decs := []decision.Decision{
-		{ID: "@SKI-0001", Category: "Infra", Question: "CDN?",
+		{ID: "SKI-0001", Category: "Infra", Question: "CDN?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "CloudFront"}}, Source: "user"},
-		{ID: "@LOW-0001", Category: "Logging", Question: "Logger?",
+		{ID: "LOW-0001", Category: "Logging", Question: "Logger?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Winston"}}, Source: "user"},
-		{ID: "@MED-0001", Category: "Data", Question: "ORM?",
+		{ID: "MED-0001", Category: "Data", Question: "ORM?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Prisma"}}, Source: "user"},
-		{ID: "@HIG-0001", Category: "Auth", Question: "Provider?",
+		{ID: "HIG-0001", Category: "Auth", Question: "Provider?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Auth0"}}, Source: "user"},
-		{ID: "@PAR-0001", Category: "Security", Question: "Encryption?",
+		{ID: "PAR-0001", Category: "Security", Question: "Encryption?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "AES-256"}}, Source: "user"},
 	}
 
@@ -310,11 +310,11 @@ func TestAutoDecideSkipsParanoid(t *testing.T) {
 		wantAuto bool
 		desc     string
 	}{
-		{"@SKI-0001", true, "skip domain should be auto-decided"},
-		{"@LOW-0001", true, "low domain should be auto-decided"},
-		{"@MED-0001", false, "medium domain keeps first decision pending"},
-		{"@HIG-0001", false, "high domain should stay pending"},
-		{"@PAR-0001", false, "paranoid domain should stay pending"},
+		{"SKI-0001", true, "skip domain should be auto-decided"},
+		{"LOW-0001", true, "low domain should be auto-decided"},
+		{"MED-0001", false, "medium domain keeps first decision pending"},
+		{"HIG-0001", false, "high domain should stay pending"},
+		{"PAR-0001", false, "paranoid domain should stay pending"},
 	}
 
 	for _, tt := range tests {
@@ -342,11 +342,11 @@ func TestReviseDecision(t *testing.T) {
 	m := setupAtTreeNoExecutors(t, fakeDecisions())
 
 	// Revise STA-0001
-	m, _ = updateModel(t, m, ReviseDecisionMsg{ID: "@STA-0001", NewAnswer: "TypeScript"})
+	m, _ = updateModel(t, m, ReviseDecisionMsg{ID: "STA-0001", NewAnswer: "TypeScript"})
 
 	var found bool
 	for _, d := range m.tree.decisions {
-		if d.ID == "@STA-0001" {
+		if d.ID == "STA-0001" {
 			found = true
 			if d.Answer == nil || *d.Answer != "TypeScript" {
 				t.Errorf("answer = %v, want TypeScript", d.Answer)
@@ -360,7 +360,7 @@ func TestReviseDecision(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("@STA-0001 not found in tree decisions")
+		t.Fatal("STA-0001 not found in tree decisions")
 	}
 }
 
@@ -368,13 +368,13 @@ func TestReviseTriggersExecutorsWhenAllAnswered(t *testing.T) {
 	// Need at least one skip/medium decision so autoIDs is not nil, which
 	// prevents the "nil = auto-decide all" behavior in Agent.AutoDecide.
 	decs := []decision.Decision{
-		{ID: "@STA-0001", Category: "Stack", Question: "Language?",
+		{ID: "STA-0001", Category: "Stack", Question: "Language?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}},
 			Source:  "user"},
-		{ID: "@UII-0001", Category: "UI", Question: "Framework?",
+		{ID: "UII-0001", Category: "UI", Question: "Framework?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "React"}},
 			Source:  "user"},
-		{ID: "@UII-0002", Category: "UI", Question: "State management?",
+		{ID: "UII-0002", Category: "UI", Question: "State management?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Redux"}},
 			Source:  "user"},
 	}
@@ -394,7 +394,7 @@ func TestReviseTriggersExecutorsWhenAllAnswered(t *testing.T) {
 
 	// Answer one of the pending decisions
 	var cmd tea.Cmd
-	m, cmd = updateModel(t, m, ReviseDecisionMsg{ID: "@UII-0001", NewAnswer: "React"})
+	m, cmd = updateModel(t, m, ReviseDecisionMsg{ID: "UII-0001", NewAnswer: "React"})
 
 	// Process CheckAllDecidedMsg
 	msg := processCmd(t, cmd)
@@ -409,7 +409,7 @@ func TestReviseTriggersExecutorsWhenAllAnswered(t *testing.T) {
 	}
 
 	// Answer the last pending decision
-	m, cmd = updateModel(t, m, ReviseDecisionMsg{ID: "@UII-0002", NewAnswer: "Redux"})
+	m, cmd = updateModel(t, m, ReviseDecisionMsg{ID: "UII-0002", NewAnswer: "Redux"})
 	msg = processCmd(t, cmd)
 	if _, ok := msg.(CheckAllDecidedMsg); !ok {
 		t.Fatalf("expected CheckAllDecidedMsg, got %T", msg)
@@ -426,7 +426,7 @@ func TestReviseTriggersExecutorsWhenAllAnswered(t *testing.T) {
 
 func TestReviseAfterExecutionRelaunches(t *testing.T) {
 	decs := []decision.Decision{
-		{ID: "@STA-0001", Category: "Stack", Question: "Language?",
+		{ID: "STA-0001", Category: "Stack", Question: "Language?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}},
 			Answer:  strPtr("Go"), Source: "auto"},
 	}
@@ -441,7 +441,7 @@ func TestReviseAfterExecutionRelaunches(t *testing.T) {
 	m.cancel()
 
 	// Now revise a decision after execution.
-	m, _ = updateModel(t, m, ReviseDecisionMsg{ID: "@STA-0001", NewAnswer: "Rust"})
+	m, _ = updateModel(t, m, ReviseDecisionMsg{ID: "STA-0001", NewAnswer: "Rust"})
 
 	// After revision with executors already launched, it should re-launch
 	if !m.executorsLaunched {
@@ -453,7 +453,7 @@ func TestReviseAfterExecutionRelaunches(t *testing.T) {
 
 	// Verify the decision was updated
 	for _, d := range m.tree.decisions {
-		if d.ID == "@STA-0001" {
+		if d.ID == "STA-0001" {
 			if d.Answer == nil || *d.Answer != "Rust" {
 				t.Errorf("answer = %v, want Rust", d.Answer)
 			}
@@ -469,7 +469,7 @@ func TestExecutorDecisionsMerge(t *testing.T) {
 
 	// Add a new decision directly to tree and verify merge doesn't duplicate
 	newDec := decision.Decision{
-		ID: "@DAT-0001", Category: "Data", Question: "Database choice?",
+		ID: "DAT-0001", Category: "Data", Question: "Database choice?",
 		Answer: strPtr("PostgreSQL"), Source: "agent",
 	}
 	m.tree.decisions = append(m.tree.decisions, newDec)
@@ -482,12 +482,12 @@ func TestExecutorDecisionsMerge(t *testing.T) {
 	// Should not have duplicated
 	countWithID := 0
 	for _, d := range m.tree.decisions {
-		if d.ID == "@DAT-0001" {
+		if d.ID == "DAT-0001" {
 			countWithID++
 		}
 	}
 	if countWithID > 1 {
-		t.Errorf("@DAT-0001 appears %d times, should be 1 (no duplication)", countWithID)
+		t.Errorf("DAT-0001 appears %d times, should be 1 (no duplication)", countWithID)
 	}
 
 	// Original decisions should still be there
@@ -509,11 +509,11 @@ func TestExecutorDecisionsDontOverwriteUserChanges(t *testing.T) {
 	m := setupAtTreeNoExecutors(t, fakeDecisions())
 
 	// User revises a decision
-	m, _ = updateModel(t, m, ReviseDecisionMsg{ID: "@STA-0001", NewAnswer: "Rust"})
+	m, _ = updateModel(t, m, ReviseDecisionMsg{ID: "STA-0001", NewAnswer: "Rust"})
 
 	// Verify user change
 	for _, d := range m.tree.decisions {
-		if d.ID == "@STA-0001" {
+		if d.ID == "STA-0001" {
 			if d.Answer == nil || *d.Answer != "Rust" {
 				t.Fatalf("user revision not applied")
 			}
@@ -531,7 +531,7 @@ func TestExecutorDecisionsDontOverwriteUserChanges(t *testing.T) {
 
 	// User's revision should be preserved
 	for _, d := range m.tree.decisions {
-		if d.ID == "@STA-0001" {
+		if d.ID == "STA-0001" {
 			if d.Answer == nil || *d.Answer != "Rust" {
 				t.Errorf("user revision was overwritten, got %v", d.Answer)
 			}
@@ -546,7 +546,7 @@ func TestSuggestReplacesOptions(t *testing.T) {
 	m := setupAtTreeNoExecutors(t, fakeDecisions())
 
 	// Answer a decision first
-	m, _ = updateModel(t, m, ReviseDecisionMsg{ID: "@STA-0001", NewAnswer: "TypeScript"})
+	m, _ = updateModel(t, m, ReviseDecisionMsg{ID: "STA-0001", NewAnswer: "TypeScript"})
 
 	// Now send SuggestResponseMsg with new options
 	newOpts := []decision.DecisionOption{
@@ -555,10 +555,10 @@ func TestSuggestReplacesOptions(t *testing.T) {
 		{Key: "C", Label: "Zig"},
 		{Key: "D", Label: "Haskell"},
 	}
-	m, _ = updateModel(t, m, SuggestResponseMsg{ID: "@STA-0001", Options: newOpts})
+	m, _ = updateModel(t, m, SuggestResponseMsg{ID: "STA-0001", Options: newOpts})
 
 	for _, d := range m.tree.decisions {
-		if d.ID == "@STA-0001" {
+		if d.ID == "STA-0001" {
 			if len(d.Options) != 4 {
 				t.Errorf("options count = %d, want 4", len(d.Options))
 			}
@@ -571,7 +571,7 @@ func TestSuggestReplacesOptions(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("@STA-0001 not found")
+	t.Fatal("STA-0001 not found")
 }
 
 func TestWhyResponse(t *testing.T) {
@@ -708,9 +708,9 @@ func TestTaskSubmittedFromCLI(t *testing.T) {
 func TestCheckAllDecidedWithPending(t *testing.T) {
 	// Need at least one non-paranoid decision so autoIDs is not nil.
 	decs := []decision.Decision{
-		{ID: "@STA-0001", Category: "Stack", Question: "Lang?",
+		{ID: "STA-0001", Category: "Stack", Question: "Lang?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}}, Source: "user"},
-		{ID: "@UII-0001", Category: "UI", Question: "CSS?",
+		{ID: "UII-0001", Category: "UI", Question: "CSS?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Tailwind"}}, Source: "user"},
 	}
 

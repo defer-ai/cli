@@ -11,15 +11,15 @@ import (
 
 func fiveDecisions() []decision.Decision {
 	return []decision.Decision{
-		{ID: "@STA-0001", Category: "Stack", Question: "Language?",
+		{ID: "STA-0001", Category: "Stack", Question: "Language?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}, {Key: "B", Label: "Rust"}}, Source: "user"},
-		{ID: "@STA-0002", Category: "Stack", Question: "Framework?",
+		{ID: "STA-0002", Category: "Stack", Question: "Framework?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Gin"}, {Key: "B", Label: "Echo"}}, Source: "user"},
-		{ID: "@DAT-0001", Category: "Data", Question: "Database?",
+		{ID: "DAT-0001", Category: "Data", Question: "Database?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Postgres"}, {Key: "B", Label: "MySQL"}}, Source: "user"},
-		{ID: "@DAT-0002", Category: "Data", Question: "ORM?",
+		{ID: "DAT-0002", Category: "Data", Question: "ORM?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "GORM"}, {Key: "B", Label: "sqlx"}}, Source: "user"},
-		{ID: "@UII-0001", Category: "UI", Question: "CSS?",
+		{ID: "UII-0001", Category: "UI", Question: "CSS?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Tailwind"}, {Key: "B", Label: "CSS Modules"}}, Source: "user"},
 	}
 }
@@ -146,7 +146,7 @@ func TestDetailOptionPicking(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected ReviseDecisionMsg, got %T", msg)
 	}
-	if revise.ID != "@STA-0001" {
+	if revise.ID != "STA-0001" {
 		t.Errorf("revise.ID = %q, want STA-0001", revise.ID)
 	}
 	if revise.NewAnswer != "Rust" {
@@ -285,7 +285,7 @@ func TestDetailAsk(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected AskDecisionMsg, got %T", msg)
 	}
-	if ask.ID != "@STA-0001" {
+	if ask.ID != "STA-0001" {
 		t.Errorf("ask.ID = %q, want STA-0001", ask.ID)
 	}
 	if ask.Question != "why this" {
@@ -315,7 +315,7 @@ func TestDetailWhy(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected WhyDecisionMsg, got %T", msg)
 	}
-	if why.ID != "@STA-0001" {
+	if why.ID != "STA-0001" {
 		t.Errorf("why.ID = %q, want STA-0001", why.ID)
 	}
 }
@@ -358,7 +358,7 @@ func TestDetailShuffle(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected SuggestDecisionMsg, got %T", msg)
 	}
-	if suggest.ID != "@STA-0001" {
+	if suggest.ID != "STA-0001" {
 		t.Errorf("suggest.ID = %q, want STA-0001", suggest.ID)
 	}
 }
@@ -425,7 +425,7 @@ func TestSelectedWithinBounds(t *testing.T) {
 	if sel == nil {
 		t.Fatal("selected() returned nil at cursor 0")
 	}
-	if sel.ID != "@STA-0001" {
+	if sel.ID != "STA-0001" {
 		t.Errorf("selected().ID = %q, want STA-0001", sel.ID)
 	}
 
@@ -435,7 +435,7 @@ func TestSelectedWithinBounds(t *testing.T) {
 	if sel == nil {
 		t.Fatal("selected() returned nil at cursor 4")
 	}
-	if sel.ID != "@UII-0001" {
+	if sel.ID != "UII-0001" {
 		t.Errorf("selected().ID = %q, want UIX-0001", sel.ID)
 	}
 }
@@ -606,13 +606,13 @@ func TestSearchFiltersDecisions(t *testing.T) {
 
 func TestSearchFiltersByID(t *testing.T) {
 	tm := newTree(fiveDecisions())
-	tm.searchQuery = "@STA-0001"
+	tm.searchQuery = "STA-0001"
 
 	items := tm.decisionItems()
 	if len(items) != 1 {
 		t.Errorf("filtered items = %d, want 1", len(items))
 	}
-	if len(items) > 0 && items[0].ID != "@STA-0001" {
+	if len(items) > 0 && items[0].ID != "STA-0001" {
 		t.Errorf("filtered item ID = %q, want STA-0001", items[0].ID)
 	}
 }
@@ -625,7 +625,7 @@ func TestSearchFiltersByQuestion(t *testing.T) {
 	if len(items) != 1 {
 		t.Errorf("filtered items = %d, want 1", len(items))
 	}
-	if len(items) > 0 && items[0].ID != "@UII-0001" {
+	if len(items) > 0 && items[0].ID != "UII-0001" {
 		t.Errorf("filtered item ID = %q, want UIX-0001", items[0].ID)
 	}
 }
@@ -794,11 +794,11 @@ func TestSplitPaneRendersOnWideTerminal(t *testing.T) {
 	output := tm.View()
 	// Split pane should contain both the tree content and the detail content
 	// The detail pane shows the decision ID as a title in the border
-	if !strings.Contains(output, "@STA-0001") {
+	if !strings.Contains(output, "STA-0001") {
 		t.Error("split pane should contain the selected decision ID")
 	}
 	// The left pane should still show other decisions
-	if !strings.Contains(output, "@STA-0002") {
+	if !strings.Contains(output, "STA-0002") {
 		t.Error("split pane should show tree with other decisions")
 	}
 }
@@ -939,7 +939,7 @@ func TestGetCompletionsMatchingIDs(t *testing.T) {
 		t.Errorf("getCompletions(STA) = %d, want 2", len(matches))
 	}
 	for _, m := range matches {
-		if !strings.HasPrefix(m, "@STA") {
+		if !strings.HasPrefix(m, "STA") {
 			t.Errorf("unexpected match %q for prefix STA", m)
 		}
 	}
@@ -1063,14 +1063,14 @@ func TestCompletionsOverlayRendered(t *testing.T) {
 	tm.mode = tmChat
 	tm.chatInput.Focus()
 	tm.chatInput.SetValue("@S-")
-	tm.completions = []string{"@STA-0001", "@STA-0002"}
+	tm.completions = []string{"STA-0001", "STA-0002"}
 	tm.completionIdx = 0
 
 	output := tm.viewChat()
-	if !strings.Contains(output, "@STA-0001") {
+	if !strings.Contains(output, "STA-0001") {
 		t.Error("chat view should contain @STA-0001 in completions overlay")
 	}
-	if !strings.Contains(output, "@STA-0002") {
+	if !strings.Contains(output, "STA-0002") {
 		t.Error("chat view should contain @STA-0002 in completions overlay")
 	}
 }
@@ -1081,8 +1081,8 @@ func TestCompletionsClearedOnEnter(t *testing.T) {
 	// Switch to chat mode
 	tm, _ = updateTree(t, tm, keyTab())
 
-	// Type "@STA-0001 do something"
-	for _, ch := range "@STA-0001 do something" {
+	// Type "STA-0001 do something"
+	for _, ch := range "STA-0001 do something" {
 		tm, _ = updateTree(t, tm, keyRunes(string(ch)))
 	}
 
@@ -1126,7 +1126,7 @@ func TestSplitPaneAtBoundary(t *testing.T) {
 
 	output := tm.View()
 	// Should be split pane (contains both tree items and detail ID)
-	if !strings.Contains(output, "@STA-0001") {
+	if !strings.Contains(output, "STA-0001") {
 		t.Error("width 101 should trigger split pane showing decision ID")
 	}
 
@@ -1180,7 +1180,7 @@ func TestHighlightRefsDecisionAndFeature(t *testing.T) {
 	text := "See @STA-0001 and #auth for details"
 	result := highlightRefs(text)
 	// The result should contain the original tokens (styled)
-	if !strings.Contains(result, "@STA-0001") {
+	if !strings.Contains(result, "STA-0001") {
 		t.Error("highlightRefs should include @STA-0001 content")
 	}
 	if !strings.Contains(result, "auth") {
@@ -1323,7 +1323,7 @@ func TestFeatureEditModeSubmit(t *testing.T) {
 
 	// Check that features were deduplicated and lowercased
 	for _, d := range tm.decisions {
-		if d.ID == "@STA-0001" {
+		if d.ID == "STA-0001" {
 			if len(d.Features) != 2 {
 				t.Errorf("features count = %d, want 2 (auth, backend, deduped Auth)", len(d.Features))
 			}
@@ -1465,7 +1465,7 @@ func TestJumpSearchMatchesDecisions(t *testing.T) {
 	}
 	found := false
 	for _, jm := range tm.jumpMatches {
-		if strings.Contains(jm.Label, "@STA-0001") {
+		if strings.Contains(jm.Label, "STA-0001") {
 			found = true
 			break
 		}
@@ -1600,15 +1600,15 @@ func TestJumpSearchViewRendersOverlay(t *testing.T) {
 	tm.jumpSearchInput.Focus()
 	tm.jumpSearchInput.SetValue("sta")
 	tm.jumpMatches = []jumpMatch{
-		{Type: "decision", Label: "@STA-0001 Language?", Index: 0},
-		{Type: "decision", Label: "@STA-0002 Framework?", Index: 1},
+		{Type: "decision", Label: "STA-0001 Language?", Index: 0},
+		{Type: "decision", Label: "STA-0002 Framework?", Index: 1},
 	}
 
 	output := tm.viewTree()
-	if !strings.Contains(output, "@STA-0001") {
+	if !strings.Contains(output, "STA-0001") {
 		t.Error("jump search overlay should show STA-0001 match")
 	}
-	if !strings.Contains(output, "@STA-0002") {
+	if !strings.Contains(output, "STA-0002") {
 		t.Error("jump search overlay should show STA-0002 match")
 	}
 }
