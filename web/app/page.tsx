@@ -33,7 +33,7 @@ export default function Home() {
 
           <div className="flex flex-wrap gap-3">
             <CopyButton
-              text="curl -sSL https://github.com/defer-ai/cli/releases/latest/download/defer_$(uname -s)_$(uname -m).tar.gz | tar xz"
+              text="go install github.com/defer-ai/cli@latest"
               label="Copy install command"
               className="px-5 py-2.5 text-sm font-medium"
             />
@@ -69,12 +69,11 @@ export default function Home() {
         <div className="p-5 border border-border rounded-xl bg-surface font-mono text-sm space-y-4">
           <div>
             <p className="text-muted text-xs mb-2">
-              # Install from release
+              # Install
             </p>
             <p className="text-foreground">
-              $ curl -sSL https://github.com/defer-ai/cli/releases/latest/download/defer_$(uname -s)_$(uname -m).tar.gz | tar xz
+              $ go install github.com/defer-ai/cli@latest
             </p>
-            <p className="text-foreground">$ sudo mv defer /usr/local/bin/</p>
           </div>
           <div className="border-t border-border/50 pt-4">
             <p className="text-muted text-xs mb-2">

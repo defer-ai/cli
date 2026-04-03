@@ -8,18 +8,14 @@ Defer decomposes your task into a tree of decisions, lets you set care levels pe
 
 ## Install
 
-**From release (recommended):**
-
 ```bash
-curl -sSL https://github.com/defer-ai/cli/releases/latest/download/defer_$(uname -s)_$(uname -m).tar.gz | tar xz
-sudo mv defer /usr/local/bin/
+go install github.com/defer-ai/cli@latest
 ```
 
 **From source:**
 
 ```bash
 cd go && go build -ldflags "-s -w" -o defer .
-sudo mv defer /usr/local/bin/
 ```
 
 ## Quick Start
