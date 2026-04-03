@@ -547,14 +547,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				existing[d.ID] = true
 			}
 		}
-		// Update pending count and notify in chat
-		m.tree.pendingCount = m.countPending()
-		if m.tree.pendingCount > 0 {
+		// Update pending count — only notify if it increased
+		newPending := m.countPending()
+		if newPending > m.tree.pendingCount && newPending > 0 {
 			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
 				Type: "action",
-				Text: fmt.Sprintf("New decisions found — %d pending. Tab to review.", m.tree.pendingCount),
+				Text: fmt.Sprintf("%d decisions need your input. Tab to review.", newPending),
 			})
 		}
+		m.tree.pendingCount = newPending
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 
