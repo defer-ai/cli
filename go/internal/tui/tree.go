@@ -709,6 +709,43 @@ func resolveDepIDs(deps []string, decisions []decision.Decision) []string {
 	return result
 }
 
+// thinkingSpinner returns an animated spinner character based on tick.
+func thinkingSpinner(tick int) string {
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	return frames[tick%len(frames)]
+}
+
+// thinkingPhrase returns a rotating phrase that changes every ~8 seconds.
+func thinkingPhrase(tick int, elapsed time.Duration) string {
+	phrases := []string{
+		"Thinking...",
+		"Working on it...",
+		"Processing...",
+		"Reasoning...",
+		"Analyzing...",
+		"Figuring it out...",
+		"Almost there...",
+		"Crunching...",
+		"Considering options...",
+		"Connecting the dots...",
+	}
+	// Change phrase every ~80 ticks (8 seconds at 100ms tick rate)
+	idx := (tick / 80) % len(phrases)
+	// After 2 minutes, cycle through the longer-wait phrases
+	if elapsed > 2*time.Minute {
+		latePhrases := []string{
+			"Still working...",
+			"This is a big one...",
+			"Hang tight...",
+			"Deep in thought...",
+			"Bear with me...",
+		}
+		idx = (tick / 80) % len(latePhrases)
+		return latePhrases[idx]
+	}
+	return phrases[idx]
+}
+
 func trunc(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -946,7 +983,7 @@ func (m TreeModel) viewChat() string {
 		}
 	}
 
-	// Thinking indicator
+	// Thinking indicator with animated spinner and rotating phrases
 	if m.chatThinking {
 		elapsed := time.Since(m.chatThinkStart)
 		var timeStr string
@@ -955,8 +992,10 @@ func (m TreeModel) viewChat() string {
 		} else {
 			timeStr = fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
 		}
+		spinner := thinkingSpinner(m.mascotTick)
+		phrase := thinkingPhrase(m.mascotTick, elapsed)
 		chatLines = append(chatLines, "")
-		chatLines = append(chatLines, " "+AccentStyle.Render("● Thinking... ")+DimStyle.Render("("+timeStr+")"))
+		chatLines = append(chatLines, " "+AccentStyle.Render(spinner+" "+phrase+" ")+DimStyle.Render("("+timeStr+")"))
 	}
 
 	// Anchor content to bottom with scroll offset
@@ -1350,7 +1389,9 @@ func (m TreeModel) viewTreePane(w, h int) string {
 		if elapsed >= time.Minute {
 			timeStr = fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
 		}
-		lines = append(lines, "  "+AccentStyle.Render("● Thinking... ")+DimStyle.Render("("+timeStr+")"))
+		spinner := thinkingSpinner(m.mascotTick)
+		phrase := thinkingPhrase(m.mascotTick, elapsed)
+		lines = append(lines, "  "+AccentStyle.Render(spinner+" "+phrase+" ")+DimStyle.Render("("+timeStr+")"))
 	} else {
 		lines = append(lines, "  "+DimStyle.Render("tab to open chat"))
 	}
