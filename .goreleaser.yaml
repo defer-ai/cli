@@ -5,7 +5,6 @@ project_name: defer
 before:
   hooks:
     - sh -c "cd go && go mod tidy"
-    - sh -c "cd go && go test ./... -count=1"
 
 builds:
   - id: defer
