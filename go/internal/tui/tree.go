@@ -818,31 +818,8 @@ func (m TreeModel) viewChat() string {
 		contentWidth = 20
 	}
 
-	// Status text (right-aligned on the first line)
-	rightStatus := m.overallStatus
-	if m.chatThinking {
-		elapsed := time.Since(m.chatThinkStart)
-		if elapsed < time.Minute {
-			rightStatus = fmt.Sprintf("Thinking... (%.0fs)", elapsed.Seconds())
-		} else {
-			rightStatus = fmt.Sprintf("Thinking... (%dm%ds)", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
-		}
-	}
-
 	var lines []string
-
-	// First line: right-aligned status
-	if rightStatus != "" {
-		statusStr := DimStyle.Render(rightStatus)
-		statusVisLen := lipgloss.Width(statusStr)
-		pad := contentWidth - statusVisLen
-		if pad < 0 {
-			pad = 0
-		}
-		lines = append(lines, strings.Repeat(" ", pad)+statusStr)
-	} else {
-		lines = append(lines, "")
-	}
+	lines = append(lines, "")
 
 	// Chat content area: total height minus fixed UI elements
 	// Fixed: status line(1) + gap before input(1) + divider(1) + input(1) + divider(1) + footer(1) = 6
