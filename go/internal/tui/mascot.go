@@ -60,9 +60,8 @@ var moodFrames = map[MascotMood]eyeFrame{
 		overlay: "twirl",
 	},
 	MoodDone: {
-		pupilRatio: 0, topLid: 50, topLidAngle: 0,
-		bottomLid: 50, bottomLidAngle: 0,
-		solid: true,
+		pupilRatio: 0.55, topLid: 25, topLidAngle: 0,
+		bottomLid: 25, bottomLidAngle: 0,
 	},
 	MoodError: {
 		pupilRatio: 0.75, topLid: 4, topLidAngle: 0,
