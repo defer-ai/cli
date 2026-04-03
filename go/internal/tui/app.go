@@ -843,8 +843,17 @@ Current decisions:
 %s`, answeredCount, pendingCount, invalidatedCount, execStatus, m.task, decContext.String())
 			}
 
+			// Use read-only provider when no task is set (pre-decomposition)
+			chatProvider := m.provider
+			if m.task == "" {
+				if cc, ok := m.provider.(*api.ClaudeCodeProvider); ok {
+					restricted := api.NewClaudeCodeProviderWithCWD(cc.GetModel(), m.cwd)
+					restricted.AllowedTools = []string{"Read", "Glob", "Grep", "Bash", "Agent", "WebSearch", "WebFetch"}
+					chatProvider = restricted
+				}
+			}
 			go func() {
-				resp := runStreamingChat(ctx, m.provider, sysPrompt, text, ch)
+				resp := runStreamingChat(ctx, chatProvider, sysPrompt, text, ch)
 				safeSend(ctx, ch, ChatResponseMsg{Text: resp})
 			}()
 			cmds = append(cmds, ListenForEvents(m.eventChan))

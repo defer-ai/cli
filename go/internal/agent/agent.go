@@ -88,7 +88,16 @@ func (a *Agent) Decompose(ctx context.Context, onEvent func(Event)) {
 func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Event), retries int) {
 	events := make(chan api.Event, 100)
 
-	go a.provider.RunCompletion(ctx, DecomposePrompt, a.state.Task, events)
+	// Restrict to read-only tools during decomposition — no writing project files
+	provider := a.provider
+	if cc, ok := provider.(*api.ClaudeCodeProvider); ok {
+		restricted := api.NewClaudeCodeProviderWithCWD(cc.GetModel(), a.cwd)
+		// No Write/Edit during decomposition — only read/explore tools
+		restricted.AllowedTools = []string{"Read", "Glob", "Grep", "Bash", "Agent", "WebSearch", "WebFetch"}
+		provider = restricted
+	}
+
+	go provider.RunCompletion(ctx, DecomposePrompt, a.state.Task, events)
 
 	var fullText string
 	for ev := range events {
@@ -157,7 +166,14 @@ func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Eve
 
 func (a *Agent) runDecompositionSubprocessRetry(ctx context.Context, onEvent func(Event), retries int, prompt string) {
 	events := make(chan api.Event, 100)
-	go a.provider.RunCompletion(ctx, DecomposePrompt, prompt, events)
+	// Same read-only restriction as primary decomposition
+	provider := a.provider
+	if cc, ok := provider.(*api.ClaudeCodeProvider); ok {
+		restricted := api.NewClaudeCodeProviderWithCWD(cc.GetModel(), a.cwd)
+		restricted.AllowedTools = []string{"Read", "Glob", "Grep", "Bash", "Agent", "WebSearch", "WebFetch"}
+		provider = restricted
+	}
+	go provider.RunCompletion(ctx, DecomposePrompt, prompt, events)
 
 	var fullText string
 	for ev := range events {

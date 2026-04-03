@@ -57,9 +57,10 @@ type Event struct {
 // ClaudeCodeProvider runs Claude Code as a subprocess.
 // Used when no ANTHROPIC_API_KEY is set (user has Claude Code authenticated via subscription).
 type ClaudeCodeProvider struct {
-	model     string
-	cwd       string // working directory for the subprocess
-	sessionID string // Claude session ID (persisted in .defer/)
+	model        string
+	cwd          string   // working directory for the subprocess
+	sessionID    string   // Claude session ID (persisted in .defer/)
+	AllowedTools []string // if set, restricts which tools the subprocess can use
 }
 
 // NewClaudeCodeProvider creates a subprocess provider using the current working directory.
@@ -113,6 +114,9 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 		"--verbose",
 		"--model", p.model,
 		"--permission-mode", "default",
+	}
+	if len(p.AllowedTools) > 0 {
+		args = append(args, "--allowedTools", strings.Join(p.AllowedTools, ","))
 	}
 
 	// Resume Claude session if we have one (from .defer/), fresh otherwise.
