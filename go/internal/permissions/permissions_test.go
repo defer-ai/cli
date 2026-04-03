@@ -6,40 +6,15 @@ import (
 	"github.com/defer-ai/cli/internal/agent"
 )
 
-func TestShouldPromptSkip(t *testing.T) {
+func TestShouldPromptAuto(t *testing.T) {
 	for _, action := range []ToolAction{ActionRead, ActionWrite, ActionExecute} {
-		if ShouldPrompt(agent.CareLevelSkip, action) {
-			t.Errorf("skip + %s: should never prompt", action)
+		if ShouldPrompt(agent.CareLevelAuto, action) {
+			t.Errorf("auto + %s: should never prompt", action)
 		}
 	}
 }
 
-func TestShouldPromptLow(t *testing.T) {
-	for _, action := range []ToolAction{ActionRead, ActionWrite, ActionExecute} {
-		if ShouldPrompt(agent.CareLevelLow, action) {
-			t.Errorf("low + %s: should never prompt", action)
-		}
-	}
-}
-
-func TestShouldPromptMedium(t *testing.T) {
-	tests := []struct {
-		action ToolAction
-		want   bool
-	}{
-		{ActionRead, false},
-		{ActionWrite, false},
-		{ActionExecute, true},
-	}
-	for _, tt := range tests {
-		got := ShouldPrompt(agent.CareLevelMedium, tt.action)
-		if got != tt.want {
-			t.Errorf("medium + %s: got %v, want %v", tt.action, got, tt.want)
-		}
-	}
-}
-
-func TestShouldPromptHigh(t *testing.T) {
+func TestShouldPromptReview(t *testing.T) {
 	tests := []struct {
 		action ToolAction
 		want   bool
@@ -49,33 +24,21 @@ func TestShouldPromptHigh(t *testing.T) {
 		{ActionExecute, true},
 	}
 	for _, tt := range tests {
-		got := ShouldPrompt(agent.CareLevelHigh, tt.action)
+		got := ShouldPrompt(agent.CareLevelReview, tt.action)
 		if got != tt.want {
-			t.Errorf("high + %s: got %v, want %v", tt.action, got, tt.want)
-		}
-	}
-}
-
-func TestShouldPromptParanoid(t *testing.T) {
-	for _, action := range []ToolAction{ActionRead, ActionWrite, ActionExecute} {
-		if !ShouldPrompt(agent.CareLevelParanoid, action) {
-			t.Errorf("paranoid + %s: should always prompt", action)
+			t.Errorf("review + %s: got %v, want %v", tt.action, got, tt.want)
 		}
 	}
 }
 
 func TestShouldPromptUnknownCareLevel(t *testing.T) {
-	// Unknown care level defaults to medium behavior
+	// Unknown care level defaults to auto behavior (never prompt)
 	unknown := agent.CareLevel("unknown")
 
-	if ShouldPrompt(unknown, ActionRead) {
-		t.Error("unknown + read: should not prompt (medium default)")
-	}
-	if ShouldPrompt(unknown, ActionWrite) {
-		t.Error("unknown + write: should not prompt (medium default)")
-	}
-	if !ShouldPrompt(unknown, ActionExecute) {
-		t.Error("unknown + execute: should prompt (medium default)")
+	for _, action := range []ToolAction{ActionRead, ActionWrite, ActionExecute} {
+		if ShouldPrompt(unknown, action) {
+			t.Errorf("unknown + %s: should not prompt (auto default)", action)
+		}
 	}
 }
 
@@ -122,14 +85,14 @@ func TestShouldPromptIntegration(t *testing.T) {
 		tool     string
 		wantProm bool
 	}{
-		{agent.CareLevelSkip, "Bash", false},
-		{agent.CareLevelLow, "Write", false},
-		{agent.CareLevelMedium, "Read", false},
-		{agent.CareLevelMedium, "Bash", true},
-		{agent.CareLevelHigh, "Edit", true},
-		{agent.CareLevelHigh, "Glob", false},
-		{agent.CareLevelParanoid, "Grep", true},
-		{agent.CareLevelParanoid, "Bash", true},
+		{agent.CareLevelAuto, "Bash", false},
+		{agent.CareLevelAuto, "Write", false},
+		{agent.CareLevelAuto, "Read", false},
+		{agent.CareLevelReview, "Read", false},
+		{agent.CareLevelReview, "Edit", true},
+		{agent.CareLevelReview, "Glob", false},
+		{agent.CareLevelReview, "Grep", false},
+		{agent.CareLevelReview, "Bash", true},
 	}
 	for _, tt := range tests {
 		action := ClassifyTool(tt.tool)

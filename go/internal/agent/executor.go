@@ -239,6 +239,30 @@ func (e *Executor) simpleCompletion(ctx context.Context, systemPrompt, userMsg s
 	return text, nil
 }
 
+// textOnlyCompletion runs a one-shot completion with no tools — forces text-only output.
+// Used for plan() and extract() where we need JSON output, not tool exploration.
+func (e *Executor) textOnlyCompletion(ctx context.Context, systemPrompt, userMsg string) (string, error) {
+	cp := e.freshProvider()
+	if cc, ok := cp.(*api.ClaudeCodeProvider); ok {
+		cc.AllowedTools = []string{"none"} // sentinel — no real tools available
+	}
+	events := make(chan api.Event, 100)
+	go cp.RunCompletion(ctx, systemPrompt, userMsg, events)
+	var text string
+	for ev := range events {
+		if ev.Type == api.EventTextDelta {
+			text += ev.Text
+		}
+		if ev.Type == api.EventDone || ev.Type == api.EventError {
+			if ev.Error != nil {
+				return text, ev.Error
+			}
+			break
+		}
+	}
+	return text, nil
+}
+
 func (e *Executor) execute(ctx context.Context, decSummary string) string {
 	systemPrompt := fmt.Sprintf(ExecutePromptTemplate, e.domain, CarePrompts[e.careLevel])
 
@@ -286,11 +310,6 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 				})
 			}
 
-		case api.EventDecisionFound:
-			if ev.Decision != nil {
-				e.storeDecision(*ev.Decision)
-			}
-
 		case api.EventError:
 			e.setStatus(DomainError, fullText, ev.Error.Error())
 			return fullText
@@ -308,7 +327,7 @@ func (e *Executor) plan(ctx context.Context, decSummary string) {
 		e.task, decSummary, catList)
 
 	planPrompt := PlanPrompt + fmt.Sprintf("\n\nCRITICAL: The category field MUST be one of: %s. Do NOT invent new categories. Do NOT repeat or rephrase any decision from the ALREADY DECIDED list.", catList)
-	resp, err := e.simpleCompletion(ctx, planPrompt, msg)
+	resp, err := e.textOnlyCompletion(ctx, planPrompt, msg)
 	if err != nil {
 		return // best effort
 	}
@@ -352,10 +371,6 @@ func (e *Executor) fix(ctx context.Context, issues, decSummary string) string {
 		switch ev.Type {
 		case api.EventTextDelta:
 			fullText += ev.Text
-		case api.EventDecisionFound:
-			if ev.Decision != nil {
-				e.storeDecision(*ev.Decision)
-			}
 		case api.EventPermissionRequest:
 			if ev.PermissionReq != nil {
 				e.onEvent(Event{
@@ -378,7 +393,7 @@ func (e *Executor) extract(ctx context.Context, output string) {
 	}
 	msg := fmt.Sprintf("Domain: %s\n\nImplementation output:\n%s", e.domain, truncated)
 
-	resp, err := e.simpleCompletion(ctx, ExtractPrompt, msg)
+	resp, err := e.textOnlyCompletion(ctx, ExtractPrompt, msg)
 	if err != nil {
 		return
 	}
@@ -474,17 +489,16 @@ func (e *Executor) storeDecision(d decision.Decision) {
 	// Regenerate ID
 	d.ID = decision.NextID(*e.allDecisions, d.Category)
 
-	// Apply care level: high/paranoid decisions stay pending for user review
+	// Apply care level
 	level := e.getCareLevel(d.Category)
-	if level == CareLevelHigh || level == CareLevelParanoid {
+	switch level {
+	case CareLevelReview:
+		// Review: clear answer, set pending for user
 		d.Answer = nil
 		d.Delegated = false
 		d.Source = "agent"
-	}
-
-	// Skip: don't even log non-major decisions
-	if level == CareLevelSkip && d.Implicit {
-		return
+	case CareLevelAuto:
+		// Auto: keep the auto answer as-is
 	}
 
 	*e.allDecisions = append(*e.allDecisions, d)
@@ -497,7 +511,10 @@ func (e *Executor) getCareLevel(category string) CareLevel {
 	if level, ok := e.priorities[key]; ok {
 		return level
 	}
-	return e.careLevel // fall back to executor's default
+	if e.careLevel != "" {
+		return e.careLevel
+	}
+	return CareLevelAuto // default
 }
 
 func (e *Executor) normalizeCategoryLocked(cat string) string {
@@ -586,7 +603,7 @@ func normalizeQuestion(q string) string {
 	return strings.ToLower(strings.TrimSpace(result))
 }
 
-// questionsOverlap returns true if two normalized questions share 70%+ of their significant words.
+// questionsOverlap returns true if two normalized questions share 85%+ of their significant words.
 // Ignores common stop words to focus on meaningful terms.
 func questionsOverlap(a, b string) bool {
 	stopWords := map[string]bool{
@@ -619,7 +636,7 @@ func questionsOverlap(a, b string) bool {
 	if len(wordsB) < smaller {
 		smaller = len(wordsB)
 	}
-	return float64(overlap)/float64(smaller) >= 0.7
+	return float64(overlap)/float64(smaller) >= 0.85
 }
 
 func significantWords(s string, stop map[string]bool) []string {

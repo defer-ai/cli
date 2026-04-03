@@ -125,10 +125,10 @@ func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Eve
 		case api.EventDone:
 			decisions := parseDecisions(fullText, a.state.Decisions)
 
-			if len(decisions) == 0 && retries < 2 {
-				a.provider.ResetSession()
-				prompt := "You did not output a ```defer-decisions JSON block. This is required. Output the decisions now.\n\nOriginal task: " + a.state.Task
-				a.runDecompositionSubprocessRetry(ctx, onEvent, retries+1, prompt)
+			// If no decisions found, try a text-only completion (no tools)
+			// so the model focuses entirely on outputting the JSON block.
+			if len(decisions) == 0 {
+				a.runDecompositionTextOnly(ctx, onEvent, fullText)
 				return
 			}
 
@@ -164,32 +164,36 @@ func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Eve
 	}
 }
 
-func (a *Agent) runDecompositionSubprocessRetry(ctx context.Context, onEvent func(Event), retries int, prompt string) {
+// runDecompositionTextOnly retries decomposition with no tools — forces the model
+// to output the defer-decisions JSON block directly without exploring.
+func (a *Agent) runDecompositionTextOnly(ctx context.Context, onEvent func(Event), previousOutput string) {
 	events := make(chan api.Event, 100)
-	// Same read-only restriction as primary decomposition
 	provider := a.provider
 	if cc, ok := provider.(*api.ClaudeCodeProvider); ok {
 		restricted := api.NewClaudeCodeProviderWithCWD(cc.GetModel(), a.cwd)
-		restricted.AllowedTools = []string{"Read", "Glob", "Grep", "WebSearch", "WebFetch"}
+		// Empty AllowedTools with sentinel — no tools available
+		restricted.AllowedTools = []string{"none"}
 		provider = restricted
 	}
-	go provider.RunCompletion(ctx, DecomposePrompt, prompt, events)
+
+	userMsg := "Based on this task, output ONLY a defer-decisions JSON block. No tools. Just output the decisions.\n\nTask: " + a.state.Task
+	go provider.RunCompletion(ctx, DecomposePromptSimple, userMsg, events)
 
 	var fullText string
 	for ev := range events {
 		switch ev.Type {
 		case api.EventTextDelta:
 			fullText += ev.Text
-		case api.EventPermissionRequest:
-			if ev.PermissionReq != nil {
-				onEvent(Event{Type: ExecPermissionRequest, PermissionReq: ev.PermissionReq})
-			}
+			a.mu.Lock()
+			a.state.Output = previousOutput + "\n---\n" + fullText
+			a.mu.Unlock()
+			onEvent(Event{Type: AgentStateChanged})
 		case api.EventDone:
 			decisions := parseDecisions(fullText, a.state.Decisions)
 			if len(decisions) == 0 {
 				a.mu.Lock()
 				a.state.Status = StatusDone
-				a.state.Output = fullText
+				a.state.Output = previousOutput + "\n---\n" + fullText
 				a.mu.Unlock()
 				onEvent(Event{Type: AgentDecisionsReady})
 				return

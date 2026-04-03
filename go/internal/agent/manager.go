@@ -68,10 +68,9 @@ func (m *Manager) LaunchExecutors(ctx context.Context, task string, decisions []
 		groups[cat] = append(groups[cat], d)
 	}
 
-	// Sort by care level (skip first, paranoid last)
+	// Sort by care level (auto first, review last)
 	levelOrder := map[CareLevel]int{
-		CareLevelSkip: 0, CareLevelLow: 1, CareLevelMedium: 2,
-		CareLevelHigh: 3, CareLevelParanoid: 4,
+		CareLevelAuto: 0, CareLevelReview: 1,
 	}
 	sort.Slice(catOrder, func(i, j int) bool {
 		li := levelOrder[priorities[catOrder[i]]]
@@ -85,7 +84,7 @@ func (m *Manager) LaunchExecutors(ctx context.Context, task string, decisions []
 		CWD:          m.cwd,
 		Task:         task,
 		Domain:       "Implementation",
-		CareLevel:    CareLevelMedium,
+		CareLevel:    CareLevelAuto,
 		Priorities:   priorities,
 		Decisions:    decisions,
 		AllDecisions: &m.allDecs,
@@ -120,9 +119,6 @@ func (m *Manager) AutoDecide(priorities map[string]CareLevel) {
 		priMap[strings.ToLower(strings.TrimSpace(k))] = v
 	}
 
-	// Count decisions per category to know which is "first" (most impactful)
-	catFirstSeen := make(map[string]bool) // track if we've seen the first decision in each category
-
 	var autoIDs []string
 	for _, d := range m.agent.Decisions() {
 		if d.Answer != nil {
@@ -132,33 +128,14 @@ func (m *Manager) AutoDecide(priorities map[string]CareLevel) {
 		level := priMap[catKey]
 
 		switch level {
-		case CareLevelSkip:
-			// Auto-decide everything
+		case CareLevelAuto:
+			// Auto-decide all decisions
 			autoIDs = append(autoIDs, d.ID)
-		case CareLevelLow:
-			// Auto-decide everything (user only sees decisions they actively inspect)
-			autoIDs = append(autoIDs, d.ID)
-		case CareLevelMedium:
-			// Show first decision per category, auto-decide the rest
-			if catFirstSeen[catKey] {
-				autoIDs = append(autoIDs, d.ID)
-			} else {
-				catFirstSeen[catKey] = true
-				// Leave pending -- this is the key decision for this domain
-			}
-		case CareLevelHigh:
-			// Show all decisions (none auto-decided)
-			// Don't add to autoIDs
-		case CareLevelParanoid:
-			// Show all decisions + sub-decisions (none auto-decided)
-			// Don't add to autoIDs
+		case CareLevelReview:
+			// Leave all decisions pending for user review
 		default:
-			// Default to medium behavior
-			if catFirstSeen[catKey] {
-				autoIDs = append(autoIDs, d.ID)
-			} else {
-				catFirstSeen[catKey] = true
-			}
+			// Default to auto behavior
+			autoIDs = append(autoIDs, d.ID)
 		}
 	}
 	m.agent.AutoDecide(autoIDs)

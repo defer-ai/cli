@@ -394,7 +394,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					continue
 				}
 				level := priMap[strings.ToLower(strings.TrimSpace(d.Category))]
-				if level != agent.CareLevelParanoid && level != agent.CareLevelHigh {
+				if level != agent.CareLevelReview {
 					var answer string
 					for _, opt := range d.Options {
 						if !strings.Contains(strings.ToLower(opt.Label), "choose for me") {

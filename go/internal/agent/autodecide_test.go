@@ -24,11 +24,11 @@ func TestAutoDecideWithPriorities(t *testing.T) {
 		}},
 	}
 
-	// Skip Stack, paranoid UI, medium Data
+	// Auto for Stack, review for UI, auto for Data
 	priorities := map[string]CareLevel{
-		"Stack": CareLevelSkip,
-		"UI":    CareLevelParanoid,
-		"Data":  CareLevelMedium,
+		"Stack": CareLevelAuto,
+		"UI":    CareLevelReview,
+		"Data":  CareLevelAuto,
 	}
 
 	// Simulate Manager.AutoDecide
@@ -44,7 +44,7 @@ func TestAutoDecideWithPriorities(t *testing.T) {
 		}
 		level := priMap[strings.ToLower(strings.TrimSpace(d.Category))]
 		t.Logf("Decision %s category=%q level=%q", d.ID, d.Category, level)
-		if level != CareLevelParanoid && level != CareLevelHigh {
+		if level != CareLevelReview {
 			autoIDs = append(autoIDs, d.ID)
 		}
 	}
@@ -56,17 +56,17 @@ func TestAutoDecideWithPriorities(t *testing.T) {
 		t.Logf("After: %s answer=%v delegated=%v", d.ID, d.Answer, d.Delegated)
 	}
 
-	// Stack should be auto-decided (skip)
+	// Stack should be auto-decided (auto)
 	if a.state.Decisions[0].Answer == nil {
 		t.Error("STA-0001 should be auto-decided")
 	}
 
-	// UI should still be pending (paranoid)
+	// UI should still be pending (review)
 	if a.state.Decisions[1].Answer != nil {
-		t.Error("UII-0001 should still be pending (paranoid)")
+		t.Error("UII-0001 should still be pending (review)")
 	}
 
-	// Data should be auto-decided (medium)
+	// Data should be auto-decided (auto)
 	if a.state.Decisions[2].Answer == nil {
 		t.Error("DAT-0001 should be auto-decided")
 	}

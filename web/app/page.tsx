@@ -117,13 +117,13 @@ export default function Home() {
           </div>
           <div className="p-5 border border-border rounded-xl bg-surface">
             <h3 className="font-semibold text-foreground text-sm mb-2">
-              Care levels
+              Auto or review
             </h3>
             <p className="text-sm text-muted leading-relaxed">
-              Set how much you care about each domain on a scale from
-              &ldquo;skip&rdquo; to &ldquo;paranoid.&rdquo; Skip auto-delegates
-              everything. Paranoid shows every sub-decision. Same number of
-              decisions either way -- you just choose which ones you see.
+              For each domain, choose: <strong>auto</strong> (agent decides,
+              you challenge after) or <strong>review</strong> (you confirm
+              each decision before execution). Same decisions either way --
+              you just choose which ones you see upfront.
             </p>
           </div>
           <div className="p-5 border border-border rounded-xl bg-surface">

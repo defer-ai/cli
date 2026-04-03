@@ -17,11 +17,8 @@ var careLevels = []struct {
 	Desc  string
 	Bar   string
 }{
-	{agent.CareLevelSkip, "skip", DimGray, "delegate everything", "░░░░░"},
-	{agent.CareLevelLow, "low", lipgloss.Color("4"), "only key question", "█░░░░"},
-	{agent.CareLevelMedium, "medium", lipgloss.Color("3"), "important decisions", "██░░░"},
-	{agent.CareLevelHigh, "high", lipgloss.Color("2"), "ask me everything", "████░"},
-	{agent.CareLevelParanoid, "paranoid", lipgloss.Color("1"), "deep dive", "█████"},
+	{agent.CareLevelAuto, "auto", lipgloss.Color("4"), "agent decides, you challenge", "██░░░"},
+	{agent.CareLevelReview, "review", lipgloss.Color("1"), "you confirm each decision", "█████"},
 }
 
 // PrioritiesModel lets the user set care levels per domain.
@@ -46,7 +43,7 @@ func NewPrioritiesModel(decisions []decision.Decision) PrioritiesModel {
 	}
 	prios := map[string]agent.CareLevel{}
 	for _, c := range cats {
-		prios[c] = agent.CareLevelMedium
+		prios[c] = agent.CareLevelAuto
 	}
 	return PrioritiesModel{
 		categories: cats,

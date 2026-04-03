@@ -30,10 +30,10 @@ func TestPrioritiesInit(t *testing.T) {
 		t.Fatalf("categories = %d, want 3", len(pm.categories))
 	}
 
-	// All should default to medium
+	// All should default to auto
 	for _, cat := range pm.categories {
-		if pm.priorities[cat] != agent.CareLevelMedium {
-			t.Errorf("default priority for %q = %q, want medium", cat, pm.priorities[cat])
+		if pm.priorities[cat] != agent.CareLevelAuto {
+			t.Errorf("default priority for %q = %q, want auto", cat, pm.priorities[cat])
 		}
 	}
 
@@ -87,46 +87,32 @@ func TestPrioritiesAdjust(t *testing.T) {
 	pm := newPriorities(priorityDecisions())
 	cat := pm.categories[0] // "Stack"
 
-	if pm.priorities[cat] != agent.CareLevelMedium {
-		t.Fatalf("initial = %q, want medium", pm.priorities[cat])
+	if pm.priorities[cat] != agent.CareLevelAuto {
+		t.Fatalf("initial = %q, want auto", pm.priorities[cat])
 	}
 
-	// l (right) increases
+	// l (right) increases to review
 	pm, _ = pm.Update(keyRunes("l"))
-	if pm.priorities[cat] != agent.CareLevelHigh {
-		t.Errorf("after right = %q, want high", pm.priorities[cat])
+	if pm.priorities[cat] != agent.CareLevelReview {
+		t.Errorf("after right = %q, want review", pm.priorities[cat])
 	}
 
-	// l again
+	// l at max stays at review
 	pm, _ = pm.Update(keyRunes("l"))
-	if pm.priorities[cat] != agent.CareLevelParanoid {
-		t.Errorf("after right x2 = %q, want paranoid", pm.priorities[cat])
+	if pm.priorities[cat] != agent.CareLevelReview {
+		t.Errorf("after right x2 = %q, want review (capped)", pm.priorities[cat])
 	}
 
-	// l at max stays at paranoid
-	pm, _ = pm.Update(keyRunes("l"))
-	if pm.priorities[cat] != agent.CareLevelParanoid {
-		t.Errorf("after right x3 = %q, want paranoid (capped)", pm.priorities[cat])
-	}
-
-	// h (left) decreases
+	// h (left) decreases back to auto
 	pm, _ = pm.Update(keyRunes("h"))
-	if pm.priorities[cat] != agent.CareLevelHigh {
-		t.Errorf("after left = %q, want high", pm.priorities[cat])
+	if pm.priorities[cat] != agent.CareLevelAuto {
+		t.Errorf("after left = %q, want auto", pm.priorities[cat])
 	}
 
-	// All the way to skip
-	for i := 0; i < 10; i++ {
-		pm, _ = pm.Update(keyRunes("h"))
-	}
-	if pm.priorities[cat] != agent.CareLevelSkip {
-		t.Errorf("at min = %q, want skip", pm.priorities[cat])
-	}
-
-	// h at min stays at skip
+	// h at min stays at auto
 	pm, _ = pm.Update(keyRunes("h"))
-	if pm.priorities[cat] != agent.CareLevelSkip {
-		t.Errorf("below min = %q, want skip (capped)", pm.priorities[cat])
+	if pm.priorities[cat] != agent.CareLevelAuto {
+		t.Errorf("below min = %q, want auto (capped)", pm.priorities[cat])
 	}
 }
 
@@ -134,49 +120,26 @@ func TestPrioritiesFullRange(t *testing.T) {
 	pm := newPriorities(priorityDecisions())
 	cat := pm.categories[0]
 
-	// Walk through all levels: medium -> low -> skip -> low -> medium -> high -> paranoid
-	pm, _ = pm.Update(keyRunes("h")) // medium -> low
-	if pm.priorities[cat] != agent.CareLevelLow {
-		t.Errorf("got %q, want low", pm.priorities[cat])
+	// Walk through all levels: auto -> review -> auto
+	pm, _ = pm.Update(keyRunes("l")) // auto -> review
+	if pm.priorities[cat] != agent.CareLevelReview {
+		t.Errorf("got %q, want review", pm.priorities[cat])
 	}
 
-	pm, _ = pm.Update(keyRunes("h")) // low -> skip
-	if pm.priorities[cat] != agent.CareLevelSkip {
-		t.Errorf("got %q, want skip", pm.priorities[cat])
-	}
-
-	pm, _ = pm.Update(keyRunes("l")) // skip -> low
-	if pm.priorities[cat] != agent.CareLevelLow {
-		t.Errorf("got %q, want low", pm.priorities[cat])
-	}
-
-	pm, _ = pm.Update(keyRunes("l")) // low -> medium
-	if pm.priorities[cat] != agent.CareLevelMedium {
-		t.Errorf("got %q, want medium", pm.priorities[cat])
-	}
-
-	pm, _ = pm.Update(keyRunes("l")) // medium -> high
-	if pm.priorities[cat] != agent.CareLevelHigh {
-		t.Errorf("got %q, want high", pm.priorities[cat])
-	}
-
-	pm, _ = pm.Update(keyRunes("l")) // high -> paranoid
-	if pm.priorities[cat] != agent.CareLevelParanoid {
-		t.Errorf("got %q, want paranoid", pm.priorities[cat])
+	pm, _ = pm.Update(keyRunes("h")) // review -> auto
+	if pm.priorities[cat] != agent.CareLevelAuto {
+		t.Errorf("got %q, want auto", pm.priorities[cat])
 	}
 }
 
 func TestPrioritiesConfirm(t *testing.T) {
 	pm := newPriorities(priorityDecisions())
 
-	// Set Stack to paranoid
-	pm, _ = pm.Update(keyRunes("l")) // medium -> high
-	pm, _ = pm.Update(keyRunes("l")) // high -> paranoid
+	// Set Stack to review
+	pm, _ = pm.Update(keyRunes("l")) // auto -> review
 
-	// Move to Data, set to skip
+	// Move to Data, stays at auto
 	pm, _ = pm.Update(keyRunes("j")) // cursor to Data
-	pm, _ = pm.Update(keyRunes("h")) // medium -> low
-	pm, _ = pm.Update(keyRunes("h")) // low -> skip
 
 	// Press enter to confirm
 	pm, cmd := pm.Update(keyEnter())
@@ -191,14 +154,14 @@ func TestPrioritiesConfirm(t *testing.T) {
 		t.Fatalf("expected PrioritiesConfirmedMsg, got %T", msg)
 	}
 
-	if confirmed.Priorities[pm.categories[0]] != agent.CareLevelParanoid {
-		t.Errorf("Stack = %q, want paranoid", confirmed.Priorities[pm.categories[0]])
+	if confirmed.Priorities[pm.categories[0]] != agent.CareLevelReview {
+		t.Errorf("Stack = %q, want review", confirmed.Priorities[pm.categories[0]])
 	}
-	if confirmed.Priorities[pm.categories[1]] != agent.CareLevelSkip {
-		t.Errorf("Data = %q, want skip", confirmed.Priorities[pm.categories[1]])
+	if confirmed.Priorities[pm.categories[1]] != agent.CareLevelAuto {
+		t.Errorf("Data = %q, want auto", confirmed.Priorities[pm.categories[1]])
 	}
-	if confirmed.Priorities[pm.categories[2]] != agent.CareLevelMedium {
-		t.Errorf("UI = %q, want medium (unchanged)", confirmed.Priorities[pm.categories[2]])
+	if confirmed.Priorities[pm.categories[2]] != agent.CareLevelAuto {
+		t.Errorf("UI = %q, want auto (unchanged)", confirmed.Priorities[pm.categories[2]])
 	}
 
 	_ = pm
@@ -221,24 +184,22 @@ func TestPrioritiesEscConfirms(t *testing.T) {
 func TestPrioritiesPerCategory(t *testing.T) {
 	pm := newPriorities(priorityDecisions())
 
-	// Set Stack to high, Data stays medium, UI to skip
-	pm, _ = pm.Update(keyRunes("l")) // Stack: medium -> high
+	// Set Stack to review, Data stays auto, UI stays auto
+	pm, _ = pm.Update(keyRunes("l")) // Stack: auto -> review
 
-	pm, _ = pm.Update(keyRunes("j")) // cursor to Data (stays medium)
+	pm, _ = pm.Update(keyRunes("j")) // cursor to Data (stays auto)
 
-	pm, _ = pm.Update(keyRunes("j")) // cursor to UI
-	pm, _ = pm.Update(keyRunes("h")) // UI: medium -> low
-	pm, _ = pm.Update(keyRunes("h")) // UI: low -> skip
+	pm, _ = pm.Update(keyRunes("j")) // cursor to UI (stays auto)
 
 	// Verify each is independent
-	if pm.priorities["Stack"] != agent.CareLevelHigh {
-		t.Errorf("Stack = %q, want high", pm.priorities["Stack"])
+	if pm.priorities["Stack"] != agent.CareLevelReview {
+		t.Errorf("Stack = %q, want review", pm.priorities["Stack"])
 	}
-	if pm.priorities["Data"] != agent.CareLevelMedium {
-		t.Errorf("Data = %q, want medium", pm.priorities["Data"])
+	if pm.priorities["Data"] != agent.CareLevelAuto {
+		t.Errorf("Data = %q, want auto", pm.priorities["Data"])
 	}
-	if pm.priorities["UI"] != agent.CareLevelSkip {
-		t.Errorf("UI = %q, want skip", pm.priorities["UI"])
+	if pm.priorities["UI"] != agent.CareLevelAuto {
+		t.Errorf("UI = %q, want auto", pm.priorities["UI"])
 	}
 }
 

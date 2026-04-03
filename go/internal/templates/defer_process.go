@@ -39,11 +39,8 @@ care level per domain, respect it:
 
 | Care Level | Behavior |
 |------------|----------|
-| skip | Auto-decide everything, don't mention |
-| low | Auto-decide everything, briefly note choices |
-| medium | Show first decision per domain, auto-decide the rest |
-| high | Show all decisions, human confirms each |
-| paranoid | Show all decisions including sub-decisions |
+| auto | Agent decides everything. Decisions visible and challengeable. |
+| review | Human confirms each decision before execution proceeds. |
 
 When auto-deciding: pick the most conventional, well-supported option.
 Never pick "Choose for me" — that's a signal for the human to delegate.
@@ -95,7 +92,7 @@ Single-word categories use first 3 letters; multi-word categories use initials o
 
 Most AI coding tools treat implementation as a black box. Defer makes every
 choice visible, challengeable, and reversible. The human controls the granularity
-via care levels — from "just do it" (skip) to "explain every variable name"
-(paranoid). Same number of decisions regardless of care level; the only difference
+via care levels — "auto" (agent decides, you challenge) or "review" (you
+confirm each). Same number of decisions regardless of care level; the only difference
 is which ones the human sees.
 `

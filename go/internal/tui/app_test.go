@@ -249,10 +249,10 @@ func TestDecomposingToPrivileges(t *testing.T) {
 }
 
 func TestPrioritiesToTree(t *testing.T) {
-	// Confirm priorities: skip for Stack, paranoid for UI
+	// Confirm priorities: auto for Stack, review for UI
 	priorities := map[string]agent.CareLevel{
-		"Stack": agent.CareLevelSkip,
-		"UI":    agent.CareLevelParanoid,
+		"Stack": agent.CareLevelAuto,
+		"UI":    agent.CareLevelReview,
 	}
 	m := setupAtTree(t, fakeDecisions(), priorities)
 
@@ -276,32 +276,29 @@ func TestPrioritiesToTree(t *testing.T) {
 	for _, d := range m.tree.decisions {
 		if d.Category == "UI" {
 			if d.Answer != nil {
-				t.Errorf("UI decision %s should be pending (paranoid), got answer %q", d.ID, *d.Answer)
+				t.Errorf("UI decision %s should be pending (review), got answer %q", d.ID, *d.Answer)
 			}
 		}
 	}
 }
 
-func TestAutoDecideSkipsParanoid(t *testing.T) {
+func TestAutoDecideSkipsReview(t *testing.T) {
 	decs := []decision.Decision{
-		{ID: "SKI-0001", Category: "Infra", Question: "CDN?",
+		{ID: "AUT-0001", Category: "Infra", Question: "CDN?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "CloudFront"}}, Source: "user"},
-		{ID: "LOW-0001", Category: "Logging", Question: "Logger?",
+		{ID: "AUT-0002", Category: "Logging", Question: "Logger?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Winston"}}, Source: "user"},
-		{ID: "MED-0001", Category: "Data", Question: "ORM?",
-			Options: []decision.DecisionOption{{Key: "A", Label: "Prisma"}}, Source: "user"},
-		{ID: "HIG-0001", Category: "Auth", Question: "Provider?",
+		{ID: "REV-0001", Category: "Auth", Question: "Provider?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Auth0"}}, Source: "user"},
-		{ID: "PAR-0001", Category: "Security", Question: "Encryption?",
+		{ID: "REV-0002", Category: "Security", Question: "Encryption?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "AES-256"}}, Source: "user"},
 	}
 
 	priorities := map[string]agent.CareLevel{
-		"Infra":    agent.CareLevelSkip,
-		"Logging":  agent.CareLevelLow,
-		"Data":     agent.CareLevelMedium,
-		"Auth":     agent.CareLevelHigh,
-		"Security": agent.CareLevelParanoid,
+		"Infra":    agent.CareLevelAuto,
+		"Logging":  agent.CareLevelAuto,
+		"Auth":     agent.CareLevelReview,
+		"Security": agent.CareLevelReview,
 	}
 	m := setupAtTree(t, decs, priorities)
 
@@ -310,11 +307,10 @@ func TestAutoDecideSkipsParanoid(t *testing.T) {
 		wantAuto bool
 		desc     string
 	}{
-		{"SKI-0001", true, "skip domain should be auto-decided"},
-		{"LOW-0001", true, "low domain should be auto-decided"},
-		{"MED-0001", false, "medium domain keeps first decision pending"},
-		{"HIG-0001", false, "high domain should stay pending"},
-		{"PAR-0001", false, "paranoid domain should stay pending"},
+		{"AUT-0001", true, "auto domain should be auto-decided"},
+		{"AUT-0002", true, "auto domain should be auto-decided"},
+		{"REV-0001", false, "review domain should stay pending"},
+		{"REV-0002", false, "review domain should stay pending"},
 	}
 
 	for _, tt := range tests {
@@ -365,7 +361,7 @@ func TestReviseDecision(t *testing.T) {
 }
 
 func TestReviseTriggersExecutorsWhenAllAnswered(t *testing.T) {
-	// Need at least one skip/medium decision so autoIDs is not nil, which
+	// Need at least one auto decision so autoIDs is not nil, which
 	// prevents the "nil = auto-decide all" behavior in Agent.AutoDecide.
 	decs := []decision.Decision{
 		{ID: "STA-0001", Category: "Stack", Question: "Language?",
@@ -380,12 +376,12 @@ func TestReviseTriggersExecutorsWhenAllAnswered(t *testing.T) {
 	}
 
 	priorities := map[string]agent.CareLevel{
-		"Stack": agent.CareLevelSkip,
-		"UI":    agent.CareLevelParanoid,
+		"Stack": agent.CareLevelAuto,
+		"UI":    agent.CareLevelReview,
 	}
 	m := setupAtTree(t, decs, priorities)
 
-	// Stack is auto-decided (skip), but UI decisions are pending (paranoid).
+	// Stack is auto-decided (auto), but UI decisions are pending (review).
 	// Since autoIDs has STA-0001, the Agent.AutoDecide call only auto-decides
 	// Stack, leaving UI decisions pending.
 	if m.executorsLaunched {
@@ -706,7 +702,7 @@ func TestTaskSubmittedFromCLI(t *testing.T) {
 }
 
 func TestCheckAllDecidedWithPending(t *testing.T) {
-	// Need at least one non-paranoid decision so autoIDs is not nil.
+	// Need at least one non-review decision so autoIDs is not nil.
 	decs := []decision.Decision{
 		{ID: "STA-0001", Category: "Stack", Question: "Lang?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}}, Source: "user"},
@@ -715,8 +711,8 @@ func TestCheckAllDecidedWithPending(t *testing.T) {
 	}
 
 	priorities := map[string]agent.CareLevel{
-		"Stack": agent.CareLevelSkip,
-		"UI":    agent.CareLevelParanoid,
+		"Stack": agent.CareLevelAuto,
+		"UI":    agent.CareLevelReview,
 	}
 	m := setupAtTree(t, decs, priorities)
 

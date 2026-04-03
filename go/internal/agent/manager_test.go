@@ -38,9 +38,9 @@ func TestAutoDecidePriorities(t *testing.T) {
 	mgr := setupManagerWithDecs(t)
 
 	priorities := map[string]CareLevel{
-		"Stack": CareLevelSkip,
-		"UI":    CareLevelParanoid,
-		"Data":  CareLevelMedium,
+		"Stack": CareLevelAuto,
+		"UI":    CareLevelReview,
+		"Data":  CareLevelAuto,
 	}
 	mgr.AutoDecide(priorities)
 
@@ -51,10 +51,10 @@ func TestAutoDecidePriorities(t *testing.T) {
 		wantAuto bool
 		desc     string
 	}{
-		{"STA-0001", true, "skip domain auto-decides"},
-		{"STA-0002", true, "skip domain auto-decides (second)"},
-		{"UII-0001", false, "paranoid domain stays pending"},
-		{"DAT-0001", false, "medium domain keeps first decision per category pending"},
+		{"STA-0001", true, "auto domain auto-decides"},
+		{"STA-0002", true, "auto domain auto-decides (second)"},
+		{"UII-0001", false, "review domain stays pending"},
+		{"DAT-0001", true, "auto domain auto-decides"},
 	}
 
 	for _, tt := range tests {
@@ -91,9 +91,9 @@ func TestAutoDecideCaseInsensitive(t *testing.T) {
 
 	// Use different casing
 	priorities := map[string]CareLevel{
-		"stack": CareLevelSkip,
-		"ui":    CareLevelParanoid,
-		"data":  CareLevelLow,
+		"stack": CareLevelAuto,
+		"ui":    CareLevelReview,
+		"data":  CareLevelAuto,
 	}
 	mgr.AutoDecide(priorities)
 
@@ -103,24 +103,24 @@ func TestAutoDecideCaseInsensitive(t *testing.T) {
 			t.Errorf("Stack decision %s should be auto-decided (case-insensitive)", d.ID)
 		}
 		if d.Category == "UI" && d.Answer != nil {
-			t.Errorf("UI decision %s should be pending (paranoid)", d.ID)
+			t.Errorf("UI decision %s should be pending (review)", d.ID)
 		}
 		if d.Category == "Data" && d.Answer == nil {
-			t.Errorf("Data decision %s should be auto-decided (low)", d.ID)
+			t.Errorf("Data decision %s should be auto-decided (auto)", d.ID)
 		}
 	}
 }
 
-func TestAutoDecideHighAllAutoDecided(t *testing.T) {
-	// When ALL decisions are high/paranoid, autoIDs is nil.
+func TestAutoDecideReviewAllAutoDecided(t *testing.T) {
+	// When ALL decisions are review, autoIDs is nil.
 	// Agent.AutoDecide(nil) auto-decides everything (nil = "all").
 	// This is the actual behavior of the system.
 	mgr := setupManagerWithDecs(t)
 
 	priorities := map[string]CareLevel{
-		"Stack": CareLevelHigh,
-		"UI":    CareLevelHigh,
-		"Data":  CareLevelHigh,
+		"Stack": CareLevelReview,
+		"UI":    CareLevelReview,
+		"Data":  CareLevelReview,
 	}
 	mgr.AutoDecide(priorities)
 
@@ -136,9 +136,9 @@ func TestAutoDecidePicksFirstNonChooseForMe(t *testing.T) {
 	mgr := setupManagerWithDecs(t)
 
 	priorities := map[string]CareLevel{
-		"Stack": CareLevelSkip,
-		"UI":    CareLevelSkip,
-		"Data":  CareLevelSkip,
+		"Stack": CareLevelAuto,
+		"UI":    CareLevelAuto,
+		"Data":  CareLevelAuto,
 	}
 	mgr.AutoDecide(priorities)
 
@@ -263,7 +263,7 @@ func TestAutoDecideOnNilAgent(t *testing.T) {
 	mgr := NewManager(nil, "/tmp/test")
 
 	// Should not panic
-	mgr.AutoDecide(map[string]CareLevel{"Stack": CareLevelSkip})
+	mgr.AutoDecide(map[string]CareLevel{"Stack": CareLevelAuto})
 }
 
 func TestAutoDecideLeadingTrailingSpaces(t *testing.T) {
@@ -277,7 +277,7 @@ func TestAutoDecideLeadingTrailingSpaces(t *testing.T) {
 	m.agent = a
 
 	priorities := map[string]CareLevel{
-		"Stack": CareLevelSkip,
+		"Stack": CareLevelAuto,
 	}
 	m.AutoDecide(priorities)
 

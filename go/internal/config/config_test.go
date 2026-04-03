@@ -29,11 +29,11 @@ func TestMerge_ProjectOverridesGlobal(t *testing.T) {
 	base := &Config{
 		Model:       "claude-3",
 		Provider:    "anthropic",
-		DefaultCare: "medium",
+		DefaultCare: "auto",
 	}
 	override := &Config{
 		Model:       "gpt-4",
-		DefaultCare: "high",
+		DefaultCare: "review",
 	}
 
 	merged := merge(base, override)
@@ -44,8 +44,8 @@ func TestMerge_ProjectOverridesGlobal(t *testing.T) {
 	if merged.Provider != "anthropic" {
 		t.Errorf("Provider = %q, want %q (should keep base)", merged.Provider, "anthropic")
 	}
-	if merged.DefaultCare != "high" {
-		t.Errorf("DefaultCare = %q, want %q", merged.DefaultCare, "high")
+	if merged.DefaultCare != "review" {
+		t.Errorf("DefaultCare = %q, want %q", merged.DefaultCare, "review")
 	}
 }
 
@@ -72,23 +72,23 @@ func TestMergeWithFlags(t *testing.T) {
 func TestMerge_DomainCare(t *testing.T) {
 	base := &Config{
 		DomainCare: map[string]string{
-			"auth":    "paranoid",
-			"logging": "low",
+			"auth":    "review",
+			"logging": "auto",
 		},
 	}
 	override := &Config{
 		DomainCare: map[string]string{
-			"logging": "medium",
-			"billing": "high",
+			"logging": "review",
+			"billing": "review",
 		},
 	}
 
 	merged := merge(base, override)
 
 	want := map[string]string{
-		"auth":    "paranoid",
-		"logging": "medium",
-		"billing": "high",
+		"auth":    "review",
+		"logging": "review",
+		"billing": "review",
 	}
 	if len(merged.DomainCare) != len(want) {
 		t.Fatalf("DomainCare has %d keys, want %d", len(merged.DomainCare), len(want))
@@ -162,8 +162,8 @@ func TestLoadConfig_FullCascade(t *testing.T) {
 	globalCfg := Config{
 		Model:       "claude-3",
 		Provider:    "anthropic",
-		DefaultCare: "medium",
-		DomainCare:  map[string]string{"auth": "paranoid"},
+		DefaultCare: "auto",
+		DomainCare:  map[string]string{"auth": "review"},
 	}
 	writeJSON(t, filepath.Join(globalDir, "config.json"), &globalCfg)
 
@@ -175,7 +175,7 @@ func TestLoadConfig_FullCascade(t *testing.T) {
 	}
 	projectCfg := Config{
 		Model:      "gpt-4",
-		DomainCare: map[string]string{"billing": "high"},
+		DomainCare: map[string]string{"billing": "review"},
 	}
 	writeJSON(t, filepath.Join(projectDir, "config.json"), &projectCfg)
 
@@ -191,14 +191,14 @@ func TestLoadConfig_FullCascade(t *testing.T) {
 	if cfg.Provider != "anthropic" {
 		t.Errorf("Provider = %q, want %q (kept from global)", cfg.Provider, "anthropic")
 	}
-	if cfg.DefaultCare != "medium" {
-		t.Errorf("DefaultCare = %q, want %q (kept from global)", cfg.DefaultCare, "medium")
+	if cfg.DefaultCare != "auto" {
+		t.Errorf("DefaultCare = %q, want %q (kept from global)", cfg.DefaultCare, "auto")
 	}
-	if cfg.DomainCare["auth"] != "paranoid" {
-		t.Errorf("DomainCare[auth] = %q, want %q", cfg.DomainCare["auth"], "paranoid")
+	if cfg.DomainCare["auth"] != "review" {
+		t.Errorf("DomainCare[auth] = %q, want %q", cfg.DomainCare["auth"], "review")
 	}
-	if cfg.DomainCare["billing"] != "high" {
-		t.Errorf("DomainCare[billing] = %q, want %q", cfg.DomainCare["billing"], "high")
+	if cfg.DomainCare["billing"] != "review" {
+		t.Errorf("DomainCare[billing] = %q, want %q", cfg.DomainCare["billing"], "review")
 	}
 }
 

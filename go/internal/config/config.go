@@ -12,7 +12,7 @@ type Config struct {
 	Model       string                  `json:"model,omitempty"`
 	Provider    string                  `json:"provider,omitempty"`
 	APIKey      string                  `json:"apiKey,omitempty"`
-	DefaultCare string                  `json:"defaultCare,omitempty"` // skip/low/medium/high/paranoid
+	DefaultCare string                  `json:"defaultCare,omitempty"` // auto/review
 	DomainCare  map[string]string       `json:"domainCare,omitempty"` // per-domain care level defaults
 	Hooks       map[string][]HookConfig `json:"hooks,omitempty"`      // lifecycle hooks
 	Skills      SkillsConfig            `json:"skills,omitempty"`     // skill directories

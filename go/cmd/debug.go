@@ -51,10 +51,10 @@ func runDebug(task, modelName string, provider api.Provider, cwd string) error {
 	}
 
 	// --- Auto-decide ---
-	fmt.Println("\nSetting all priorities to medium")
+	fmt.Println("\nSetting all priorities to auto")
 	priorities := make(map[string]agent.CareLevel)
 	for cat := range groups {
-		priorities[cat] = agent.CareLevelMedium
+		priorities[cat] = agent.CareLevelAuto
 	}
 	mgr.AutoDecide(priorities)
 	decisions = mgr.Agent().Decisions()

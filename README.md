@@ -4,7 +4,7 @@ Zero-autonomy AI. Every decision is yours.
 
 ## What is defer
 
-Defer decomposes your task into a tree of decisions, lets you set care levels per domain (from skip through paranoid), auto-decides the rest, then implements everything while you watch, chat, and challenge in real-time. Every choice -- from framework to variable name -- is tracked, reversible, and exportable. The agent never asks questions as text; all ambiguity becomes decisions with concrete options.
+Defer decomposes your task into a tree of decisions, lets you set care levels per domain (auto or review), auto-decides the rest, then implements everything while you watch, chat, and challenge in real-time. Every choice -- from framework to variable name -- is tracked, reversible, and exportable. The agent never asks questions as text; all ambiguity becomes decisions with concrete options.
 
 ## Install
 
@@ -41,8 +41,8 @@ You: "build a secret sharing tool"
          |
     2. PRIORITIZE
          | You set care levels per domain
-         | skip/low/medium -> auto-decided (gray in tree)
-         | high/paranoid   -> you must confirm (yellow)
+         | auto -> agent decides, you challenge (gray in tree)
+         | review -> you confirm each decision (yellow)
          |
     3. DECIDE
          | Navigate the decision tree (tab to switch from conversation)
@@ -152,7 +152,7 @@ Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Navigate domains |
-| `h` / `l` or arrows | Adjust care level |
+| `h` / `l` or arrows | Toggle auto/review |
 | `enter` | Confirm all levels |
 
 All keybindings are configurable via `~/.defer/keybindings.json`.
@@ -160,14 +160,11 @@ All keybindings are configurable via `~/.defer/keybindings.json`.
 ## Care Levels
 
 | Level | What happens |
-|----------|------------------------------------------|
-| skip | All auto-decided, hidden from tree |
-| low | All auto-decided, visible |
-| medium | First decision per category shown, rest auto |
-| high | All decisions shown, you confirm each |
-| paranoid | All decisions + sub-decisions shown |
+|--------|------------------------------------------|
+| auto | Agent decides everything. Decisions visible in tree, challengeable anytime. |
+| review | You confirm each decision before execution proceeds. |
 
-Same number of decisions regardless of care level. The only difference: skip/low/medium get auto-answered, high/paranoid stay pending for you.
+Same decisions either way. The difference: auto answers them for you (you challenge after), review leaves them pending (you confirm first).
 
 ## Features
 
@@ -228,10 +225,10 @@ Defer uses a three-level configuration cascade. Later sources override earlier o
 {
   "model": "sonnet",
   "provider": "openai",
-  "defaultCare": "medium",
+  "defaultCare": "auto",
   "domainCare": {
-    "Security": "paranoid",
-    "UI": "low"
+    "Security": "review",
+    "UI": "auto"
   },
   "hooks": {
     "post-execute": [
@@ -380,11 +377,8 @@ Care levels control what the executor is allowed to do without prompting:
 
 | Care Level | Read files | Write files | Run commands |
 |------------|-----------|-------------|-------------|
-| skip | auto | auto | auto |
-| low | auto | auto | auto |
-| medium | auto | auto | prompt |
-| high | auto | prompt | prompt |
-| paranoid | prompt | prompt | prompt |
+| auto | auto | auto | auto |
+| review | auto | prompt | prompt |
 
 Tool classification: `Glob`, `Grep`, `Read` are read actions. `Write`, `Edit` are write actions. `Bash` is an execute action. Unknown tools default to execute (most restrictive).
 

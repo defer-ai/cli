@@ -18,26 +18,17 @@ const (
 // ShouldPrompt returns true if the care level requires user confirmation for this action.
 //
 // Rules:
-//   - skip:     never prompt (all auto-allowed)
-//   - low:      never prompt
-//   - medium:   prompt for execute (Bash)
-//   - high:     prompt for write + execute
-//   - paranoid: prompt for everything
+//   - auto:   never prompt
+//   - review: prompt for write + execute
 func ShouldPrompt(care agent.CareLevel, action ToolAction) bool {
 	switch care {
-	case agent.CareLevelSkip:
+	case agent.CareLevelAuto:
 		return false
-	case agent.CareLevelLow:
-		return false
-	case agent.CareLevelMedium:
-		return action == ActionExecute
-	case agent.CareLevelHigh:
+	case agent.CareLevelReview:
 		return action == ActionWrite || action == ActionExecute
-	case agent.CareLevelParanoid:
-		return true
 	default:
-		// Unknown care level: default to medium behavior
-		return action == ActionExecute
+		// Unknown care level: default to auto behavior
+		return false
 	}
 }
 

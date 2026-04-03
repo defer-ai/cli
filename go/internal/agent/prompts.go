@@ -4,11 +4,8 @@ package agent
 type CareLevel string
 
 const (
-	CareLevelSkip     CareLevel = "skip"
-	CareLevelLow      CareLevel = "low"
-	CareLevelMedium   CareLevel = "medium"
-	CareLevelHigh     CareLevel = "high"
-	CareLevelParanoid CareLevel = "paranoid"
+	CareLevelAuto   CareLevel = "auto"
+	CareLevelReview CareLevel = "review"
 )
 
 const DecomposePrompt = `You are in DEFER MODE. Your ONLY job is to identify decisions.
@@ -83,6 +80,38 @@ Order decisions by impact (highest first).
 
 Output ONLY the JSON block. No text before or after. No questions. No explanations.`
 
+const DecomposePromptSimple = `You are identifying decisions for a software project. Output ONLY a ` + "```defer-decisions" + ` JSON block.
+
+` + "```defer-decisions" + `
+[
+  {
+    "category": "Stack",
+    "question": "Backend language and framework?",
+    "options": [
+      {"key": "A", "label": "Go with Gin"},
+      {"key": "B", "label": "Node.js with Express"},
+      {"key": "C", "label": "Choose for me"}
+    ],
+    "context": "No existing codebase detected",
+    "features": ["api", "backend"],
+    "impact": 9,
+    "dependsOn": []
+  }
+]
+` + "```" + `
+
+Rules for the JSON:
+- "category": short name (e.g. "Stack", "Data", "API", "Auth", "UI", "Scope")
+- "question": clear, specific question
+- "options": 2-6 options, each with "key" (uppercase letter) and "label". Last must be "Choose for me" (unless already decided)
+- "answer": the KEY of the chosen option — ONLY for decisions already made. Omit for new decisions.
+- "context": one sentence explaining why this matters
+- "features": array of lowercase feature names
+- "impact": 0-10, how many other decisions this affects
+- "dependsOn": array of question strings this decision depends on
+
+Do NOT use any tools. Just analyze the task and output decisions.`
+
 const ExecutePromptTemplate = `You are implementing a software project. Domain: %s
 
 %s
@@ -99,11 +128,8 @@ You have these tools: Read, Write, Edit, Bash, Glob, Grep. Use them to implement
 When done, say "Implementation complete."`
 
 var CarePrompts = map[CareLevel]string{
-	CareLevelSkip:     "Implement everything autonomously. Make all decisions yourself. Move fast. Minimal explanation.",
-	CareLevelLow:      "Implement this domain autonomously. Briefly note key decisions you make.",
-	CareLevelMedium:   "Implement this domain autonomously. Explain important implementation choices as you make them.",
-	CareLevelHigh:     "Implement this domain autonomously. Explain every significant decision with your reasoning.",
-	CareLevelParanoid: "Implement this domain autonomously. Explain EVERY decision in detail -- file names, variable names, patterns, config values -- with thorough reasoning for each.",
+	CareLevelAuto:   "Implement autonomously. Make all decisions yourself.",
+	CareLevelReview: "Implement autonomously. Explain every significant decision with your reasoning.",
 }
 
 const VerifyPrompt = `Review this domain implementation. Check for errors, missing pieces, or mismatches with the decisions. Be concise. Only flag real problems.

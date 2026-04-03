@@ -36,20 +36,21 @@ func TestQuestionsOverlap(t *testing.T) {
 		a, b string
 		want bool
 	}{
-		// Should overlap: same question rephrased
+		// Should overlap: identical or near-identical
 		{"backend language choice", "backend language choice", true},
 		{"which database to use", "database to use for storage", true},
-		{"css framework selection method", "css framework selection approach", true},
+		{"short", "short", true},
 
 		// Should NOT overlap: different topics
 		{"database choice", "database schema design", false},
 		{"backend language", "frontend framework", false},
 		{"api authentication method", "api rate limiting strategy", false},
+		// With 0.85 threshold, minor rephrasing no longer triggers overlap
+		{"css framework selection method", "css framework selection approach", false},
 
 		// Edge cases
 		{"", "", false},
 		{"a", "b", false},
-		{"short", "short", true},
 	}
 	for _, tt := range tests {
 		name := tt.a + " vs " + tt.b
@@ -100,7 +101,7 @@ func makeTestExecutor(decs []decision.Decision, categories []string, priorities 
 		allDecisions:    &allDecs,
 		knownCategories: categories,
 		priorities:      priMap,
-		careLevel:       CareLevelMedium,
+		careLevel:       CareLevelAuto,
 		onEvent:         func(Event) {},
 	}
 }
@@ -188,19 +189,19 @@ func TestNormalizeCategoryEmpty(t *testing.T) {
 
 func TestGetCareLevel(t *testing.T) {
 	e := makeTestExecutor(nil, nil, map[string]CareLevel{
-		"stack":    CareLevelHigh,
-		"security": CareLevelParanoid,
+		"stack":    CareLevelReview,
+		"security": CareLevelReview,
 	})
-	e.careLevel = CareLevelMedium
+	e.careLevel = CareLevelAuto
 
 	tests := []struct {
 		category string
 		want     CareLevel
 	}{
-		{"Stack", CareLevelHigh},
-		{"  STACK  ", CareLevelHigh},
-		{"security", CareLevelParanoid},
-		{"Unknown", CareLevelMedium}, // falls back to executor default
+		{"Stack", CareLevelReview},
+		{"  STACK  ", CareLevelReview},
+		{"security", CareLevelReview},
+		{"Unknown", CareLevelAuto}, // falls back to executor default
 	}
 	for _, tt := range tests {
 		t.Run(tt.category, func(t *testing.T) {
@@ -269,9 +270,9 @@ func TestStoreDecisionDifferentNotDeduped(t *testing.T) {
 	}
 }
 
-func TestStoreDecisionCareLevelHigh(t *testing.T) {
+func TestStoreDecisionCareLevelReview(t *testing.T) {
 	e := makeTestExecutor(nil, []string{"Stack"}, map[string]CareLevel{
-		"stack": CareLevelHigh,
+		"stack": CareLevelReview,
 	})
 
 	answer := "Go"
@@ -287,15 +288,15 @@ func TestStoreDecisionCareLevelHigh(t *testing.T) {
 		t.Fatalf("expected 1 decision, got %d", len(decs))
 	}
 
-	// High care level → answer should be cleared (pending for user)
+	// Review care level -> answer should be cleared (pending for user)
 	if decs[0].Answer != nil {
-		t.Errorf("high care level decision should have nil answer, got %q", *decs[0].Answer)
+		t.Errorf("review care level decision should have nil answer, got %q", *decs[0].Answer)
 	}
 }
 
-func TestStoreDecisionCareLevelLow(t *testing.T) {
+func TestStoreDecisionCareLevelAuto(t *testing.T) {
 	e := makeTestExecutor(nil, []string{"Stack"}, map[string]CareLevel{
-		"stack": CareLevelLow,
+		"stack": CareLevelAuto,
 	})
 
 	answer := "Go"
@@ -311,9 +312,9 @@ func TestStoreDecisionCareLevelLow(t *testing.T) {
 		t.Fatalf("expected 1 decision, got %d", len(decs))
 	}
 
-	// Low care level → answer should be preserved
+	// Auto care level -> answer should be preserved
 	if decs[0].Answer == nil || *decs[0].Answer != "Go" {
-		t.Error("low care level decision should keep its answer")
+		t.Error("auto care level decision should keep its answer")
 	}
 }
 
