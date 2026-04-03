@@ -4,15 +4,13 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 type Phase =
   | "idle" | "typing" | "enter"
-  | "thinking-1" | "thinking-2" | "thinking-3"
-  | "domains" | "tree" | "pick-1" | "pick-2"
+  | "decomposing" | "care-levels" | "pick-1" | "pick-2"
   | "detail" | "detail-why" | "detail-shuffle" | "detail-ask" | "detail-answer"
   | "chat-ref" | "chat-ref-response"
   | "executing" | "mid-pause" | "mid-pick" | "resuming" | "done";
 
 const PHASE_ORDER: Phase[] = [
-  "idle", "typing", "enter", "thinking-1", "thinking-2", "thinking-3",
-  "domains", "tree", "pick-1", "pick-2",
+  "idle", "typing", "enter", "decomposing", "care-levels", "pick-1", "pick-2",
   "detail", "detail-why", "detail-shuffle", "detail-ask", "detail-answer",
   "chat-ref", "chat-ref-response",
   "executing", "mid-pause", "mid-pick", "resuming", "done",
@@ -60,68 +58,66 @@ function OptionList({ options, delegate, onPick }: {
   );
 }
 
-type DomainMode = "auto" | "review";
-interface DomainState { name: string; count: number; mode: DomainMode }
-const INIT_DOMAINS: DomainState[] = [
-  { name: "Stack", count: 2, mode: "auto" },
-  { name: "Auth", count: 2, mode: "review" },
-  { name: "Data", count: 2, mode: "auto" },
+type CareLevel = "auto" | "review";
+interface DecisionState { question: string; careLevel: CareLevel; domain: string }
+const INIT_DECISIONS: DecisionState[] = [
+  { question: "Backend framework?", careLevel: "auto", domain: "Stack" },
+  { question: "Frontend framework?", careLevel: "auto", domain: "Stack" },
+  { question: "Authentication method?", careLevel: "review", domain: "Auth" },
+  { question: "Password storage?", careLevel: "review", domain: "Auth" },
+  { question: "Database?", careLevel: "auto", domain: "Data" },
+  { question: "Migration tool?", careLevel: "auto", domain: "Data" },
 ];
 
 const AUTH_OPTS = ["JWT tokens", "Session-based", "OAuth2"];
 const SHUFFLE_OPTS = ["Passport.js", "Auth0 SDK", "Lucia Auth"];
 
-interface TreeEntry { question: string; answer: string; domain: string }
-
 export function Demo() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [typed, setTyped] = useState("");
   const [spinIdx, setSpinIdx] = useState(0);
-  const [domains, setDomains] = useState<DomainState[]>(INIT_DOMAINS);
+  const [decisions, setDecisions] = useState<DecisionState[]>(INIT_DECISIONS);
   const [pick1, setPick1] = useState<number | null>(null);
   const [pick2, setPick2] = useState<number | null>(null);
   const [midPick, setMidPick] = useState<number | null>(null);
   const [toolIdx, setToolIdx] = useState(0);
   const [toolIdx2, setToolIdx2] = useState(0);
-  const [treeVisible, setTreeVisible] = useState(0);
+  const [decisionVisible, setDecisionVisible] = useState(0);
   const [shuffled, setShuffled] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const typingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Spinner
   useEffect(() => {
-    if (phase.startsWith("thinking")) {
+    if (phase === "decomposing" || phase === "executing" || phase === "resuming") {
       const iv = setInterval(() => setSpinIdx((i) => (i + 1) % SPIN.length), 80);
       return () => clearInterval(iv);
     }
   }, [phase]);
 
-  // Auto-advance thinking
+  // Auto-advance decomposing → care-levels
   useEffect(() => {
-    const map: Partial<Record<Phase, [Phase, number]>> = {
-      "thinking-1": ["thinking-2", 2000],
-      "thinking-2": ["thinking-3", 2000],
-      "thinking-3": ["domains", 1500],
-    };
-    const entry = map[phase];
-    if (entry) { const t = setTimeout(() => setPhase(entry[0]), entry[1]); return () => clearTimeout(t); }
+    if (phase === "decomposing") {
+      const t = setTimeout(() => setPhase("care-levels"), 3000);
+      return () => clearTimeout(t);
+    }
   }, [phase]);
 
-  // Reveal tree entries one by one
-  const totalTreeEntries = 6;
+  // Reveal decisions one by one during care-levels
+  const totalDecisions = decisions.length;
   useEffect(() => {
-    if (phase !== "tree") return;
-    setTreeVisible(0);
+    if (phase !== "care-levels") return;
+    setDecisionVisible(0);
     let count = 0;
     const iv = setInterval(() => {
       count++;
-      setTreeVisible(count);
-      if (count >= totalTreeEntries) clearInterval(iv);
-    }, 300);
+      setDecisionVisible(count);
+      if (count >= totalDecisions) clearInterval(iv);
+    }, 250);
     return () => clearInterval(iv);
-  }, [phase]);
+  }, [phase, totalDecisions]);
 
-  // Tool call animations
+  // Tool call animations — first batch
   useEffect(() => {
     if (phase !== "executing") return;
     setToolIdx(0); let i = 0;
@@ -129,6 +125,7 @@ export function Demo() {
     return () => clearInterval(iv);
   }, [phase]);
 
+  // Tool call animations — second batch (after mid-pause resolution)
   useEffect(() => {
     if (phase !== "resuming") return;
     setToolIdx2(0); let i = 0;
@@ -139,7 +136,7 @@ export function Demo() {
   // Scroll
   useEffect(() => {
     requestAnimationFrame(() => containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" }));
-  }, [phase, typed, toolIdx, toolIdx2, pick1, pick2, midPick, treeVisible, shuffled]);
+  }, [phase, typed, toolIdx, toolIdx2, pick1, pick2, midPick, decisionVisible, shuffled]);
 
   // Typing
   const startTyping = useCallback(() => {
@@ -154,34 +151,37 @@ export function Demo() {
 
   useEffect(() => () => { if (typingRef.current) clearTimeout(typingRef.current); }, []);
 
-  const toggleDomain = (idx: number) => setDomains((ds) => ds.map((d, i) => i === idx ? { ...d, mode: d.mode === "auto" ? "review" : "auto" } : d));
-  const reviewCount = domains.filter((d) => d.mode === "review").reduce((a, d) => a + d.count, 0);
+  const toggleCareLevel = (idx: number) => setDecisions((ds) => ds.map((d, i) => i === idx ? { ...d, careLevel: d.careLevel === "auto" ? "review" : "auto" } : d));
+  const reviewDecisions = decisions.filter((d) => d.careLevel === "review");
+  const reviewCount = reviewDecisions.length;
 
   const reset = () => {
     setPhase("idle"); setTyped(""); setPick1(null); setPick2(null);
-    setMidPick(null); setToolIdx(0); setToolIdx2(0); setTreeVisible(0);
-    setShuffled(false); setDomains(INIT_DOMAINS);
+    setMidPick(null); setToolIdx(0); setToolIdx2(0); setDecisionVisible(0);
+    setShuffled(false); setDecisions(INIT_DECISIONS);
   };
 
   const active = phase !== "idle";
-
-  // Build tree entries with visibility indices
-  const autoEntries: (TreeEntry & { idx: number })[] = [];
-  const reviewEntries: (TreeEntry & { idx: number })[] = [];
-  let entryIdx = 0;
-  for (const d of domains) {
-    if (d.mode === "auto") {
-      const items = d.name === "Stack"
-        ? [["Backend framework?", "Bun with Hono"], ["Frontend framework?", "React with Vite"]]
-        : [["Database?", "SQLite with Drizzle"], ["Migration tool?", "Drizzle Kit"]];
-      for (const [q, a] of items) { autoEntries.push({ question: q, answer: a, domain: d.name, idx: entryIdx++ }); }
-    } else {
-      reviewEntries.push({ question: "Authentication method?", answer: pick1 !== null ? AUTH_OPTS[pick1] : "", domain: d.name, idx: entryIdx++ });
-      reviewEntries.push({ question: "Password storage?", answer: pick2 !== null ? ["bcrypt", "argon2"][pick2] : "", domain: d.name, idx: entryIdx++ });
-    }
-  }
-
   const isDetail = phase.startsWith("detail");
+
+  // Auto-resolved answers for "auto" decisions
+  const autoAnswers: Record<string, string> = {
+    "Backend framework?": "Bun with Hono",
+    "Frontend framework?": "React with Vite",
+    "Database?": "SQLite with Drizzle",
+    "Migration tool?": "Drizzle Kit",
+  };
+
+  // Group decisions by domain for display
+  const domainGroups: { domain: string; items: (DecisionState & { globalIdx: number })[] }[] = [];
+  decisions.forEach((d, i) => {
+    const last = domainGroups[domainGroups.length - 1];
+    if (last && last.domain === d.domain) {
+      last.items.push({ ...d, globalIdx: i });
+    } else {
+      domainGroups.push({ domain: d.domain, items: [{ ...d, globalIdx: i }] });
+    }
+  });
 
   return (
     <div className="border border-border rounded-xl bg-surface overflow-hidden">
@@ -199,6 +199,11 @@ export function Demo() {
             <span className="text-gray-500"> | sonnet</span>
           </div>
 
+          {/* Layout hint */}
+          <div className="text-gray-600 text-[10px]">
+            tree (left) · chat (right top) · resolver (right bottom)
+          </div>
+
           {/* Input line */}
           <div>
             <span className="text-orange-500">{"> "}</span>
@@ -208,89 +213,86 @@ export function Demo() {
           </div>
 
           {phase === "idle" && <div><button onClick={startTyping} className={BTN}>type command</button></div>}
-          {phase === "enter" && <div><button onClick={() => setPhase("thinking-1")} className={BTN}>press enter</button></div>}
+          {phase === "enter" && <div><button onClick={() => setPhase("decomposing")} className={BTN}>press enter</button></div>}
 
-          {/* Thinking */}
-          {ord(phase, "thinking-1") && (
+          {/* Decomposing */}
+          {ord(phase, "decomposing") && (
             <div className="space-y-1 border-t border-border/30 pt-3">
-              <div>{phase === "thinking-1"
-                ? <span className="text-orange-500">{SPIN[spinIdx]} Analyzing codebase...</span>
-                : <span className="text-gray-600">{"  "}Analyzed codebase</span>}
+              <div>{phase === "decomposing"
+                ? <span className="text-orange-500">{SPIN[spinIdx]} Decomposing task into decisions...</span>
+                : <span className="text-gray-600">{"  "}Decomposed into {totalDecisions} decisions</span>}
               </div>
-              {ord(phase, "thinking-2") && <div>{phase === "thinking-2"
-                ? <span className="text-orange-500">{SPIN[spinIdx]} Identifying decisions...</span>
-                : <span className="text-gray-600">{"  "}Identified decisions</span>}
-              </div>}
-              {ord(phase, "thinking-3") && <div>{phase === "thinking-3"
-                ? <span className="text-orange-500">{SPIN[spinIdx]} Grouping by domain...</span>
-                : <span className="text-gray-400"><span className="text-orange-500">{"● "}</span><span className="font-bold text-white">Glob</span><span className="text-gray-500">(files matching **/*.ts)</span></span>}
-              </div>}
             </div>
           )}
 
-          {/* Decision tree with inline domain care levels */}
-          {ord(phase, "domains") && (
+          {/* Care levels + decision list */}
+          {ord(phase, "care-levels") && (
             <div className="space-y-1 border-t border-border/30 pt-3">
-              <div className="text-white font-bold text-[11px] mb-2">Decision tree <span className="font-normal text-gray-500">— 6 decisions, 3 domains</span></div>
-              <div className="space-y-1 mb-3">
-                {domains.map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-2">
-                    <span className="text-gray-400 w-14">{d.name}</span>
-                    <span className="text-gray-600">({d.count})</span>
-                    {phase === "domains" ? (
-                      <div className="flex gap-1 ml-2">
-                        <button onClick={() => toggleDomain(i)} className={`px-2 py-0.5 text-[10px] rounded font-mono cursor-pointer transition-colors ${d.mode === "auto" ? "bg-gray-700 text-white" : "bg-transparent text-gray-600 hover:text-gray-400"}`}>auto</button>
-                        <button onClick={() => toggleDomain(i)} className={`px-2 py-0.5 text-[10px] rounded font-mono cursor-pointer transition-colors ${d.mode === "review" ? "bg-orange-500/20 text-orange-500" : "bg-transparent text-gray-600 hover:text-gray-400"}`}>review</button>
+              <div className="text-white font-bold text-[11px] mb-2">
+                Decisions <span className="font-normal text-gray-500">— {totalDecisions} found, set care levels</span>
+              </div>
+
+              {domainGroups.map((group) => (
+                <div key={group.domain} className="mb-2">
+                  <div className="text-gray-500 text-[10px] mb-0.5">{group.domain}</div>
+                  {group.items.map((d) => {
+                    const visible = d.globalIdx < decisionVisible || ord(phase, "pick-1");
+                    const isReview = d.careLevel === "review";
+                    const autoAnswer = autoAnswers[d.question];
+                    const answered = !isReview && autoAnswer;
+                    // For review decisions, show answer after picked
+                    const reviewAnswer = d.question === "Authentication method?" && pick1 !== null ? AUTH_OPTS[pick1]
+                      : d.question === "Password storage?" && pick2 !== null ? ["bcrypt", "argon2"][pick2]
+                      : null;
+
+                    return (
+                      <div key={d.question} className={`transition-opacity duration-500 flex items-center gap-2 ${visible ? "opacity-100" : "opacity-0"}`}>
+                        <div className="pl-2 flex-1">
+                          <span className={isReview ? "text-yellow-400" : "text-gray-500"}>{isReview ? "○ " : "▪ "}</span>
+                          <span className={isReview ? (reviewAnswer ? "text-green-400" : "text-yellow-400") : "text-gray-500"}>
+                            {d.question}
+                          </span>
+                          {answered && <span className="text-gray-600"> {autoAnswer}</span>}
+                          {reviewAnswer && <span className="text-gray-600"> {reviewAnswer}</span>}
+                        </div>
+                        {phase === "care-levels" && visible && (
+                          <div className="flex gap-1 shrink-0">
+                            <button onClick={() => toggleCareLevel(d.globalIdx)} className={`px-2 py-0.5 text-[10px] rounded font-mono cursor-pointer transition-colors ${!isReview ? "bg-gray-700 text-white" : "bg-transparent text-gray-600 hover:text-gray-400"}`}>auto</button>
+                            <button onClick={() => toggleCareLevel(d.globalIdx)} className={`px-2 py-0.5 text-[10px] rounded font-mono cursor-pointer transition-colors ${isReview ? "bg-orange-500/20 text-orange-500" : "bg-transparent text-gray-600 hover:text-gray-400"}`}>review</button>
+                          </div>
+                        )}
+                        {phase !== "care-levels" && visible && (
+                          <span className={`text-[10px] shrink-0 ${isReview ? "text-orange-500" : "text-gray-600"}`}>{d.careLevel}</span>
+                        )}
                       </div>
-                    ) : <span className={`text-[10px] ml-2 ${d.mode === "review" ? "text-orange-500" : "text-gray-600"}`}>{d.mode}</span>}
-                  </div>
-                ))}
-                {phase === "domains" && <button onClick={() => setPhase("tree")} className={BTN + " mt-2"}>confirm care levels</button>}
-              </div>
-              {ord(phase, "tree") && <>
-                {autoEntries.map((e) => (
-                  <div key={e.question} className={`transition-opacity duration-500 ${e.idx < treeVisible || ord(phase, "pick-1") ? "opacity-100" : "opacity-0"}`}>
-                    {autoEntries.indexOf(e) === 0 || autoEntries[autoEntries.indexOf(e) - 1]?.domain !== e.domain ? (
-                      <div className="text-gray-500 text-[10px]">{e.domain}</div>
-                    ) : null}
-                    <div className="text-gray-500 pl-2">
-                      <span>{"▪ "}</span>{e.question} <span className="text-gray-600">{e.answer}</span>
-                    </div>
-                  </div>
-                ))}
-                {reviewEntries.map((e, ri) => (
-                  <div key={e.question} className={`transition-opacity duration-500 ${e.idx < treeVisible || ord(phase, "pick-1") ? "opacity-100" : "opacity-0"}`}>
-                    {ri === 0 && <div className="text-gray-500 text-[10px]">{e.domain}</div>}
-                    <div className="pl-2">
-                      <span className="text-yellow-400">{"○ "}</span>
-                      <span className={e.answer ? "text-green-400" : "text-yellow-400"}>
-                        {e.question}{e.answer && <span className="text-gray-600"> {e.answer}</span>}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {phase === "tree" && reviewCount > 0 && treeVisible >= totalTreeEntries && <>
-                  <div className="text-yellow-400 mt-2 text-[11px]">Paused -- {reviewCount} decisions need your input (n/p to cycle)</div>
-                  <button onClick={() => setPhase("pick-1")} className={BTN + " mt-1"}>resolve decisions</button>
-                </>}
-                {phase === "tree" && reviewCount === 0 && treeVisible >= totalTreeEntries && <button onClick={() => setPhase("executing")} className={BTN + " mt-2"}>execute</button>}
-              </>}
+                    );
+                  })}
+                </div>
+              ))}
+
+              {phase === "care-levels" && decisionVisible >= totalDecisions && (
+                <button onClick={() => reviewCount > 0 ? setPhase("pick-1") : setPhase("executing")} className={BTN + " mt-2"}>
+                  confirm care levels{reviewCount > 0 && ` (${reviewCount} to review)`}
+                </button>
+              )}
             </div>
           )}
 
-          {/* Pick auth method */}
+          {/* Pick auth method (resolver) */}
           {ord(phase, "pick-1") && pick1 === null && (
             <div className="space-y-2 border-t border-border/30 pt-3">
+              <div className="text-gray-500 text-[10px]">resolver</div>
               <div><span className="text-orange-500 font-bold">1/{reviewCount}</span><span className="text-gray-500">{"  Auth"}</span></div>
               <div className="text-white font-bold">Authentication method?</div>
               <OptionList options={["JWT tokens", "Session-based", "OAuth2", "Choose for me"]} delegate="Choose for me" onPick={(i) => setPick1(i === 3 ? 0 : i)} />
             </div>
           )}
 
-          {/* Pick password storage */}
+          {/* Pick password storage (resolver) */}
           {ord(phase, "pick-1") && pick1 !== null && pick2 === null && !isDetail && phase !== "executing" && (
             <div className="space-y-2 border-t border-border/30 pt-3">
               <div className="text-green-400 text-[10px] mb-1">{"✓ "}Authentication method: {AUTH_OPTS[pick1]}</div>
+              <div className="text-gray-500 text-[10px]">resolver</div>
               <div><span className="text-orange-500 font-bold">2/{reviewCount}</span><span className="text-gray-500">{"  Auth"}</span></div>
               <div className="text-white font-bold">Password storage?</div>
               <OptionList options={["bcrypt", "argon2", "Choose for me"]} delegate="Choose for me" onPick={(i) => { setPick2(i === 2 ? 1 : i); setPhase("detail"); }} />
@@ -380,7 +382,7 @@ export function Demo() {
           {/* Chat references */}
           {phase === "chat-ref" && (
             <div className="space-y-2 border-t border-border/30 pt-3">
-              <div className="text-gray-500 text-[10px]">Chat — reference decisions with @ and features with #</div>
+              <div className="text-gray-500 text-[10px]">chat — reference decisions with @ and features with #</div>
               <div className="bg-black/30 rounded p-3 border border-border/20 space-y-2">
                 <div>
                   <span className="text-white font-bold">{"> "}</span>
@@ -412,23 +414,26 @@ export function Demo() {
                   and sessions are stateless (no session table needed).
                 </div>
               </div>
-              <button onClick={() => setPhase("executing")} className={BTN}>continue to execution</button>
+              <button onClick={() => setPhase("executing")} className={BTN}>start implementation</button>
             </div>
           )}
 
-          {/* Execution */}
+          {/* Execution — agent implementing */}
           {ord(phase, "executing") && pick2 !== null && !isDetail && (
             <div className="space-y-1 border-t border-border/30 pt-3">
-              <div className="text-green-400 font-bold">All decisions resolved. Continuing...</div>
+              <div className="text-green-400 font-bold">All initial decisions resolved. Agent implementing...</div>
             </div>
           )}
           {ord(phase, "executing") && !isDetail && (
             <div className="space-y-1 mt-1">{TOOLS_1.slice(0, toolIdx + 1).map((t, i) => <ToolLine key={i} tool={t} />)}</div>
           )}
 
-          {/* Mid-execution pause */}
+          {/* Mid-execution: new decision discovered inline */}
           {ord(phase, "mid-pause") && (
-            <div className="mt-2"><div className="text-yellow-400 font-bold">{"● "}Paused -- 1 new decision</div></div>
+            <div className="mt-2">
+              <div className="text-yellow-400 font-bold">{"● "}Paused — new decision discovered during implementation</div>
+              <div className="text-gray-500 text-[10px] mt-1">resolver</div>
+            </div>
           )}
           {phase === "mid-pause" && (
             <div className="space-y-2 mt-1">
@@ -437,11 +442,11 @@ export function Demo() {
             </div>
           )}
 
-          {/* Resume */}
+          {/* Resume after mid-pause resolution */}
           {ord(phase, "resuming") && midPick !== null && (
             <div className="space-y-1 mt-1">
               <div className="text-green-400 text-[10px]">{"✓ "}Error response format: {["JSON {error, message}", "RFC 7807 Problem Details"][midPick]}</div>
-              <div className="text-green-400 font-bold">Continuing...</div>
+              <div className="text-green-400 font-bold">Continuing implementation...</div>
             </div>
           )}
           {ord(phase, "resuming") && (
@@ -451,7 +456,8 @@ export function Demo() {
           {/* Done */}
           {phase === "done" && (
             <div className="space-y-2 border-t border-border/30 pt-3">
-              <div className="text-green-400 font-bold">{"✓ "}Implementation complete. Tab to switch focus.</div>
+              <div className="text-green-400 font-bold">{"✓ "}Implementation complete</div>
+              <div className="text-gray-500 text-[10px]">tree (left) shows all decisions · chat (right top) for follow-ups · resolver (right bottom) when pending</div>
               <button onClick={reset} className={BTN + " mt-1"}>replay</button>
             </div>
           )}
@@ -461,7 +467,15 @@ export function Demo() {
       {/* Status bar */}
       <div className="px-4 py-2 border-t border-border/50 flex justify-between">
         <span className="text-gray-600 text-[10px] font-mono">
-          {phase === "idle" ? "ready" : phase === "typing" || phase === "enter" ? "input" : phase.startsWith("thinking") ? "thinking" : phase === "executing" || phase === "resuming" ? "executing" : phase === "done" ? "done" : isDetail ? "inspecting" : "asking"}
+          {phase === "idle" ? "ready"
+            : phase === "typing" || phase === "enter" ? "input"
+            : phase === "decomposing" ? "decomposing"
+            : phase === "executing" || phase === "resuming" ? "executing"
+            : phase === "done" ? "done"
+            : phase === "mid-pause" ? "waiting"
+            : isDetail ? "inspecting"
+            : ord(phase, "pick-1") && (pick1 === null || pick2 === null) ? "waiting"
+            : "resolving"}
         </span>
         <span className="text-gray-600 text-[10px] font-mono">n/p cycle pending | click to interact</span>
       </div>
