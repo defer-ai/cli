@@ -165,85 +165,7 @@ func NewModel(task string, provider api.Provider, cwd string, opts ...ModelOpts)
 	return m
 }
 
-// NewScanModel creates a model that scans an existing project.
-func NewScanModel(provider api.Provider, cwd string) Model {
-	ctx, cancel := context.WithCancel(context.Background())
-	tree := NewTreeModel()
-	tree.domainStatuses = make(map[string]string)
-	tree.mode = tmChat
-	tree.chatFocused = true
-	tree.chatInput.Focus()
-	tree.chatLog = append(tree.chatLog, ChatEntry{Type: "system", Text: "Scanning project..."})
 
-	m := Model{
-		task:             "(scanning project)",
-		provider:         provider,
-		cwd:              cwd,
-		tree:             tree,
-		eventChan:        make(chan tea.Msg, 100),
-		ctx:              ctx,
-		cancel:           cancel,
-		domainPriorities: make(map[string]agent.CareLevel),
-		notifications:    NewNotificationManager(),
-		view:             ViewChat,
-	}
-	m.manager = agent.NewManager(provider, cwd)
-
-	// Start scan in background
-	ch := m.eventChan
-	scanCtx := ctx
-	go func() {
-		events := make(chan api.Event, 100)
-		scanUserPrompt := fmt.Sprintf("Scan the project at %s. Start by using Glob to find all files, then Read the key config files (go.mod, package.json, tsconfig.json, Dockerfile, etc.), then Read source files to understand the architecture. Output ALL discovered decisions.", cwd)
-		go provider.RunCompletion(scanCtx, agent.ScanPrompt, scanUserPrompt, events)
-
-		var fullText string
-		for ev := range events {
-			switch ev.Type {
-			case api.EventTextDelta:
-				fullText += ev.Text
-				safeSend(scanCtx, ch, AgentStateChangedMsg{})
-			case api.EventPermissionRequest:
-				if ev.PermissionReq != nil {
-					safeSend(scanCtx, ch, PermissionRequestMsg{
-						ToolName:    ev.PermissionReq.ToolName,
-						Description: permissionDescription(ev.PermissionReq),
-						Input:       ev.PermissionReq.Input,
-						ResponseCh:  ev.PermissionReq.ResponseCh,
-					})
-				}
-			case api.EventDone:
-				decs := agent.ParseScanDecisions(fullText)
-				// Mark all as discovered
-				today := time.Now().Format("2006-01-02")
-				for i := range decs {
-					if decs[i].Answer == nil && len(decs[i].Options) > 0 {
-						answer := decs[i].Options[0].Label
-						decs[i].Answer = &answer
-					}
-					decs[i].Source = "discovered"
-					decs[i].Date = today
-				}
-				// Save immediately
-				store, _ := decision.LoadStore(cwd)
-				if store == nil {
-					store, _ = decision.CreateStore(cwd, "(scanned project)")
-				}
-				if store != nil {
-					store.Decisions = decs
-					_ = decision.SaveStore(cwd, store)
-				}
-				safeSend(scanCtx, ch, AgentDecisionsReadyMsg{Decisions: decs})
-				return
-			case api.EventError:
-				safeSend(scanCtx, ch, AgentDecisionsReadyMsg{Decisions: nil})
-				return
-			}
-		}
-	}()
-
-	return m
-}
 
 func loadSessionID(cwd string) string {
 	data, err := os.ReadFile(filepath.Join(cwd, ".defer", "session_id"))
@@ -865,7 +787,7 @@ Current decisions:
 
 		if m.task == "" {
 			// Check if response contains a defer-decisions block
-			decs := agent.ParseScanDecisions(msg.Text)
+			decs := agent.ParseDecisionsFromText(msg.Text)
 			if len(decs) > 0 {
 				// Agent output decisions directly — use them
 				for i := len(m.tree.chatLog) - 1; i >= 0; i-- {

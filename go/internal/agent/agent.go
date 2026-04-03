@@ -281,8 +281,8 @@ func (a *Agent) AddDecisions(decs []decision.Decision) {
 
 // --- Parsing ---
 
-// ParseScanDecisions extracts decisions from a scan response.
-func ParseScanDecisions(text string) []decision.Decision {
+// ParseDecisionsFromText extracts decisions from any text containing a defer-decisions block.
+func ParseDecisionsFromText(text string) []decision.Decision {
 	return parseDecisions(text, nil)
 }
 
@@ -301,6 +301,7 @@ func parseDecisions(text string, existing []decision.Decision) []decision.Decisi
 			Key   string `json:"key"`
 			Label string `json:"label"`
 		} `json:"options"`
+		Answer    string   `json:"answer"`    // key of pre-selected option (for existing code decisions)
 		Context   string   `json:"context"`
 		Features  []string `json:"features"`
 		Impact    int      `json:"impact"`
@@ -324,16 +325,34 @@ func parseDecisions(text string, existing []decision.Decision) []decision.Decisi
 		for i, o := range item.Options {
 			opts[i] = decision.DecisionOption{Key: o.Key, Label: o.Label}
 		}
+		// Resolve pre-filled answer (for decisions discovered from existing code)
+		var answerPtr *string
+		source := "user"
+		if item.Answer != "" {
+			answerKey := strings.TrimSpace(item.Answer)
+			for _, opt := range opts {
+				if strings.EqualFold(opt.Key, answerKey) {
+					answerPtr = &opt.Label
+					break
+				}
+			}
+			if answerPtr == nil {
+				answerPtr = &answerKey // direct label
+			}
+			source = "discovered"
+		}
+
 		d := decision.Decision{
 			ID:        decision.NextID(all, cat),
 			Category:  cat,
 			Question:  item.Question,
 			Options:   opts,
+			Answer:    answerPtr,
 			Context:   item.Context,
 			Features:  item.Features,
 			Impact:    item.Impact,
 			DependsOn: item.DependsOn,
-			Source:    "user",
+			Source:    source,
 			Date:      today,
 		}
 		all = append(all, d)

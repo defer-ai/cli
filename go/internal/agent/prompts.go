@@ -18,15 +18,22 @@ CRITICAL RULES:
 - Do NOT ask questions as text. NEVER ask the user anything conversationally.
 - Do NOT explain or discuss. Just output decisions.
 - If ANYTHING is unclear or ambiguous about the task, make it a DECISION with options.
-  For example, if the scope is unclear, add a decision: "Project scope?" with options.
-  If the language isn't specified, add a decision: "Language/framework?" with options.
 - Every uncertainty = a decision. Never a text question.
 
-Process:
-1. Identify every decision the task requires. Group by category.
-2. High-level first. Let answers cascade. Bundle related decisions.
-3. Every decision MUST have concrete options plus "Choose for me" as the last option.
-4. If the task is vague, create MORE decisions to cover the ambiguity — not fewer.
+FIRST: Scan the existing codebase using Read, Glob, and Grep tools.
+- Check for: package manager files (go.mod, package.json, Cargo.toml, etc.),
+  config files, framework choices, database schemas, project structure,
+  auth approach, API design, styling, testing, deployment.
+- For decisions that are ALREADY made in the code, include them with the
+  existing choice as option A and the answer pre-filled as "A".
+  Example: if go.mod exists, the language decision is already Go — record it.
+- For decisions that STILL NEED to be made for the task, leave them unanswered
+  with "Choose for me" as the last option.
+
+THEN: Identify every NEW decision the task requires. Group by category.
+- High-level first. Let answers cascade. Bundle related decisions.
+- Every new decision MUST have concrete options plus "Choose for me" as the last option.
+- If the task is vague, create MORE decisions to cover the ambiguity — not fewer.
 
 You MUST output a ` + "```defer-decisions" + ` JSON block:
 
@@ -36,14 +43,28 @@ You MUST output a ` + "```defer-decisions" + ` JSON block:
     "category": "Stack",
     "question": "Backend language and framework?",
     "options": [
-      {"key": "A", "label": "Node.js with Express"},
-      {"key": "B", "label": "Python with FastAPI"},
+      {"key": "A", "label": "Go with Gin"},
+      {"key": "B", "label": "Node.js with Express"},
       {"key": "C", "label": "Choose for me"}
     ],
-    "context": "Determines the entire backend ecosystem",
-    "features": ["messaging", "auth"],
+    "answer": "A",
+    "context": "Already using Go (detected from go.mod)",
+    "features": ["api", "backend"],
     "impact": 9,
     "dependsOn": []
+  },
+  {
+    "category": "Auth",
+    "question": "Authentication method?",
+    "options": [
+      {"key": "A", "label": "JWT tokens"},
+      {"key": "B", "label": "Session-based"},
+      {"key": "C", "label": "Choose for me"}
+    ],
+    "context": "No auth implementation found in codebase",
+    "features": ["auth"],
+    "impact": 7,
+    "dependsOn": ["Backend language and framework?"]
   }
 ]
 ` + "```" + `
@@ -51,17 +72,16 @@ You MUST output a ` + "```defer-decisions" + ` JSON block:
 Rules for the JSON:
 - "category": short name (e.g. "Stack", "Data", "API", "Auth", "UI", "Scope")
 - "question": clear, specific question
-- "options": 2-6 options, each with "key" (uppercase letter) and "label". Last must be "Choose for me"
-- "context": one sentence explaining why this matters
-- "features": array of lowercase feature names this decision relates to (e.g. "messaging", "auth", "encryption", "ui")
-- "impact": 0-10, how many other decisions this affects (10 = foundational, changes everything; 0 = isolated, affects nothing else)
+- "options": 2-6 options, each with "key" (uppercase letter) and "label". Last must be "Choose for me" (unless already decided)
+- "answer": the KEY of the chosen option (e.g. "A") — ONLY for decisions already made in the codebase. Omit for new decisions.
+- "context": one sentence explaining why this matters (mention if detected from code)
+- "features": array of lowercase feature names this decision relates to
+- "impact": 0-10, how many other decisions this affects
 - "dependsOn": array of question strings this decision depends on (empty if independent)
 
-Order decisions by impact (highest first). Foundational decisions like "Backend framework?" (impact 10) should come before isolated decisions like "Date format?" (impact 1).
+Order decisions by impact (highest first).
 
-Output ONLY the JSON block. No text before or after. No questions. No explanations.
-
-You have access to Read, Glob, and Grep tools to explore the project before identifying decisions. Use them to understand the existing codebase.`
+Output ONLY the JSON block. No text before or after. No questions. No explanations.`
 
 const ExecutePromptTemplate = `You are implementing a software project. Domain: %s
 
@@ -101,41 +121,6 @@ Output ONLY a JSON array:
 The first option (A) should always be what was actually chosen. Other options are what COULD have been chosen instead.
 The "features" field is an array of lowercase feature names this decision relates to (e.g. "messaging", "auth", "encryption", "ui").`
 
-const ScanPrompt = `You are analyzing an EXISTING codebase to discover all decisions that were already made.
-
-Use Read, Glob, and Grep tools to explore the project. Look at:
-- Package manager files (go.mod, package.json, Cargo.toml, etc.)
-- Configuration files (tsconfig, eslint, docker, CI/CD)
-- Framework and library choices
-- Database schemas and migrations
-- Project structure and architecture patterns
-- Authentication and authorization approach
-- API design (REST, GraphQL, tRPC)
-- Styling approach (CSS, Tailwind, etc.)
-- Testing framework and patterns
-- Deployment configuration
-
-For each decision you discover, record it with the ACTUAL choice that was made (not options -- the project already chose).
-
-Output a ` + "```defer-decisions" + ` JSON block:
-` + "```defer-decisions" + `
-[
-  {
-    "category": "Stack",
-    "question": "Backend language and framework?",
-    "options": [{"key": "A", "label": "Go with Gin"}],
-    "context": "Discovered from go.mod and main.go"
-  }
-]
-` + "```" + `
-
-Rules:
-- "category": group by domain (Stack, Data, Auth, API, UI, Testing, Deploy, etc.)
-- "question": what was the choice about
-- "options": single option with what was actually chosen (the project already decided)
-- "context": where you found this (which file/config)
-
-Be thorough. Scan the entire project.`
 
 const PlanPrompt = `You are a software architect. Given the task and existing decisions, identify ALL implementation decisions that still need to be made.
 

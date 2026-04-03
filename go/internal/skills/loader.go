@@ -199,15 +199,5 @@ func DefaultSkills() map[string]Skill {
 				"when-to-use": "After execution to check for errors",
 			},
 		},
-		"scan": {
-			Name:        "scan",
-			Description: "Analyze existing codebase to discover decisions",
-			Prompt:      agent.ScanPrompt,
-			Metadata: map[string]string{
-				"name":        "scan",
-				"description": "Analyze existing codebase to discover decisions",
-				"when-to-use": "When scanning an existing project",
-			},
-		},
 	}
 }

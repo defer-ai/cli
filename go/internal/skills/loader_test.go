@@ -100,7 +100,7 @@ The prompt.`
 func TestDefaultSkillsReturnsAll6(t *testing.T) {
 	defaults := DefaultSkills()
 
-	expected := []string{"decompose", "plan", "execute", "extract", "verify", "scan"}
+	expected := []string{"decompose", "plan", "execute", "extract", "verify"}
 	if len(defaults) != len(expected) {
 		t.Errorf("DefaultSkills() returned %d skills, want %d", len(defaults), len(expected))
 	}
@@ -133,8 +133,8 @@ func TestDefaultSkillsPromptsMatchAgent(t *testing.T) {
 	if !strings.Contains(defaults["decompose"].Prompt, "DEFER MODE") {
 		t.Error("decompose prompt should contain 'DEFER MODE'")
 	}
-	if !strings.Contains(defaults["scan"].Prompt, "EXISTING codebase") {
-		t.Error("scan prompt should contain 'EXISTING codebase'")
+	if !strings.Contains(defaults["decompose"].Prompt, "Scan the existing codebase") {
+		t.Error("decompose prompt should contain codebase scanning instructions")
 	}
 	if !strings.Contains(defaults["verify"].Prompt, "VERIFIED OK") {
 		t.Error("verify prompt should contain 'VERIFIED OK'")
