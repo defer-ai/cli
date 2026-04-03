@@ -536,13 +536,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, d := range m.tree.decisions {
 			existing[d.ID] = true
 		}
+		var newDecs []decision.Decision
 		for _, d := range allDecs {
 			if !existing[d.ID] {
 				m.tree.decisions = append(m.tree.decisions, d)
 				existing[d.ID] = true
+				newDecs = append(newDecs, d)
 			}
 		}
-		// Update pending count — only notify if it increased
+		// Show new decisions in chat (both auto and pending)
+		for _, d := range newDecs {
+			if d.Answer != nil {
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+					Type: "system",
+					Text: fmt.Sprintf("Decided: %s → %s", d.Question, *d.Answer),
+				})
+			}
+		}
+		// Notify about pending decisions
 		newPending := m.countPending()
 		if newPending > m.tree.pendingCount && newPending > 0 {
 			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
@@ -699,28 +710,36 @@ If no decisions are incompatible, output: []`, changedDecision.ID, changedDecisi
 		return m, func() tea.Msg { return CheckAllDecidedMsg{} }
 
 	case CheckAllDecidedMsg:
-		if !m.executorsLaunched && m.manager != nil {
-			allAnswered := true
-			for _, d := range m.tree.decisionItems() {
-				if d.IsPending() {
-					allAnswered = false
-					break
-				}
+		allAnswered := true
+		for _, d := range m.tree.decisionItems() {
+			if d.IsPending() {
+				allAnswered = false
+				break
 			}
-			if allAnswered && len(m.tree.decisions) > 0 {
-				ch := m.eventChan
-				ctx := m.ctx
-				m.manager.LaunchExecutors(ctx, m.task, m.tree.decisions, m.domainPriorities, func(ev agent.Event) {
-					safeSend(ctx, ch, BridgeAgentEvent(ev))
-				})
-				m.executorsLaunched = true
-				m.tree.overallStatus = "executing"
-				m.tree.chatThinking = true
-				m.tree.chatThinkStart = time.Now()
-				m.notifications.Push("All decisions answered. Launching executors...", NotifyMedium, 5*time.Second)
-				cmds = append(cmds, ListenForEvents(m.eventChan))
-				return m, tea.Batch(cmds...)
-			}
+		}
+
+		if allAnswered && m.executorsLaunched && m.tree.overallStatus == "waiting" {
+			// Executor is waiting — signal it to continue
+			m.signalExecutorContinue()
+			m.tree.overallStatus = "executing"
+			m.tree.pendingCount = 0
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "All decisions resolved. Continuing..."})
+			return m, nil
+		}
+
+		if allAnswered && !m.executorsLaunched && m.manager != nil && len(m.tree.decisions) > 0 {
+			ch := m.eventChan
+			ctx := m.ctx
+			m.manager.LaunchExecutors(ctx, m.task, m.tree.decisions, m.domainPriorities, func(ev agent.Event) {
+				safeSend(ctx, ch, BridgeAgentEvent(ev))
+			})
+			m.executorsLaunched = true
+			m.tree.overallStatus = "executing"
+			m.tree.chatThinking = true
+			m.tree.chatThinkStart = time.Now()
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "All decisions answered. Launching..."})
+			cmds = append(cmds, ListenForEvents(m.eventChan))
+			return m, tea.Batch(cmds...)
 		}
 		return m, nil
 
