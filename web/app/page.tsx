@@ -98,17 +98,6 @@ export default function Home() {
           </div>
         </div>
 
-        <p className="text-sm text-muted mt-4">
-          Default provider: Claude Code (free with subscription). Set{" "}
-          <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
-            OPENAI_API_KEY
-          </code>{" "}
-          or{" "}
-          <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
-            GROQ_API_KEY
-          </code>{" "}
-          to use other providers.
-        </p>
       </section>
 
       {/* Features */}
@@ -117,12 +106,12 @@ export default function Home() {
         <div className="space-y-4">
           <div className="p-5 border border-border rounded-xl bg-surface">
             <h3 className="font-semibold text-foreground text-sm mb-2">
-              Conversation first
+              Natural language in, decisions out
             </h3>
             <p className="text-sm text-muted leading-relaxed">
-              Chat naturally with the AI. Describe your project, ask questions,
-              change your mind. The agent decomposes your task into decisions
-              and streams everything in real-time. Reference decisions with{" "}
+              Describe your project. The agent decomposes it into decisions
+              with concrete options, grouped by domain. You set care levels,
+              inspect tradeoffs, and override anything. Reference decisions with{" "}
               <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
                 @STA-0001
               </code>{" "}
@@ -287,7 +276,7 @@ export default function Home() {
 
       {/* Keybindings */}
       <section className="max-w-3xl mx-auto px-6 py-10">
-        <h2 className="text-2xl font-bold mb-3">Keyboard-driven</h2>
+        <h2 className="text-2xl font-bold mb-3">Shortcuts</h2>
         <div className="p-5 border border-border rounded-xl bg-surface font-mono text-xs space-y-1">
           <p className="text-muted"># Chat</p>
           <p>
