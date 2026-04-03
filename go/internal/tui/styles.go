@@ -153,3 +153,13 @@ func buildMiddleBorder(innerWidth int) string {
 		bStyle.Render("┤")
 }
 
+// buildChatDivider creates a full-width horizontal line (no side-border connectors).
+func buildChatDivider(width int) string {
+	border := lipgloss.RoundedBorder()
+	bStyle := lipgloss.NewStyle().Foreground(BorderColor)
+	if width < 0 {
+		width = 0
+	}
+	return " " + bStyle.Render(strings.Repeat(border.Top, width-2)) + " "
+}
+

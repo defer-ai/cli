@@ -646,6 +646,43 @@ func toolIcon(text string) string {
 	}
 }
 
+// toolCallLabel converts a tool description like "Running: npm install" into
+// a Claude Code-style label like "Bash(npm install)".
+func toolCallLabel(text string) string {
+	lower := strings.ToLower(text)
+	switch {
+	case strings.HasPrefix(lower, "running:"):
+		arg := strings.TrimSpace(text[len("running:"):])
+		return "Bash(" + arg + ")"
+	case strings.HasPrefix(lower, "run:"):
+		arg := strings.TrimSpace(text[len("run:"):])
+		return "Bash(" + arg + ")"
+	case strings.HasPrefix(lower, "reading "):
+		arg := strings.TrimSpace(text[len("reading "):])
+		return "Read(" + arg + ")"
+	case strings.HasPrefix(lower, "creating "):
+		arg := strings.TrimSpace(text[len("creating "):])
+		return "Write(" + arg + ")"
+	case strings.HasPrefix(lower, "editing "):
+		arg := strings.TrimSpace(text[len("editing "):])
+		return "Edit(" + arg + ")"
+	case strings.HasPrefix(lower, "searching"):
+		arg := strings.TrimSpace(text[len("searching"):])
+		if arg != "" && arg[0] == ':' {
+			arg = strings.TrimSpace(arg[1:])
+		}
+		return "Search(" + arg + ")"
+	case strings.HasPrefix(lower, "finding"):
+		arg := strings.TrimSpace(text[len("finding"):])
+		return "Glob(" + arg + ")"
+	case strings.HasPrefix(lower, "fetching"):
+		arg := strings.TrimSpace(text[len("fetching"):])
+		return "Fetch(" + arg + ")"
+	default:
+		return text
+	}
+}
+
 // resolveDepIDs converts dependency question strings to decision IDs where possible.
 func resolveDepIDs(deps []string, decisions []decision.Decision) []string {
 	var result []string
@@ -775,12 +812,13 @@ func (m TreeModel) viewChat() string {
 		h = 24
 	}
 
-	innerWidth := w - 4
-	if innerWidth < 20 {
-		innerWidth = 20
+	// No bordered box — use full width with small padding
+	contentWidth := w - 2
+	if contentWidth < 20 {
+		contentWidth = 20
 	}
 
-	// Status for title bar
+	// Status text (right-aligned on the first line)
 	rightStatus := m.overallStatus
 	if m.chatThinking {
 		elapsed := time.Since(m.chatThinkStart)
@@ -792,11 +830,23 @@ func (m TreeModel) viewChat() string {
 	}
 
 	var lines []string
-	lines = append(lines, "")
+
+	// First line: right-aligned status
+	if rightStatus != "" {
+		statusStr := DimStyle.Render(rightStatus)
+		statusVisLen := lipgloss.Width(statusStr)
+		pad := contentWidth - statusVisLen
+		if pad < 0 {
+			pad = 0
+		}
+		lines = append(lines, strings.Repeat(" ", pad)+statusStr)
+	} else {
+		lines = append(lines, "")
+	}
 
 	// Chat content area: total height minus fixed UI elements
-	// Fixed: top empty(1) + gap before input(1) + divider(1) + input(1) + divider(1) + footer(1) + borders(2) = 8
-	chatContentH := h - 9 // -9 to account for gap line
+	// Fixed: status line(1) + gap before input(1) + divider(1) + input(1) + divider(1) + footer(1) = 6
+	chatContentH := h - 6
 	if len(m.completions) > 0 {
 		chatContentH-- // completions overlay takes one line
 	}
@@ -805,11 +855,10 @@ func (m TreeModel) viewChat() string {
 	}
 
 	// Render chat entries with markdown and word-wrap
-	maxTextWidth := innerWidth - 2 // border already adds 1 space each side
+	maxTextWidth := contentWidth - 2
 	if maxTextWidth < 20 {
 		maxTextWidth = 20
 	}
-	const maxCollapsedLines = 6 // agent messages collapse after this many lines
 
 	const maxChildLines = 5 // collapse topic children after this many
 
@@ -820,22 +869,28 @@ func (m TreeModel) viewChat() string {
 			prevType = m.chatLog[i-1].Type
 		}
 
-		// Add separator between different message types
-		needsSep := prevType != "" && prevType != entry.Type &&
-			!(prevType == "topic" && entry.Type == "topic") &&
-			!(prevType == "tool" && entry.Type == "tool")
-		if needsSep {
-			chatLines = append(chatLines, "")
+		// Blank line between different entry groups
+		// Tool calls within a group (topic-topic, tool-tool): no blank line
+		// Everything else: blank line separator
+		if prevType != "" {
+			switch {
+			case prevType == "topic" && entry.Type == "topic":
+				// no blank line between consecutive topics
+			case prevType == "tool" && entry.Type == "tool":
+				// no blank line between consecutive standalone tools
+			case prevType == "subtool" && entry.Type == "subtool":
+				// no blank line between consecutive subtools
+			default:
+				chatLines = append(chatLines, "")
+			}
 		}
 
 		switch entry.Type {
 		case "topic":
-			// Topics: white text, with icon
-			icon := toolIcon(entry.Text)
-			for _, wl := range wrapText(entry.Text, maxTextWidth-4) {
-				chatLines = append(chatLines, " "+BoldWhite.Render(icon+" "+wl))
-			}
-			// Render children (subtools) indented and grey
+			// Claude Code style: ● BoldWhite(topic text)
+			label := toolCallLabel(entry.Text)
+			chatLines = append(chatLines, " "+AccentStyle.Render("●")+" "+BoldWhite.Render(label))
+			// Render children indented with └ connector
 			childCount := len(entry.Children)
 			showCount := childCount
 			if !entry.Expanded && childCount > maxChildLines {
@@ -843,29 +898,27 @@ func (m TreeModel) viewChat() string {
 			}
 			for ci := 0; ci < showCount; ci++ {
 				child := entry.Children[ci]
-				childIcon := toolIcon(child.Text)
-				for _, wl := range wrapText(child.Text, maxTextWidth-7) {
-					chatLines = append(chatLines, " "+DimStyle.Render("  "+childIcon+" "+wl))
+				childLabel := toolCallLabel(child.Text)
+				for li, wl := range wrapText(childLabel, maxTextWidth-5) {
+					if li == 0 {
+						chatLines = append(chatLines, "  "+DimStyle.Render(" └ "+wl))
+					} else {
+						chatLines = append(chatLines, "  "+DimStyle.Render("   "+wl))
+					}
 				}
 			}
 			if !entry.Expanded && childCount > maxChildLines {
 				remaining := childCount - maxChildLines
-				chatLines = append(chatLines, " "+DimStyle.Render(fmt.Sprintf("  ... %d more (ctrl+o to expand)", remaining)))
-			}
-			// Trailing space after topic block
-			if childCount > 0 {
-				chatLines = append(chatLines, "")
+				chatLines = append(chatLines, "  "+DimStyle.Render(fmt.Sprintf(" └ ... %d more (ctrl+o to expand)", remaining)))
 			}
 
 		case "tool":
-			// Standalone tool (no parent topic)
-			icon := toolIcon(entry.Text)
-			for _, wl := range wrapText(entry.Text, maxTextWidth-5) {
-				chatLines = append(chatLines, " "+DimStyle.Render(" "+icon+" "+wl))
-			}
+			// Standalone tool: ● AccentStyle(icon + text)
+			label := toolCallLabel(entry.Text)
+			chatLines = append(chatLines, " "+AccentStyle.Render("● "+label))
 
 		case "agent":
-			// Render agent response: first line white (title), rest grey (collapsible)
+			// Render agent response with markdown
 			var renderedLines []string
 			if m.mdRenderer != nil {
 				if md, err := m.mdRenderer.Render(entry.Text); err == nil {
@@ -884,15 +937,9 @@ func (m TreeModel) viewChat() string {
 				renderedLines = wrapText(entry.Text, maxTextWidth-1)
 			}
 
-			// First non-empty line is the "title" (white), rest is grey — no collapsing
-			titleDone := false
+			// All lines rendered directly — blank lines between paragraphs preserved
 			for _, rl := range renderedLines {
-				if !titleDone && strings.TrimSpace(rl) != "" {
-					chatLines = append(chatLines, " "+BoldWhite.Render(strings.TrimSpace(rl)))
-					titleDone = true
-					continue
-				}
-				chatLines = append(chatLines, " "+DimStyle.Render(strings.TrimRight(rl, " ")))
+				chatLines = append(chatLines, " "+strings.TrimRight(rl, " "))
 			}
 
 		case "user":
@@ -936,7 +983,6 @@ func (m TreeModel) viewChat() string {
 	}
 
 	// Anchor content to bottom with scroll offset
-	// chatScrollUp = 0 means at bottom, >0 means scrolled up
 	scrollUp := m.chatScrollUp
 	if scrollUp > len(chatLines)-chatContentH {
 		scrollUp = len(chatLines) - chatContentH
@@ -959,7 +1005,6 @@ func (m TreeModel) viewChat() string {
 	emptyAbove := chatContentH - len(visible)
 	for i := 0; i < emptyAbove; i++ {
 		if len(m.chatLog) == 0 && i == emptyAbove-1 {
-			// Show placeholder at the bottom of the empty area
 			lines = append(lines, " "+DimStyle.Render("Describe your project to get started, or ask anything."))
 		} else {
 			lines = append(lines, "")
@@ -977,7 +1022,7 @@ func (m TreeModel) viewChat() string {
 	}
 
 	// Input divider + completions overlay + input
-	lines = append(lines, buildMiddleBorder(innerWidth))
+	lines = append(lines, buildChatDivider(contentWidth))
 	if len(m.completions) > 0 {
 		var parts []string
 		for i, c := range m.completions {
@@ -990,13 +1035,13 @@ func (m TreeModel) viewChat() string {
 		}
 		lines = append(lines, "  "+strings.Join(parts, "  "))
 	}
-	// Width = inner width - left padding(1) - prompt width - cursor(1)
+	// Width = content width - left padding(1) - prompt width - cursor(1)
 	promptW := lipgloss.Width(m.chatInput.Prompt)
-	m.chatInput.Width = innerWidth - 2 - promptW
+	m.chatInput.Width = contentWidth - 2 - promptW
 	lines = append(lines, " "+m.chatInput.View())
 
-	// Footer
-	lines = append(lines, buildMiddleBorder(innerWidth))
+	// Footer divider + actions
+	lines = append(lines, buildChatDivider(contentWidth))
 	chatFooterActions := []footerAction{
 		{"enter", "send"},
 		{"@ID/#TAG", "reference"},
@@ -1004,10 +1049,9 @@ func (m TreeModel) viewChat() string {
 		{"tab", "tree"},
 		{"ctrl+q", "quit"},
 	}
-	lines = append(lines, renderFooter(chatFooterActions, innerWidth))
+	lines = append(lines, renderFooter(chatFooterActions, contentWidth))
 
-	content := strings.Join(lines, "\n")
-	return buildBorderedBox(content, innerWidth, "", rightStatus)
+	return strings.Join(lines, "\n")
 }
 
 // ========== TREE VIEW ==========
