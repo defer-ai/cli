@@ -33,8 +33,8 @@ type Bindings map[Action][]string
 // DefaultBindings returns vim-style defaults.
 func DefaultBindings() Bindings {
 	return Bindings{
-		ActionNavigateUp:   {"k", "up"},
-		ActionNavigateDown: {"j", "down"},
+		ActionNavigateUp:   {"up"},
+		ActionNavigateDown: {"down"},
 		ActionInspect:      {"enter"},
 		ActionBack:         {"q", "esc"},
 		ActionSearch:       {"/"},

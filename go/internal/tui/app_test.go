@@ -22,6 +22,22 @@ func keyEnter() tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyEnter}
 }
 
+func keyDown() tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyDown}
+}
+
+func keyUp() tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyUp}
+}
+
+func keyLeft() tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyLeft}
+}
+
+func keyRight() tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRight}
+}
+
 func keyEsc() tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyEscape}
 }

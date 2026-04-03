@@ -41,8 +41,8 @@ func TestDefaultBindingsSpecificKeys(t *testing.T) {
 		action Action
 		want   []string
 	}{
-		{ActionNavigateUp, []string{"k", "up"}},
-		{ActionNavigateDown, []string{"j", "down"}},
+		{ActionNavigateUp, []string{"up"}},
+		{ActionNavigateDown, []string{"down"}},
 		{ActionInspect, []string{"enter"}},
 		{ActionBack, []string{"q", "esc"}},
 		{ActionSearch, []string{"/"}},
@@ -73,9 +73,9 @@ func TestResolveFindsAction(t *testing.T) {
 		key  string
 		want Action
 	}{
-		{"k", ActionNavigateUp},
 		{"up", ActionNavigateUp},
-		{"j", ActionNavigateDown},
+		{"up", ActionNavigateUp},
+		{"down", ActionNavigateDown},
 		{"down", ActionNavigateDown},
 		{"/", ActionSearch},
 		{"tab", ActionChat},
@@ -148,7 +148,7 @@ func TestLoadBindingsFromCustomFile(t *testing.T) {
 
 	// Non-overridden actions should keep defaults
 	gotDown := b[ActionNavigateDown]
-	wantDown := []string{"j", "down"}
+	wantDown := []string{"down"}
 	if !slices.Equal(gotDown, wantDown) {
 		t.Errorf("navigate.down = %v, want %v (should keep default)", gotDown, wantDown)
 	}

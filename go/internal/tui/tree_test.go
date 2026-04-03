@@ -51,7 +51,7 @@ func TestTreeNavigation(t *testing.T) {
 
 	// Press j 3 times
 	for i := 0; i < 3; i++ {
-		tm, _ = updateTree(t, tm, keyRunes("j"))
+		tm, _ = updateTree(t, tm, keyDown())
 	}
 	if tm.cursor != 3 {
 		t.Errorf("cursor after 3 j = %d, want 3", tm.cursor)
@@ -59,7 +59,7 @@ func TestTreeNavigation(t *testing.T) {
 
 	// Press k twice
 	for i := 0; i < 2; i++ {
-		tm, _ = updateTree(t, tm, keyRunes("k"))
+		tm, _ = updateTree(t, tm, keyUp())
 	}
 	if tm.cursor != 1 {
 		t.Errorf("cursor after 2 k = %d, want 1", tm.cursor)
@@ -67,7 +67,7 @@ func TestTreeNavigation(t *testing.T) {
 
 	// Press j 10 times -- should cap at 4 (5 decisions, 0-indexed)
 	for i := 0; i < 10; i++ {
-		tm, _ = updateTree(t, tm, keyRunes("j"))
+		tm, _ = updateTree(t, tm, keyDown())
 	}
 	if tm.cursor != 4 {
 		t.Errorf("cursor after overflow = %d, want 4", tm.cursor)
@@ -78,7 +78,7 @@ func TestTreeNavigationAtBoundaries(t *testing.T) {
 	tm := newTree(fiveDecisions())
 
 	// Press k at top -- should stay at 0
-	tm, _ = updateTree(t, tm, keyRunes("k"))
+	tm, _ = updateTree(t, tm, keyUp())
 	if tm.cursor != 0 {
 		t.Errorf("cursor after k at top = %d, want 0", tm.cursor)
 	}
@@ -132,7 +132,7 @@ func TestDetailOptionPicking(t *testing.T) {
 	}
 
 	// Move to option index 1 (second option: "Rust")
-	tm, _ = updateTree(t, tm, keyRunes("j"))
+	tm, _ = updateTree(t, tm, keyDown())
 	if tm.optCursor != 1 {
 		t.Fatalf("optCursor = %d, want 1", tm.optCursor)
 	}
@@ -172,7 +172,7 @@ func TestDetailOptionPickingOnAnsweredDecision(t *testing.T) {
 	tm, _ = updateTree(t, tm, keyEnter()) // detail for STA-0001 (already answered)
 
 	// Navigate to second option and pick it
-	tm, _ = updateTree(t, tm, keyRunes("j"))
+	tm, _ = updateTree(t, tm, keyDown())
 	var cmd tea.Cmd
 	tm, cmd = updateTree(t, tm, keyEnter())
 
@@ -478,7 +478,7 @@ func TestOptionCursorBoundary(t *testing.T) {
 
 	// Navigate past last option
 	for i := 0; i < 10; i++ {
-		tm, _ = updateTree(t, tm, keyRunes("j"))
+		tm, _ = updateTree(t, tm, keyDown())
 	}
 	if tm.optCursor != 1 {
 		t.Errorf("optCursor = %d, want 1 (capped at last option)", tm.optCursor)
@@ -486,7 +486,7 @@ func TestOptionCursorBoundary(t *testing.T) {
 
 	// Navigate above first option
 	for i := 0; i < 10; i++ {
-		tm, _ = updateTree(t, tm, keyRunes("k"))
+		tm, _ = updateTree(t, tm, keyUp())
 	}
 	if tm.optCursor != 0 {
 		t.Errorf("optCursor = %d, want 0 (capped at first option)", tm.optCursor)
@@ -839,11 +839,11 @@ func TestSplitPaneOptionNavigation(t *testing.T) {
 	tm, _ = updateTree(t, tm, keyEnter()) // detail
 
 	// Navigate options with j/k -- should still work in split pane
-	tm, _ = updateTree(t, tm, keyRunes("j"))
+	tm, _ = updateTree(t, tm, keyDown())
 	if tm.optCursor != 1 {
 		t.Errorf("optCursor = %d, want 1 after j in split pane", tm.optCursor)
 	}
-	tm, _ = updateTree(t, tm, keyRunes("k"))
+	tm, _ = updateTree(t, tm, keyUp())
 	if tm.optCursor != 0 {
 		t.Errorf("optCursor = %d, want 0 after k in split pane", tm.optCursor)
 	}

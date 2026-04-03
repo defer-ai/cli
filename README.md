@@ -118,7 +118,7 @@ Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` or arrows | Navigate decisions |
+| `↑` / `↓` or arrows | Navigate decisions |
 | `enter` | Inspect decision |
 | `/` | Filter decisions by ID, category, or question |
 | `f` or `ctrl+f` | Find and jump to a decision, category, or feature |
@@ -128,7 +128,7 @@ Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` or arrows | Navigate options |
+| `↑` / `↓` or arrows | Navigate options |
 | `enter` | Confirm selected option |
 | `c` | Type a custom answer |
 | `s` | Shuffle -- generate new options via AI |
@@ -145,8 +145,8 @@ Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 | `@` + type | Autocomplete decision IDs |
 | `tab` | Cycle autocomplete (when completions visible), otherwise switch focus |
 | `ctrl+o` | Toggle expand/collapse on last agent topic |
-| `j` / `k` | Navigate resolver options (when input is empty) |
-| `n` / `p` | Cycle through pending decisions in resolver |
+| `↑` / `↓` | Navigate resolver options (when input is empty) |
+| `←` / `→` | Cycle through pending decisions in resolver |
 
 All keybindings are configurable via `~/.defer/keybindings.json`.
 
@@ -247,14 +247,14 @@ Create `~/.defer/keybindings.json` to override default bindings:
 
 ```json
 {
-  "navigate.up": ["k", "up"],
-  "navigate.down": ["j", "down"],
+  "navigate.up": ["up"],
+  "navigate.down": ["down"],
   "inspect": ["enter"],
   "back": ["q", "esc"],
   "search": ["/"],
   "focus.switch": ["tab"],
-  "resolver.next": ["n"],
-  "resolver.prev": ["p"],
+  "resolver.next": ["right"],
+  "resolver.prev": ["left"],
   "custom": ["c"],
   "shuffle": ["s"],
   "why": ["w"],

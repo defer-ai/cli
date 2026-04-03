@@ -438,12 +438,12 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 		// Option navigation -- works for BOTH pending AND answered decisions
 		if sel != nil && len(sel.Options) > 0 {
 			switch key {
-			case "j", "down":
+			case "down":
 				if m.optCursor < len(sel.Options)-1 {
 					m.optCursor++
 				}
 				return m, nil
-			case "k", "up":
+			case "up":
 				if m.optCursor > 0 {
 					m.optCursor--
 				}
@@ -549,12 +549,12 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 		m.groupByFeature = !m.groupByFeature
 		m.cursor = 0
 		return m, nil
-	case "j", "down":
+	case "down":
 		if m.cursor < decCount-1 {
 			m.cursor++
 		}
 		return m, nil
-	case "k", "up":
+	case "up":
 		if m.cursor > 0 {
 			m.cursor--
 		}
@@ -578,11 +578,11 @@ func (m TreeModel) handleResolverKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	// Priorities mode
 	if m.showingPriorities {
 		switch key {
-		case "j", "down":
+		case "down":
 			if m.priorityCursor < len(m.priorityCategories)-1 {
 				m.priorityCursor++
 			}
-		case "k", "up":
+		case "up":
 			if m.priorityCursor > 0 {
 				m.priorityCursor--
 			}
@@ -616,21 +616,21 @@ func (m TreeModel) handleResolverKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	}
 
 	switch key {
-	case "j", "down":
+	case "down":
 		if m.resolverOptIdx < len(pendingDecs[m.resolverIdx].Options)-1 {
 			m.resolverOptIdx++
 		}
-	case "k", "up":
+	case "up":
 		if m.resolverOptIdx > 0 {
 			m.resolverOptIdx--
 		}
-	case "n":
+	case "right":
 		m.resolverIdx++
 		if m.resolverIdx >= len(pendingDecs) {
 			m.resolverIdx = 0
 		}
 		m.resolverOptIdx = 0
-	case "p":
+	case "left":
 		m.resolverIdx--
 		if m.resolverIdx < 0 {
 			m.resolverIdx = len(pendingDecs) - 1
@@ -716,7 +716,7 @@ func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 		m.chatFocused = false
 		m.chatInput.Blur()
 		return m, nil
-	case "j", "down":
+	case "down":
 		if inputEmpty {
 			m.chatScrollUp -= 3
 			if m.chatScrollUp < 0 {
@@ -725,7 +725,7 @@ func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 			return m, nil
 		}
 		// Fall through to text input
-	case "k", "up":
+	case "up":
 		if inputEmpty {
 			m.chatScrollUp += 3
 			return m, nil
@@ -1419,7 +1419,7 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 	if m.jumpSearchMode {
 		footerActions = []footerAction{
 			{"type", "find"},
-			{"j/k", "select"},
+			{"↑↓", "select"},
 			{"enter", "jump"},
 			{"esc", "close"},
 		}
@@ -1431,7 +1431,7 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 		}
 	} else {
 		footerActions = []footerAction{
-			{"j/k", "navigate"},
+			{"↑↓", "navigate"},
 			{"enter", "inspect"},
 			{"/", "filter"},
 			{"g", "group"},
@@ -1588,7 +1588,7 @@ func (m TreeModel) renderLeftDetailPanel(innerWidth, h int, active bool) string 
 		}
 	} else {
 		detailFooterActions = []footerAction{
-			{"j/k", "pick"},
+			{"↑↓", "pick"},
 			{"enter", "confirm"},
 			{"c", "custom"},
 			{"w", "why"},
@@ -1799,7 +1799,7 @@ func (m TreeModel) renderChatPanel(w, h int) string {
 	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
 	chatFooterActions := []footerAction{
 		{"enter", "send"},
-		{"j/k", "scroll"},
+		{"↑↓", "scroll"},
 	}
 	lines = append(lines, renderFooter(chatFooterActions, innerWidth))
 
@@ -1831,9 +1831,9 @@ func (m TreeModel) renderResolverPanel(w, h int, resolverLines []string) string 
 	// Footer
 	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
 	footerActions := []footerAction{
-		{"j/k", "pick"},
+		{"↑↓", "pick"},
 		{"enter", "confirm"},
-		{"n/p", "cycle"},
+		{"←→", "cycle"},
 	}
 	lines = append(lines, renderFooter(footerActions, innerWidth))
 
@@ -2494,7 +2494,7 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	if m.jumpSearchMode {
 		footerActions = []footerAction{
 			{"type", "to find"},
-			{"j/k", "select"},
+			{"↑↓", "select"},
 			{"enter", "jump"},
 			{"esc", "close"},
 		}
@@ -2506,7 +2506,7 @@ func (m TreeModel) viewTreePane(w, h int) string {
 		}
 	} else {
 		footerActions = []footerAction{
-			{"j/k", "navigate"},
+			{"↑↓", "navigate"},
 			{"enter", "inspect"},
 			{"/", "filter"},
 			{"f", "find"},
@@ -2681,7 +2681,7 @@ func (m TreeModel) viewDetailPane(w, h int) string {
 	// Footer
 	lines = append(lines, buildMiddleBorder(innerWidth))
 	detailFooterActions := []footerAction{
-		{"j/k", "pick"},
+		{"↑↓", "pick"},
 		{"enter", "confirm"},
 		{"c", "custom"},
 		{"s", "shuffle"},
@@ -2965,7 +2965,7 @@ func (m TreeModel) viewDetail() string {
 		}
 	} else {
 		detailFooterActions = []footerAction{
-			{"j/k", "pick"},
+			{"↑↓", "pick"},
 			{"enter", "confirm"},
 			{"c", "custom"},
 			{"s", "shuffle"},
