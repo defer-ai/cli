@@ -12,7 +12,7 @@ func priorityDecisions() []decision.Decision {
 		{ID: "@STA-0001", Category: "Stack", Question: "Lang?", Source: "user"},
 		{ID: "@STA-0002", Category: "Stack", Question: "Framework?", Source: "user"},
 		{ID: "@DAT-0001", Category: "Data", Question: "DB?", Source: "user"},
-		{ID: "@UIX-0001", Category: "UI", Question: "CSS?", Source: "user"},
+		{ID: "@UII-0001", Category: "UI", Question: "CSS?", Source: "user"},
 	}
 }
 

@@ -23,7 +23,11 @@ func categoryPrefix(category string) string {
 		if len(w) >= 3 {
 			return w[:3]
 		}
-		return (w + "XXX")[:3]
+		// Pad short words by repeating the last character: UI → UII, A → AAA
+		for len(w) < 3 {
+			w += string(w[len(w)-1])
+		}
+		return w[:3]
 	}
 	// Multi-word: first letter of each word
 	var prefix string

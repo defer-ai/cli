@@ -635,6 +635,32 @@ func toolIcon(text string) string {
 	}
 }
 
+// resolveDepIDs converts dependency question strings to decision IDs where possible.
+func resolveDepIDs(deps []string, decisions []decision.Decision) []string {
+	var result []string
+	for _, dep := range deps {
+		// If it's already an ID (starts with @), keep it
+		if strings.HasPrefix(dep, "@") {
+			result = append(result, dep)
+			continue
+		}
+		// Try to find a matching decision by question
+		found := false
+		depLower := strings.ToLower(strings.TrimSpace(dep))
+		for _, d := range decisions {
+			if strings.ToLower(strings.TrimSpace(d.Question)) == depLower {
+				result = append(result, d.ID)
+				found = true
+				break
+			}
+		}
+		if !found {
+			result = append(result, dep) // fallback to raw text
+		}
+	}
+	return result
+}
+
 func trunc(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -1355,7 +1381,8 @@ func (m TreeModel) viewDetailPane(w, h int) string {
 
 	// Dependencies
 	if len(sel.DependsOn) > 0 {
-		lines = append(lines, "  "+DimStyle.Render("depends on: "+strings.Join(sel.DependsOn, ", ")))
+		depIDs := resolveDepIDs(sel.DependsOn, m.decisions)
+		lines = append(lines, "  "+DimStyle.Render("depends on: "+strings.Join(depIDs, ", ")))
 	}
 
 	// Reverse dependencies
@@ -1625,7 +1652,8 @@ func (m TreeModel) viewDetail() string {
 
 	// Dependencies
 	if len(sel.DependsOn) > 0 {
-		deps := "  " + DimStyle.Render("depends on: "+strings.Join(sel.DependsOn, ", "))
+		depIDs := resolveDepIDs(sel.DependsOn, m.decisions)
+		deps := "  " + DimStyle.Render("depends on: "+strings.Join(depIDs, ", "))
 		lines = append(lines, deps)
 	}
 

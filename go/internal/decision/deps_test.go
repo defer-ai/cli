@@ -11,7 +11,7 @@ func makeDecisions() []Decision {
 		{ID: "@DAT-0002", Question: "Database?", DependsOn: []string{"@STA-0001"}},
 		{ID: "@AUT-0003", Question: "Auth strategy?", DependsOn: []string{"@STA-0001", "@DAT-0002"}},
 		{ID: "@FEA-0005", Question: "Feature flags?", DependsOn: []string{"@AUT-0003"}},
-		{ID: "@UIX-0004", Question: "Frontend framework?"},
+		{ID: "@UII-0004", Question: "Frontend framework?"},
 	}
 }
 
@@ -34,7 +34,7 @@ func TestFindDependents(t *testing.T) {
 	}
 
 	// UIX-0004 has no dependents
-	deps = FindDependents("@UIX-0004", all)
+	deps = FindDependents("@UII-0004", all)
 	if len(deps) != 0 {
 		t.Fatalf("expected 0 dependents of UIX-0004, got %d", len(deps))
 	}

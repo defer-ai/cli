@@ -15,7 +15,7 @@ func TestAutoDecideWithPriorities(t *testing.T) {
 			{Key: "A", Label: "TypeScript"},
 			{Key: "B", Label: "Choose for me"},
 		}},
-		{ID: "@UIX-0001", Category: "UI", Question: "Framework?", Options: []decision.DecisionOption{
+		{ID: "@UII-0001", Category: "UI", Question: "Framework?", Options: []decision.DecisionOption{
 			{Key: "A", Label: "React"},
 			{Key: "B", Label: "Vue"},
 		}},
@@ -63,7 +63,7 @@ func TestAutoDecideWithPriorities(t *testing.T) {
 
 	// UI should still be pending (paranoid)
 	if a.state.Decisions[1].Answer != nil {
-		t.Error("@UIX-0001 should still be pending (paranoid)")
+		t.Error("@UII-0001 should still be pending (paranoid)")
 	}
 
 	// Data should be auto-decided (medium)

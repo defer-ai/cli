@@ -15,7 +15,7 @@ func managerDecisions() []decision.Decision {
 		{ID: "@STA-0002", Category: "Stack", Question: "Framework?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Gin"}, {Key: "B", Label: "Choose for me"}},
 			Source: "user"},
-		{ID: "@UIX-0001", Category: "UI", Question: "CSS approach?",
+		{ID: "@UII-0001", Category: "UI", Question: "CSS approach?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Tailwind"}, {Key: "B", Label: "CSS Modules"}},
 			Source: "user"},
 		{ID: "@DAT-0001", Category: "Data", Question: "Database?",
@@ -53,7 +53,7 @@ func TestAutoDecidePriorities(t *testing.T) {
 	}{
 		{"@STA-0001", true, "skip domain auto-decides"},
 		{"@STA-0002", true, "skip domain auto-decides (second)"},
-		{"@UIX-0001", false, "paranoid domain stays pending"},
+		{"@UII-0001", false, "paranoid domain stays pending"},
 		{"@DAT-0001", false, "medium domain keeps first decision per category pending"},
 	}
 

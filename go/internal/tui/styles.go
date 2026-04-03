@@ -116,6 +116,16 @@ func buildBorderedBox(content string, innerWidth int, title, rightStatus string)
 
 	for _, line := range lines {
 		lineWidth := lipgloss.Width(line)
+		// Truncate lines that exceed the inner width to prevent overflow
+		if lineWidth > innerWidth {
+			// Simple rune-level truncation (respects multi-byte chars)
+			runes := []rune(line)
+			for lipgloss.Width(string(runes)) > innerWidth && len(runes) > 0 {
+				runes = runes[:len(runes)-1]
+			}
+			line = string(runes)
+			lineWidth = lipgloss.Width(line)
+		}
 		padRight := innerWidth - lineWidth
 		if padRight < 0 {
 			padRight = 0

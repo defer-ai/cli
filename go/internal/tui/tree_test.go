@@ -19,7 +19,7 @@ func fiveDecisions() []decision.Decision {
 			Options: []decision.DecisionOption{{Key: "A", Label: "Postgres"}, {Key: "B", Label: "MySQL"}}, Source: "user"},
 		{ID: "@DAT-0002", Category: "Data", Question: "ORM?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "GORM"}, {Key: "B", Label: "sqlx"}}, Source: "user"},
-		{ID: "@UIX-0001", Category: "UI", Question: "CSS?",
+		{ID: "@UII-0001", Category: "UI", Question: "CSS?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Tailwind"}, {Key: "B", Label: "CSS Modules"}}, Source: "user"},
 	}
 }
@@ -435,7 +435,7 @@ func TestSelectedWithinBounds(t *testing.T) {
 	if sel == nil {
 		t.Fatal("selected() returned nil at cursor 4")
 	}
-	if sel.ID != "@UIX-0001" {
+	if sel.ID != "@UII-0001" {
 		t.Errorf("selected().ID = %q, want UIX-0001", sel.ID)
 	}
 }
@@ -625,7 +625,7 @@ func TestSearchFiltersByQuestion(t *testing.T) {
 	if len(items) != 1 {
 		t.Errorf("filtered items = %d, want 1", len(items))
 	}
-	if len(items) > 0 && items[0].ID != "@UIX-0001" {
+	if len(items) > 0 && items[0].ID != "@UII-0001" {
 		t.Errorf("filtered item ID = %q, want UIX-0001", items[0].ID)
 	}
 }

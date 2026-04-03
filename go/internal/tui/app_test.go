@@ -55,7 +55,7 @@ func fakeDecisions() []decision.Decision {
 			Source: "user",
 		},
 		{
-			ID: "@UIX-0001", Category: "UI", Question: "CSS approach?",
+			ID: "@UII-0001", Category: "UI", Question: "CSS approach?",
 			Options: []decision.DecisionOption{
 				{Key: "A", Label: "Tailwind"},
 				{Key: "B", Label: "CSS Modules"},
@@ -371,10 +371,10 @@ func TestReviseTriggersExecutorsWhenAllAnswered(t *testing.T) {
 		{ID: "@STA-0001", Category: "Stack", Question: "Language?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}},
 			Source:  "user"},
-		{ID: "@UIX-0001", Category: "UI", Question: "Framework?",
+		{ID: "@UII-0001", Category: "UI", Question: "Framework?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "React"}},
 			Source:  "user"},
-		{ID: "@UIX-0002", Category: "UI", Question: "State management?",
+		{ID: "@UII-0002", Category: "UI", Question: "State management?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Redux"}},
 			Source:  "user"},
 	}
@@ -394,7 +394,7 @@ func TestReviseTriggersExecutorsWhenAllAnswered(t *testing.T) {
 
 	// Answer one of the pending decisions
 	var cmd tea.Cmd
-	m, cmd = updateModel(t, m, ReviseDecisionMsg{ID: "@UIX-0001", NewAnswer: "React"})
+	m, cmd = updateModel(t, m, ReviseDecisionMsg{ID: "@UII-0001", NewAnswer: "React"})
 
 	// Process CheckAllDecidedMsg
 	msg := processCmd(t, cmd)
@@ -409,7 +409,7 @@ func TestReviseTriggersExecutorsWhenAllAnswered(t *testing.T) {
 	}
 
 	// Answer the last pending decision
-	m, cmd = updateModel(t, m, ReviseDecisionMsg{ID: "@UIX-0002", NewAnswer: "Redux"})
+	m, cmd = updateModel(t, m, ReviseDecisionMsg{ID: "@UII-0002", NewAnswer: "Redux"})
 	msg = processCmd(t, cmd)
 	if _, ok := msg.(CheckAllDecidedMsg); !ok {
 		t.Fatalf("expected CheckAllDecidedMsg, got %T", msg)
@@ -710,7 +710,7 @@ func TestCheckAllDecidedWithPending(t *testing.T) {
 	decs := []decision.Decision{
 		{ID: "@STA-0001", Category: "Stack", Question: "Lang?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}}, Source: "user"},
-		{ID: "@UIX-0001", Category: "UI", Question: "CSS?",
+		{ID: "@UII-0001", Category: "UI", Question: "CSS?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Tailwind"}}, Source: "user"},
 	}
 

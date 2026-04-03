@@ -24,10 +24,10 @@ func TestCategoryPrefix(t *testing.T) {
 		{"Misc", "MIS"},
 		{"API", "API"},
 
-		// Short words: pad with X
-		{"UI", "UIX"},
-		{"A", "AXX"},
-		{"DB", "DBX"},
+		// Short words: pad by repeating last char
+		{"UI", "UII"},
+		{"A", "AAA"},
+		{"DB", "DBB"},
 
 		// Multi-word: first letter of each word
 		{"UI Polish", "UPO"},
@@ -182,7 +182,7 @@ func TestFeatureID(t *testing.T) {
 		{"messaging", "#MES"},
 		{"auth", "#AUT"},
 		{"encryption", "#ENC"},
-		{"UI", "#UIX"},
+		{"UI", "#UII"},
 		{"user interface", "#UIN"},
 	}
 	for _, tt := range tests {
