@@ -77,9 +77,13 @@ type TreeModel struct {
 	jumpCursor      int
 
 	// Side-by-side layout
-	focusPanel     int // FocusTree (0) = tree (left), FocusChat (1) = chat (right)
-	resolverIdx    int // which pending decision is shown (0-based into pending list)
-	resolverOptIdx int // option cursor in the resolver
+	focusPanel        int  // FocusTree (0) = tree (left), FocusChat (1) = chat (right)
+	resolverIdx       int  // which pending decision is shown (0-based into pending list)
+	resolverOptIdx    int  // option cursor in the resolver
+	showingPriorities bool // true = resolver shows care level picker instead of decisions
+	priorityCategories []string              // categories for priorities picker
+	priorityLevels     map[string]agent.CareLevel // current care levels
+	priorityCursor     int  // which category is selected
 }
 
 // jumpMatch represents a match in the Ctrl+F jump search dropdown.
@@ -541,6 +545,37 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 // handleChatKey handles key events when the chat panel is focused (wide layout).
 func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	key := msg.String()
+
+	// Priorities picker mode — intercept all keys
+	if m.showingPriorities {
+		switch key {
+		case "j", "down":
+			if m.priorityCursor < len(m.priorityCategories)-1 {
+				m.priorityCursor++
+			}
+		case "k", "up":
+			if m.priorityCursor > 0 {
+				m.priorityCursor--
+			}
+		case "h", "left", "l", "right":
+			// Toggle auto/review for current category
+			cat := m.priorityCategories[m.priorityCursor]
+			if m.priorityLevels[cat] == agent.CareLevelAuto {
+				m.priorityLevels[cat] = agent.CareLevelReview
+			} else {
+				m.priorityLevels[cat] = agent.CareLevelAuto
+			}
+		case "enter":
+			// Confirm priorities
+			m.showingPriorities = false
+			priorities := make(map[string]agent.CareLevel)
+			for k, v := range m.priorityLevels {
+				priorities[k] = v
+			}
+			return m, func() tea.Msg { return PrioritiesConfirmedMsg{Priorities: priorities} }
+		}
+		return m, nil
+	}
 
 	// Check if resolver is showing (pending decisions exist)
 	var pendingDecs []decision.Decision
@@ -1018,9 +1053,14 @@ func (m TreeModel) View() string {
 		return m.viewTree()
 	}
 
-	// Side-by-side layout
-	treeW := w * 40 / 100
-	chatW := w - treeW
+	// Side-by-side layout — focused panel gets more space
+	var treeW, chatW int
+	if m.focusPanel == FocusTree {
+		treeW = w * 60 / 100
+	} else {
+		treeW = w * 35 / 100
+	}
+	chatW = w - treeW
 
 	leftPanel := m.renderLeftPanel(treeW, h)
 	rightPanel := m.renderRightPanel(chatW, h)
@@ -1719,8 +1759,48 @@ func (m TreeModel) renderRightPanel(w, h int) string {
 }
 
 // renderResolver renders the pending decision resolver section.
-// Returns nil if no pending decisions.
+// Returns nil if no pending decisions and not showing priorities.
 func (m TreeModel) renderResolver(innerWidth int) []string {
+	// Priorities picker mode — show care level toggles per domain
+	if m.showingPriorities {
+		var lines []string
+		lines = append(lines, " "+BoldWhite.Render("Set care level per domain"))
+		lines = append(lines, "")
+		for i, cat := range m.priorityCategories {
+			level := m.priorityLevels[cat]
+			cursor := "  "
+			if i == m.priorityCursor {
+				cursor = AccentStyle.Render("> ")
+			}
+			// Count decisions in this category
+			count := 0
+			for _, d := range m.decisions {
+				if d.Category == cat {
+					count++
+				}
+			}
+			// Button-style toggle: selected has background
+			autoStyle := lipgloss.NewStyle().Foreground(DimGray)
+			reviewStyle := lipgloss.NewStyle().Foreground(DimGray)
+			if level == agent.CareLevelAuto {
+				autoStyle = lipgloss.NewStyle().Background(lipgloss.Color("238")).Foreground(lipgloss.Color("15")).Bold(true)
+			} else {
+				reviewStyle = lipgloss.NewStyle().Background(lipgloss.Color("#f97316")).Foreground(lipgloss.Color("0")).Bold(true)
+			}
+			catStr := pad(cat, 14)
+			countStr := DimStyle.Render(fmt.Sprintf("(%d)", count))
+			line := fmt.Sprintf(" %s%s %s %s %s",
+				cursor, catStr, countStr,
+				autoStyle.Render(" auto "),
+				reviewStyle.Render(" review "),
+			)
+			lines = append(lines, line)
+		}
+		lines = append(lines, "")
+		lines = append(lines, " "+AccentStyle.Render("j/k")+" navigate  "+AccentStyle.Render("h/l")+" toggle  "+AccentStyle.Render("enter")+" confirm")
+		return lines
+	}
+
 	var pending []decision.Decision
 	for _, d := range m.decisions {
 		if d.IsPending() {

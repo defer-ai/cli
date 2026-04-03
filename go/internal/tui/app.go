@@ -378,13 +378,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for cat, count := range categories {
 			summary.WriteString(fmt.Sprintf("  - **%s**: %d decisions\n", cat, count))
 		}
-		summary.WriteString("\nSet your care level per domain (how much you want to control).")
+		summary.WriteString("\nSet care level per domain in the panel below.")
 		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: summary.String()})
-		// Switch to priorities picker
-		m.view = ViewPriorities
-		m.priorities = NewPrioritiesModel(msg.Decisions)
-		m.priorities.width = m.width
-		m.priorities.height = m.height
+
+		// Show priorities inline in the resolver (not full-screen)
+		cats := []string{}
+		seen := map[string]bool{}
+		for _, d := range msg.Decisions {
+			if !seen[d.Category] {
+				cats = append(cats, d.Category)
+				seen[d.Category] = true
+			}
+		}
+		m.tree.showingPriorities = true
+		m.tree.priorityCategories = cats
+		m.tree.priorityLevels = make(map[string]agent.CareLevel)
+		for _, c := range cats {
+			m.tree.priorityLevels[c] = agent.CareLevelAuto
+		}
+		m.tree.priorityCursor = 0
+		m.tree.focusPanel = FocusChat // focus right panel for interaction
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 
