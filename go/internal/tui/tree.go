@@ -699,16 +699,20 @@ func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 		m.chatInput.Blur()
 		return m, nil
 	case "j", "down":
-		// Scroll chat down
-		m.chatScrollUp -= 3
-		if m.chatScrollUp < 0 {
-			m.chatScrollUp = 0
+		if inputEmpty {
+			m.chatScrollUp -= 3
+			if m.chatScrollUp < 0 {
+				m.chatScrollUp = 0
+			}
+			return m, nil
 		}
-		return m, nil
+		// Fall through to text input
 	case "k", "up":
-		// Scroll chat up
-		m.chatScrollUp += 3
-		return m, nil
+		if inputEmpty {
+			m.chatScrollUp += 3
+			return m, nil
+		}
+		// Fall through to text input
 	case "enter":
 		if !inputEmpty {
 			// Send chat message
@@ -1705,12 +1709,6 @@ func (m TreeModel) renderRightPanel(w, h int) string {
 		}
 	}
 
-	// Resolver section
-	if resolverH > 0 {
-		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
-		lines = append(lines, resolverLines...)
-	}
-
 	// Input divider + completions + input
 	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
 	if len(m.completions) > 0 {
@@ -1728,6 +1726,12 @@ func (m TreeModel) renderRightPanel(w, h int) string {
 	promptW := lipgloss.Width(m.chatInput.Prompt)
 	m.chatInput.Width = innerWidth - 2 - promptW
 	lines = append(lines, m.chatInput.View())
+
+	// Resolver section (below input)
+	if resolverH > 0 {
+		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+		lines = append(lines, resolverLines...)
+	}
 
 	// Footer
 	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
