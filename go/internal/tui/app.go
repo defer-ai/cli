@@ -737,12 +737,20 @@ If no decisions are incompatible, output: []`, changedDecision.ID, changedDecisi
 
 			var sysPrompt string
 			if m.task == "" {
-				// No task yet — conversational mode with task detection
-				sysPrompt = `You are defer, a zero-autonomy AI assistant. Have a natural conversation with the user.
+				// No task yet — conversational mode with task detection via TASK: prefix
+				sysPrompt = `You are defer, a zero-autonomy AI assistant.
 
-When the user describes a project, feature, or task they want built, respond with a brief acknowledgment (1-2 sentences max) of what you'll build. Do NOT ask questions — every uncertainty becomes a structured decision that the user will see in a decision tree.
+CRITICAL: When the user describes a project, feature, or task they want built, your response MUST start with:
+TASK: <one-line description of what to build>
 
-If the user is just chatting, greeting, or asking questions — respond naturally and concisely.`
+Then follow with a brief acknowledgment (1-2 sentences). Do NOT ask questions.
+
+Example:
+User: "build a jira clone tui"
+You: "TASK: Build a Jira-like project management TUI with boards, issues, and sprint tracking
+Got it — I'll decompose this into decisions for you."
+
+If the user is just chatting, greeting, or asking questions — respond naturally WITHOUT the TASK: prefix.`
 			} else {
 				// Task active — decision management mode with full context
 				var decContext strings.Builder
@@ -850,32 +858,34 @@ Current decisions:
 				}
 			}
 
-			// No decisions block — check if the agent is planning something
-			// (substantive response to a substantive request = task detected)
-			if looksLikeTaskResponse(msg.Text) {
-				// Extract task from the conversation
-				var taskDesc string
-				for i := len(m.tree.chatLog) - 1; i >= 0; i-- {
-					if m.tree.chatLog[i].Type == "user" {
-						taskDesc = m.tree.chatLog[i].Text
-						break
+			// No decisions block — check for TASK: prefix (LLM signals task detection)
+			if strings.HasPrefix(strings.TrimSpace(msg.Text), "TASK:") {
+				// Extract the task description from the TASK: line
+				firstLine := strings.SplitN(strings.TrimSpace(msg.Text), "\n", 2)[0]
+				m.task = strings.TrimSpace(strings.TrimPrefix(firstLine, "TASK:"))
+				if m.task == "" {
+					m.task = "(from conversation)"
+				}
+				// Show the response without the TASK: prefix
+				if parts := strings.SplitN(strings.TrimSpace(msg.Text), "\n", 2); len(parts) > 1 {
+					responseText := strings.TrimSpace(parts[1])
+					if responseText != "" {
+						m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: responseText})
 					}
 				}
-				if taskDesc != "" && len(taskDesc) > 10 {
-					m.task = taskDesc
-					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: msg.Text})
-					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Identifying decisions..."})
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Identifying decisions..."})
+				m.tree.chatThinking = true
+				m.tree.chatThinkStart = time.Now()
 
-					// Run full decomposition with the proper prompt
-					m.manager = agent.NewManager(m.provider, m.cwd)
-					ch := m.eventChan
-					ctx := m.ctx
-					m.manager.StartDecomposition(ctx, m.task, func(ev agent.Event) {
-						safeSend(ctx, ch, BridgeAgentEvent(ev))
-					})
-					cmds = append(cmds, ListenForEvents(m.eventChan))
-					return m, tea.Batch(cmds...)
-				}
+				// Run full decomposition with the proper prompt
+				m.manager = agent.NewManager(m.provider, m.cwd)
+				ch := m.eventChan
+				ctx := m.ctx
+				m.manager.StartDecomposition(ctx, m.task, func(ev agent.Event) {
+					safeSend(ctx, ch, BridgeAgentEvent(ev))
+				})
+				cmds = append(cmds, ListenForEvents(m.eventChan))
+				return m, tea.Batch(cmds...)
 			}
 		}
 
@@ -1318,34 +1328,6 @@ func (m Model) computeOverallStatus() string {
 		return "done"
 	}
 	return "executing" // default to executing if executors exist but not all done
-}
-
-// looksLikeTaskResponse returns true if the agent's response indicates it's
-// planning or preparing to build something (as opposed to casual conversation).
-func looksLikeTaskResponse(text string) bool {
-	if len(text) < 20 {
-		return false // very short = casual
-	}
-	lower := strings.ToLower(text)
-	// Planning/building signals — even in short responses
-	signals := []string{
-		"let me plan", "plan this", "plan it",
-		"i'll build", "let's build", "we can build", "building a",
-		"let me start", "i'll start", "let me map",
-		"key decisions", "decisions", "decompos",
-		"architecture", "tech stack", "framework",
-		"scaffold", "implement", "project structure",
-		"first, we need", "first step", "first,",
-		"here's what", "here is what",
-		"components", "features", "requirements",
-		"let me break", "break this down",
-	}
-	for _, sig := range signals {
-		if strings.Contains(lower, sig) {
-			return true
-		}
-	}
-	return false
 }
 
 // isTopicTool returns true if the tool description represents a high-level topic
