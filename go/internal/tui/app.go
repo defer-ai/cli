@@ -1063,7 +1063,9 @@ func (m Model) renderHeader(width int) string {
 		info = append(info, DimStyle.Render("task: ")+taskDisplay)
 	}
 	status := m.tree.overallStatus
-	if status == "" {
+	if m.tree.chatThinking {
+		status = "thinking"
+	} else if status == "" {
 		status = "ready"
 	}
 	info = append(info, DimStyle.Render("status: ")+status)
