@@ -119,43 +119,38 @@ func NewModel(task string, provider api.Provider, cwd string, opts ...ModelOpts)
 		priorities := loadPriorities(cwd)
 
 		if store != nil && len(store.Decisions) > 0 {
-			// Resume existing session
+			// Resume existing session — never re-ask priorities, never overwrite decisions
 			m.tree.decisions = store.Decisions
 			m.domainPriorities = priorities
 			m.task = store.Task
 
-			// Check if any decisions already have answers
-			hasAnswered := false
+			// Count state
+			answeredCount := 0
+			pendingCount := 0
 			for _, d := range store.Decisions {
 				if d.Answer != nil {
-					hasAnswered = true
-					break
-				}
-			}
-
-			if hasAnswered {
-				// Session has progress — resume directly in conversation
-				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: fmt.Sprintf("Resumed session: %s", store.Task)})
-				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: fmt.Sprintf("%d decisions loaded. Tab to view decision tree.", len(store.Decisions))})
-
-				hasPending := false
-				for _, d := range m.tree.decisionItems() {
-					if d.IsPending() {
-						hasPending = true
-						break
-					}
-				}
-				if !hasPending {
-					m.tree.overallStatus = "done"
+					answeredCount++
 				} else {
-					m.tree.overallStatus = "thinking"
+					pendingCount++
 				}
-			} else {
-				// All decisions pending, no answers yet — show priorities picker
-				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: fmt.Sprintf("Resumed session: %s (%d pending decisions)", store.Task, len(store.Decisions))})
-				m.view = ViewPriorities
-				m.priorities = NewPrioritiesModel(store.Decisions)
 			}
+
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+				Type: "system",
+				Text: fmt.Sprintf("Resumed session: %s (%d decisions, %d pending)", store.Task, len(store.Decisions), pendingCount),
+			})
+
+			m.tree.pendingCount = pendingCount
+			if pendingCount > 0 {
+				m.tree.overallStatus = "waiting"
+				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+					Type: "action",
+					Text: fmt.Sprintf("%d decisions need your input. Tab to review.", pendingCount),
+				})
+			} else {
+				m.tree.overallStatus = "done"
+			}
+			// Never show priorities on resume — decisions are already loaded
 		}
 		// else: fresh start, conversation is empty, user types task
 	} else {
