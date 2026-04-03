@@ -1323,22 +1323,22 @@ func (m Model) computeOverallStatus() string {
 // looksLikeTaskResponse returns true if the agent's response indicates it's
 // planning or preparing to build something (as opposed to casual conversation).
 func looksLikeTaskResponse(text string) bool {
-	if len(text) < 100 {
-		return false // short responses are probably casual chat
+	if len(text) < 20 {
+		return false // very short = casual
 	}
 	lower := strings.ToLower(text)
-	// Planning/building signals
+	// Planning/building signals — even in short responses
 	signals := []string{
-		"let me plan", "here's the plan", "here is the plan",
-		"i'll break this down", "let me break this",
-		"key decisions", "decisions we need", "decisions to make",
+		"let me plan", "plan this", "plan it",
+		"i'll build", "let's build", "we can build", "building a",
+		"let me start", "i'll start", "let me map",
+		"key decisions", "decisions", "decompos",
 		"architecture", "tech stack", "framework",
-		"here's what i", "here is what i",
-		"let me start", "i'll start by",
-		"first, we need", "first step",
+		"scaffold", "implement", "project structure",
+		"first, we need", "first step", "first,",
+		"here's what", "here is what",
 		"components", "features", "requirements",
-		"let's build", "we can build", "i'll build",
-		"implementation", "project structure",
+		"let me break", "break this down",
 	}
 	for _, sig := range signals {
 		if strings.Contains(lower, sig) {

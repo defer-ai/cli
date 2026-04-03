@@ -995,38 +995,44 @@ func (m TreeModel) viewChat() string {
 		chatLines = append(chatLines, " "+AccentStyle.Render(spinner+" "+phrase+" ")+DimStyle.Render("("+timeStr+")"))
 	}
 
-	// Anchor content to bottom with scroll offset
+	// Top-to-bottom: content starts at top, scrolls down as it grows
+	// When content exceeds viewport, show the latest (auto-scroll to bottom)
+	// pgup/pgdown adjusts chatScrollUp to scroll back
 	scrollUp := m.chatScrollUp
-	if scrollUp > len(chatLines)-chatContentH {
-		scrollUp = len(chatLines) - chatContentH
+	maxScroll := len(chatLines) - chatContentH
+	if maxScroll < 0 {
+		maxScroll = 0
 	}
-	if scrollUp < 0 {
-		scrollUp = 0
+	if scrollUp > maxScroll {
+		scrollUp = maxScroll
 	}
 
-	end := len(chatLines) - scrollUp
-	start := end - chatContentH
-	if start < 0 {
-		start = 0
+	start := 0
+	if len(chatLines) > chatContentH {
+		start = len(chatLines) - chatContentH - scrollUp
+		if start < 0 {
+			start = 0
+		}
 	}
-	if end < 0 {
-		end = 0
+	end := start + chatContentH
+	if end > len(chatLines) {
+		end = len(chatLines)
 	}
 	visible := chatLines[start:end]
 
-	// Fill empty space ABOVE the content (pushes content to bottom)
-	emptyAbove := chatContentH - len(visible)
-	for i := 0; i < emptyAbove; i++ {
-		if len(m.chatLog) == 0 && i == emptyAbove-1 {
+	// Render visible content (top-to-bottom)
+	for _, cl := range visible {
+		lines = append(lines, cl)
+	}
+
+	// Fill remaining space below content
+	emptyBelow := chatContentH - len(visible)
+	for i := 0; i < emptyBelow; i++ {
+		if len(m.chatLog) == 0 && i == 0 {
 			lines = append(lines, " "+DimStyle.Render("Describe your project to get started, or ask anything."))
 		} else {
 			lines = append(lines, "")
 		}
-	}
-
-	// Then render the actual content
-	for _, cl := range visible {
-		lines = append(lines, cl)
 	}
 
 	// Ensure a gap between content and input
