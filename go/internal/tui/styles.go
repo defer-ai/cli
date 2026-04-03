@@ -60,6 +60,13 @@ func Separator(width int) string {
 // title in the top-left and an optional status in the top-right.
 // innerWidth is the desired content width (excluding border chars).
 func buildBorderedBox(content string, innerWidth int, title, rightStatus string) string {
+	return buildBorderedBoxActive(content, innerWidth, title, rightStatus, false)
+}
+
+// buildBorderedBoxActive renders content inside a rounded border with an optional
+// title in the top-left and an optional status in the top-right.
+// When active is true, uses ActiveBorderColor (accent orange) for the border.
+func buildBorderedBoxActive(content string, innerWidth int, title, rightStatus string, active bool) string {
 	if innerWidth < 10 {
 		innerWidth = 10
 	}
@@ -72,7 +79,11 @@ func buildBorderedBox(content string, innerWidth int, title, rightStatus string)
 	horizontal := border.Top
 	vertical := border.Left
 
-	bStyle := lipgloss.NewStyle().Foreground(BorderColor)
+	borderCol := BorderColor
+	if active {
+		borderCol = ActiveBorderColor
+	}
+	bStyle := lipgloss.NewStyle().Foreground(borderCol)
 
 	// Build top border line with title and status
 	titleStr := ""
@@ -140,8 +151,18 @@ func buildBorderedBox(content string, innerWidth int, title, rightStatus string)
 
 // buildMiddleBorder creates a horizontal divider that connects to the side borders.
 func buildMiddleBorder(innerWidth int) string {
+	return buildMiddleBorderActive(innerWidth, false)
+}
+
+// buildMiddleBorderActive creates a horizontal divider that connects to the side borders.
+// When active is true, uses ActiveBorderColor.
+func buildMiddleBorderActive(innerWidth int, active bool) string {
 	border := lipgloss.RoundedBorder()
-	bStyle := lipgloss.NewStyle().Foreground(BorderColor)
+	borderCol := BorderColor
+	if active {
+		borderCol = ActiveBorderColor
+	}
+	bStyle := lipgloss.NewStyle().Foreground(borderCol)
 
 	// Use tee characters for connecting to side borders
 	fill := innerWidth

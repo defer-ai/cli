@@ -117,7 +117,7 @@ func setupAtPriorities(t *testing.T, decs []decision.Decision) Model {
 	return m
 }
 
-// setupAtTree creates a model at ViewTree state with decisions and priorities applied.
+// setupAtTree creates a model at ViewMain state with decisions and priorities applied.
 // It immediately cancels the context to prevent background goroutines from racing.
 func setupAtTree(t *testing.T, decs []decision.Decision, priorities map[string]agent.CareLevel) Model {
 	t.Helper()
@@ -131,7 +131,7 @@ func setupAtTree(t *testing.T, decs []decision.Decision, priorities map[string]a
 	return m
 }
 
-// setupAtTreeNoExecutors creates a model at ViewTree state without triggering
+// setupAtTreeNoExecutors creates a model at ViewMain state without triggering
 // AutoDecide or executor launches. Decisions are set directly. Use this when
 // you need pending decisions and don't want the auto-decide/executor logic.
 func setupAtTreeNoExecutors(t *testing.T, decs []decision.Decision) Model {
@@ -140,7 +140,7 @@ func setupAtTreeNoExecutors(t *testing.T, decs []decision.Decision) Model {
 	cleanupDefer(t, dir)
 	m := NewModel("", nil, dir)
 	m.task = "test task"
-	m.view = ViewTree
+	m.view = ViewMain
 	m.tree.decisions = make([]decision.Decision, len(decs))
 	copy(m.tree.decisions, decs)
 	m.tree.width = 120
@@ -162,13 +162,13 @@ func setupAtTreeNoExecutors(t *testing.T, decs []decision.Decision) Model {
 func TestConversationStartsInChatMode(t *testing.T) {
 	m := NewModel("", nil, t.TempDir())
 
-	if m.view != ViewChat {
-		t.Fatalf("initial view = %d, want ViewChat (%d)", m.view, ViewChat)
+	if m.view != ViewMain {
+		t.Fatalf("initial view = %d, want ViewMain (%d)", m.view, ViewMain)
 	}
 
-	// Chat mode should be active by default
-	if m.tree.mode != tmChat {
-		t.Fatalf("tree.mode = %d, want tmChat", m.tree.mode)
+	// Chat panel should be focused by default
+	if m.tree.focusPanel != FocusChat {
+		t.Fatalf("tree.focusPanel = %d, want FocusChat (%d)", m.tree.focusPanel, FocusChat)
 	}
 
 	// Send window size
@@ -267,8 +267,8 @@ func TestPrioritiesToTree(t *testing.T) {
 	}
 	m := setupAtTree(t, fakeDecisions(), priorities)
 
-	if m.view != ViewChat {
-		t.Fatalf("view = %d, want ViewChat (%d)", m.view, ViewChat)
+	if m.view != ViewMain {
+		t.Fatalf("view = %d, want ViewMain (%d)", m.view, ViewMain)
 	}
 
 	// Verify Stack decisions are auto-decided
@@ -583,7 +583,7 @@ func TestSuggestReplacesOptions(t *testing.T) {
 
 func TestWhyResponse(t *testing.T) {
 	m := NewModel("", nil, t.TempDir())
-	m.view = ViewTree
+	m.view = ViewMain
 	m.tree.decisions = fakeDecisions()
 
 	m, _ = updateModel(t, m, WhyResponseMsg{Text: "TypeScript has better tooling."})
@@ -595,7 +595,7 @@ func TestWhyResponse(t *testing.T) {
 
 func TestAllExecutorsDone(t *testing.T) {
 	m := NewModel("", nil, t.TempDir())
-	m.view = ViewTree
+	m.view = ViewMain
 	m.tree.decisions = fakeDecisions()
 
 	m, _ = updateModel(t, m, AllExecutorsDoneMsg{})
@@ -635,7 +635,7 @@ func TestMiscCategoryFiltered(t *testing.T) {
 	})
 
 	m := NewModel("", nil, t.TempDir())
-	m.view = ViewTree
+	m.view = ViewMain
 	m.tree.decisions = decs
 
 	items := m.tree.decisionItems()
@@ -672,9 +672,9 @@ func TestViewRendersWithoutPanic(t *testing.T) {
 		name string
 		view View
 	}{
-		{"Chat", ViewChat},
+		{"Chat", ViewMain},
 		{"Priorities", ViewPriorities},
-		{"Tree", ViewTree},
+		{"Tree", ViewMain},
 	}
 
 	for _, vv := range views {
@@ -694,8 +694,8 @@ func TestViewRendersWithoutPanic(t *testing.T) {
 
 func TestTaskSubmittedFromCLI(t *testing.T) {
 	m := NewModel("build something", nil, t.TempDir())
-	if m.view != ViewChat {
-		t.Errorf("view = %d, want ViewChat when task provided", m.view)
+	if m.view != ViewMain {
+		t.Errorf("view = %d, want ViewMain when task provided", m.view)
 	}
 	if m.task != "build something" {
 		t.Errorf("task = %q, want %q", m.task, "build something")

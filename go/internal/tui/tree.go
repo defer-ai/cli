@@ -21,8 +21,16 @@ const (
 	tmDetail
 	tmRevise
 	tmAsk
-	tmChat         // full-screen chat
+	tmChat         // full-screen chat (narrow fallback only)
 	tmEditFeatures // editing feature tags on a decision
+)
+
+// Focus panel constants for side-by-side layout.
+const (
+	FocusTree = 0 // left panel (tree)
+	FocusChat = 1 // right panel (chat + resolver)
+
+	minSideBySideWidth = 80
 )
 
 // ChatEntry is a line in the chat panel.
@@ -67,6 +75,11 @@ type TreeModel struct {
 	jumpSearchInput textinput.Model
 	jumpMatches     []jumpMatch
 	jumpCursor      int
+
+	// Side-by-side layout
+	focusPanel     int // FocusTree (0) = tree (left), FocusChat (1) = chat (right)
+	resolverIdx    int // which pending decision is shown (0-based into pending list)
+	resolverOptIdx int // option cursor in the resolver
 }
 
 // jumpMatch represents a match in the Ctrl+F jump search dropdown.
@@ -102,7 +115,7 @@ func NewTreeModel() TreeModel {
 	ji.Prompt = AccentStyle.Render("find: ")
 	ji.CharLimit = 0
 
-	return TreeModel{mode: tmTree, mdRenderer: r, chatInput: ci, textInput: ti, searchInput: si, jumpSearchInput: ji, completionIdx: -1}
+	return TreeModel{mode: tmTree, mdRenderer: r, chatInput: ci, textInput: ti, searchInput: si, jumpSearchInput: ji, completionIdx: -1, focusPanel: FocusChat}
 }
 
 func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
@@ -137,6 +150,10 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 		case tmRevise, tmAsk:
 			m.textInput, cmd = m.textInput.Update(msg)
 		}
+		// Also forward to chatInput when chat panel is focused (wide layout)
+		if m.focusPanel == FocusChat && m.mode != tmChat {
+			m.chatInput, cmd = m.chatInput.Update(msg)
+		}
 		if m.searchMode {
 			m.searchInput, cmd = m.searchInput.Update(msg)
 		}
@@ -150,22 +167,43 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	key := msg.String()
 
-	// Tab toggles between tree and chat,
-	// unless we're in chat with active completions (tab-complete).
-	if key == "tab" && !(m.mode == tmChat && len(m.completions) > 0) {
-		if m.mode == tmChat {
-			m.mode = tmTree
-			m.chatFocused = false
-			m.chatInput.Blur()
-		} else if m.mode == tmTree {
-			m.mode = tmChat
-			m.chatFocused = true
-			m.chatInput.Focus()
+	isWide := m.width >= minSideBySideWidth
+
+	// Tab toggles focus panel in wide layout, or mode in narrow layout.
+	// Exception: chat mode with active completions uses tab for cycling.
+	if key == "tab" && !((m.mode == tmChat || (isWide && m.focusPanel == FocusChat)) && len(m.completions) > 0) {
+		if isWide {
+			// Wide: toggle focus panel
+			if m.focusPanel == FocusChat {
+				m.focusPanel = FocusTree
+				m.chatFocused = false
+				m.chatInput.Blur()
+			} else {
+				m.focusPanel = FocusChat
+				m.chatFocused = true
+				m.chatInput.Focus()
+			}
+		} else {
+			// Narrow: toggle tmTree <-> tmChat
+			if m.mode == tmChat {
+				m.mode = tmTree
+				m.chatFocused = false
+				m.chatInput.Blur()
+			} else if m.mode == tmTree {
+				m.mode = tmChat
+				m.chatFocused = true
+				m.chatInput.Focus()
+			}
 		}
 		return m, nil
 	}
 
-	// --- Chat input mode (full screen chat via tmChat) ---
+	// --- Wide layout: chat panel focused (right panel) ---
+	if isWide && m.focusPanel == FocusChat && m.mode != tmDetail && m.mode != tmRevise && m.mode != tmAsk && m.mode != tmEditFeatures {
+		return m.handleChatKey(msg)
+	}
+
+	// --- Narrow layout: chat input mode (full screen) ---
 	if m.mode == tmChat {
 		switch key {
 		case "ctrl+o":
@@ -500,6 +538,161 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	return m, nil
 }
 
+// handleChatKey handles key events when the chat panel is focused (wide layout).
+func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
+	key := msg.String()
+
+	// Check if resolver is showing (pending decisions exist)
+	var pendingDecs []decision.Decision
+	for _, d := range m.decisions {
+		if d.IsPending() {
+			pendingDecs = append(pendingDecs, d)
+		}
+	}
+	hasResolver := len(pendingDecs) > 0
+	inputEmpty := strings.TrimSpace(m.chatInput.Value()) == ""
+
+	switch key {
+	case "ctrl+o":
+		// Toggle expand/collapse on the last topic
+		for i := len(m.chatLog) - 1; i >= 0; i-- {
+			if m.chatLog[i].Type == "topic" {
+				m.chatLog[i].Expanded = !m.chatLog[i].Expanded
+				break
+			}
+		}
+		return m, nil
+	case "pgup", "shift+up":
+		m.chatScrollUp += 5
+		return m, nil
+	case "pgdown", "shift+down":
+		m.chatScrollUp -= 5
+		if m.chatScrollUp < 0 {
+			m.chatScrollUp = 0
+		}
+		return m, nil
+	case "esc":
+		if m.chatThinking {
+			return m, func() tea.Msg { return StopAgentMsg{} }
+		}
+		// If input has content, clear it; otherwise switch to tree
+		if !inputEmpty {
+			m.chatInput.Reset()
+			m.completions = nil
+			m.completionIdx = -1
+		} else {
+			m.focusPanel = FocusTree
+			m.chatFocused = false
+			m.chatInput.Blur()
+		}
+		return m, nil
+	case "tab":
+		// Tab cycles through completions if available
+		if len(m.completions) > 0 {
+			m.completionIdx++
+			if m.completionIdx >= len(m.completions) {
+				m.completionIdx = 0
+			}
+			val := m.chatInput.Value()
+			lastAt := strings.LastIndex(val, "@")
+			if lastAt >= 0 {
+				prefix := val[:lastAt]
+				newVal := prefix + "@" + m.completions[m.completionIdx]
+				m.chatInput.SetValue(newVal)
+				m.chatInput.SetCursor(len(newVal))
+			}
+			return m, nil
+		}
+		// No completions: toggle to tree
+		m.focusPanel = FocusTree
+		m.chatFocused = false
+		m.chatInput.Blur()
+		return m, nil
+	case "n":
+		// Next pending decision in resolver (only when input is empty)
+		if hasResolver && inputEmpty {
+			m.resolverIdx++
+			if m.resolverIdx >= len(pendingDecs) {
+				m.resolverIdx = 0
+			}
+			m.resolverOptIdx = 0
+			return m, nil
+		}
+		// Fall through to text input
+	case "p":
+		// Previous pending decision in resolver (only when input is empty)
+		if hasResolver && inputEmpty {
+			m.resolverIdx--
+			if m.resolverIdx < 0 {
+				m.resolverIdx = len(pendingDecs) - 1
+			}
+			m.resolverOptIdx = 0
+			return m, nil
+		}
+		// Fall through to text input
+	case "j", "down":
+		// Navigate resolver options when input is empty and resolver showing
+		if hasResolver && inputEmpty {
+			idx := m.resolverIdx
+			if idx >= len(pendingDecs) {
+				idx = len(pendingDecs) - 1
+			}
+			if idx >= 0 && m.resolverOptIdx < len(pendingDecs[idx].Options)-1 {
+				m.resolverOptIdx++
+			}
+			return m, nil
+		}
+		// Fall through to text input
+	case "k", "up":
+		if hasResolver && inputEmpty {
+			if m.resolverOptIdx > 0 {
+				m.resolverOptIdx--
+			}
+			return m, nil
+		}
+		// Fall through to text input
+	case "enter":
+		if !inputEmpty {
+			// Send chat message
+			input := strings.TrimSpace(m.chatInput.Value())
+			m.chatLog = append(m.chatLog, ChatEntry{Type: "user", Text: input})
+			m.chatScrollUp = 0
+			m.chatInput.Reset()
+			m.chatInput.Focus()
+			m.chatThinking = true
+			m.chatThinkStart = time.Now()
+			m.completions = nil
+			m.completionIdx = -1
+			return m, func() tea.Msg { return ChatMessageMsg{Text: input} }
+		}
+		// Input empty + resolver showing = confirm resolver option
+		if hasResolver {
+			idx := m.resolverIdx
+			if idx >= len(pendingDecs) {
+				idx = len(pendingDecs) - 1
+			}
+			if idx >= 0 && idx < len(pendingDecs) {
+				current := pendingDecs[idx]
+				if m.resolverOptIdx < len(current.Options) {
+					id := current.ID
+					answer := current.Options[m.resolverOptIdx].Label
+					m.resolverOptIdx = 0
+					// Auto-advance to next pending
+					// (After the ReviseDecisionMsg is processed, the pending list shrinks)
+					return m, func() tea.Msg { return ReviseDecisionMsg{ID: id, NewAnswer: answer} }
+				}
+			}
+		}
+		return m, nil
+	}
+
+	// Default: forward to chat input
+	var cmd tea.Cmd
+	m.chatInput, cmd = m.chatInput.Update(msg)
+	m.completions, m.completionIdx = m.updateCompletions()
+	return m, cmd
+}
+
 func (m TreeModel) selected() *decision.Decision {
 	decs := m.decisionItems()
 	if m.cursor >= 0 && m.cursor < len(decs) {
@@ -805,10 +998,6 @@ func renderFooter(actions []footerAction, width int) string {
 }
 
 func (m TreeModel) View() string {
-	if m.mode == tmChat {
-		return m.viewChat()
-	}
-
 	w := m.width
 	if w < 40 {
 		w = 80
@@ -818,12 +1007,773 @@ func (m TreeModel) View() string {
 		h = 24
 	}
 
-	// Detail, revise, ask, edit-features — all full-screen, replacing the tree
-	if m.mode == tmDetail || m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
-		return m.viewDetail()
+	// Narrow fallback: same as old tab-switching behavior
+	if w < minSideBySideWidth {
+		if m.mode == tmChat || m.focusPanel == FocusChat {
+			return m.viewChat()
+		}
+		if m.mode == tmDetail || m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
+			return m.viewDetail()
+		}
+		return m.viewTree()
 	}
 
-	return m.viewTree()
+	// Side-by-side layout
+	treeW := w * 40 / 100
+	chatW := w - treeW
+
+	leftPanel := m.renderLeftPanel(treeW, h)
+	rightPanel := m.renderRightPanel(chatW, h)
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+}
+
+// ========== SIDE-BY-SIDE PANEL RENDERERS ==========
+
+// renderLeftPanel renders the left panel (tree or detail) inside a bordered box.
+func (m TreeModel) renderLeftPanel(w, h int) string {
+	if w < 20 {
+		w = 20
+	}
+	innerWidth := w - 4
+	if innerWidth < 10 {
+		innerWidth = 10
+	}
+	active := m.focusPanel == FocusTree
+
+	// Use detail view if in detail/revise/ask/editFeatures mode
+	if m.mode == tmDetail || m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
+		return m.renderLeftDetailPanel(innerWidth, h, active)
+	}
+
+	// Tree view
+	return m.renderLeftTreePanel(innerWidth, h, active)
+}
+
+// renderLeftTreePanel renders the tree list for the left panel.
+func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
+	visibleDecs := m.decisionItems()
+	total := len(visibleDecs)
+	answered := 0
+	pending := 0
+	for _, d := range visibleDecs {
+		if d.Answer != nil {
+			answered++
+		} else {
+			pending++
+		}
+	}
+
+	// Status for title bar
+	var statusParts []string
+	statusParts = append(statusParts, fmt.Sprintf("%d/%d", answered, total))
+	if pending > 0 {
+		statusParts = append(statusParts, fmt.Sprintf("○ %d", pending))
+	}
+	rightStatus := strings.Join(statusParts, " ")
+
+	var lines []string
+	lines = append(lines, "")
+
+	// Build flat items
+	type flatItem struct {
+		isCat  bool
+		cat    string
+		dec    *decision.Decision
+		decIdx int
+	}
+
+	var flat []flatItem
+
+	if m.groupByFeature {
+		featureMap := map[string][]int{}
+		var featureOrder []string
+		featureSeen := map[string]bool{}
+		for i, d := range visibleDecs {
+			if len(d.Features) == 0 {
+				if !featureSeen["untagged"] {
+					featureOrder = append(featureOrder, "untagged")
+					featureSeen["untagged"] = true
+				}
+				featureMap["untagged"] = append(featureMap["untagged"], i)
+			}
+			for _, f := range d.Features {
+				fl := strings.ToLower(strings.TrimSpace(f))
+				if !featureSeen[fl] {
+					featureOrder = append(featureOrder, fl)
+					featureSeen[fl] = true
+				}
+				featureMap[fl] = append(featureMap[fl], i)
+			}
+		}
+		sort.Strings(featureOrder)
+		for _, feat := range featureOrder {
+			indices := featureMap[feat]
+			label := "#" + feat
+			if feat == "untagged" {
+				label = "(untagged)"
+			}
+			if len(flat) > 0 {
+				flat = append(flat, flatItem{isCat: true, cat: ""})
+			}
+			flat = append(flat, flatItem{isCat: true, cat: label})
+			for _, idx := range indices {
+				flat = append(flat, flatItem{dec: &visibleDecs[idx], decIdx: idx})
+			}
+		}
+	} else {
+		sortDecisionsByCategory(visibleDecs)
+		lastCat := ""
+		decIdx := 0
+		for i := range visibleDecs {
+			d := &visibleDecs[i]
+			catKey := strings.ToLower(strings.TrimSpace(d.Category))
+			lastKey := strings.ToLower(strings.TrimSpace(lastCat))
+			if catKey != lastKey {
+				if lastCat != "" {
+					flat = append(flat, flatItem{isCat: true, cat: ""})
+				}
+				flat = append(flat, flatItem{isCat: true, cat: d.Category})
+				lastCat = d.Category
+			}
+			flat = append(flat, flatItem{dec: d, decIdx: decIdx})
+			decIdx++
+		}
+	}
+
+	// Find cursor position
+	cursorFlat := 0
+	di := 0
+	for i, item := range flat {
+		if !item.isCat {
+			if di == m.cursor {
+				cursorFlat = i
+				break
+			}
+			di++
+		}
+	}
+
+	// Available tree height: h - borders(2) - empty(1) - footer divider(1) - footer(1)
+	fixedLines := 2 + 1 + 1 + 1
+	if m.searchMode || m.searchQuery != "" {
+		fixedLines += 2
+	}
+	if m.jumpSearchMode {
+		dropdownLines := len(m.jumpMatches)
+		if dropdownLines > 8 {
+			dropdownLines = 8
+		}
+		fixedLines += 2 + dropdownLines
+	}
+	treeH := h - fixedLines
+	if treeH < 3 {
+		treeH = 3
+	}
+
+	// Scrolling
+	scrollStart := cursorFlat - treeH/2
+	if scrollStart < 0 {
+		scrollStart = 0
+	}
+	if scrollStart+treeH > len(flat) {
+		scrollStart = len(flat) - treeH
+		if scrollStart < 0 {
+			scrollStart = 0
+		}
+	}
+
+	// Column widths — compact for side panel
+	idW := 10
+	if innerWidth < 40 {
+		idW = 8
+	}
+	qW := innerWidth - idW - 6
+	if qW < 8 {
+		qW = 8
+	}
+
+	rendered := 0
+	for i := scrollStart; i < len(flat) && rendered < treeH; i++ {
+		item := flat[i]
+		if item.isCat {
+			if item.cat == "" {
+				lines = append(lines, "")
+			} else {
+				lines = append(lines, " "+CategoryStyle.Render(item.cat))
+			}
+			rendered++
+			continue
+		}
+
+		d := item.dec
+		isCur := item.decIdx == m.cursor
+		icon := "○"
+		iconStyle := YellowStyle
+		if d.Answer != nil {
+			if d.Source == "user" {
+				icon = "✓"
+				iconStyle = GreenStyle
+			} else {
+				icon = "▪"
+				iconStyle = DimStyle
+			}
+		}
+
+		cursor := " "
+		if isCur {
+			cursor = AccentStyle.Render(">")
+		}
+
+		qStr := trunc(d.Question, qW)
+		idStr := pad(d.ID, idW)
+
+		var idStyle lipgloss.Style
+		if d.Impact >= 7 {
+			idStyle = RedStyle
+		} else if d.Impact >= 4 {
+			idStyle = YellowStyle
+		} else if d.Impact >= 1 {
+			idStyle = DimStyle
+		} else {
+			idStyle = lipgloss.NewStyle()
+		}
+
+		var row string
+		if isCur {
+			curIDStyle := idStyle.Bold(true)
+			row = fmt.Sprintf("%s%s %s %s",
+				cursor,
+				iconStyle.Render(icon),
+				curIDStyle.Render(idStr),
+				BoldWhite.Render(qStr),
+			)
+		} else {
+			row = fmt.Sprintf("%s%s %s %s",
+				cursor,
+				iconStyle.Render(icon),
+				idStyle.Render(idStr),
+				qStr,
+			)
+		}
+		lines = append(lines, row)
+		rendered++
+	}
+
+	// Fill remaining
+	for rendered < treeH {
+		lines = append(lines, "")
+		rendered++
+	}
+
+	// Jump search overlay
+	if m.jumpSearchMode {
+		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+		lines = append(lines, " "+m.jumpSearchInput.View())
+		maxDropdown := 8
+		if len(m.jumpMatches) < maxDropdown {
+			maxDropdown = len(m.jumpMatches)
+		}
+		for i := 0; i < maxDropdown; i++ {
+			jm := m.jumpMatches[i]
+			prefix := "   "
+			if i == m.jumpCursor {
+				prefix = " " + AccentStyle.Render("> ")
+			}
+			typeTag := DimStyle.Render("[" + jm.Type + "]")
+			label := jm.Label
+			if i == m.jumpCursor {
+				label = BoldWhite.Render(label)
+			}
+			lines = append(lines, prefix+typeTag+" "+label)
+		}
+	}
+
+	// Search bar
+	if m.searchMode {
+		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+		lines = append(lines, " "+m.searchInput.View())
+	} else if m.searchQuery != "" {
+		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+		lines = append(lines, " "+DimStyle.Render(fmt.Sprintf("Filtered: %d results", total)))
+	}
+
+	// Footer
+	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+	var footerActions []footerAction
+	if m.jumpSearchMode {
+		footerActions = []footerAction{
+			{"type", "find"},
+			{"j/k", "select"},
+			{"enter", "jump"},
+			{"esc", "close"},
+		}
+	} else if m.searchMode {
+		footerActions = []footerAction{
+			{"type", "filter"},
+			{"enter", "confirm"},
+			{"esc", "clear"},
+		}
+	} else {
+		footerActions = []footerAction{
+			{"j/k", "navigate"},
+			{"enter", "inspect"},
+			{"/", "filter"},
+			{"g", "group"},
+			{"tab", "switch"},
+		}
+	}
+	lines = append(lines, renderFooter(footerActions, innerWidth))
+
+	content := strings.Join(lines, "\n")
+	return buildBorderedBoxActive(content, innerWidth, "", rightStatus, active)
+}
+
+// renderLeftDetailPanel renders the detail view for the left panel.
+func (m TreeModel) renderLeftDetailPanel(innerWidth, h int, active bool) string {
+	sel := m.selected()
+	if sel == nil {
+		// Pad to full height
+		var lines []string
+		lines = append(lines, "")
+		lines = append(lines, " "+DimStyle.Render("No decision selected."))
+		remaining := h - 2 - 4 // borders + footer
+		for i := 0; i < remaining; i++ {
+			lines = append(lines, "")
+		}
+		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+		lines = append(lines, renderFooter([]footerAction{{"esc", "back"}}, innerWidth))
+		content := strings.Join(lines, "\n")
+		return buildBorderedBoxActive(content, innerWidth, "", "", active)
+	}
+
+	var lines []string
+	lines = append(lines, "")
+
+	// Category + impact
+	header := " " + DimStyle.Render(sel.Category)
+	if sel.Impact >= 7 {
+		header += " " + RedStyle.Render(fmt.Sprintf("(%d)", sel.Impact))
+	} else if sel.Impact >= 4 {
+		header += " " + YellowStyle.Render(fmt.Sprintf("(%d)", sel.Impact))
+	}
+	if sel.Delegated {
+		header += " " + MagentaStyle.Render("auto")
+	}
+	lines = append(lines, header)
+
+	// Dependencies
+	if len(sel.DependsOn) > 0 {
+		depIDs := resolveDepIDs(sel.DependsOn, m.decisions)
+		lines = append(lines, " "+DimStyle.Render("deps: "+strings.Join(depIDs, ", ")))
+	}
+	lines = append(lines, "")
+
+	// Question
+	qLines := wrapText(sel.Question, innerWidth-2)
+	for _, ql := range qLines {
+		lines = append(lines, " "+DetailQuestionStyle.Render(ql))
+	}
+	if sel.Context != "" {
+		ctxLines := wrapText(sel.Context, innerWidth-2)
+		for _, cl := range ctxLines {
+			lines = append(lines, " "+DetailContextStyle.Render(cl))
+		}
+	}
+	lines = append(lines, "")
+
+	// Current answer
+	if sel.Answer != nil {
+		style := GreenStyle
+		if sel.Delegated {
+			style = MagentaStyle
+		}
+		ansLines := wrapText(*sel.Answer, innerWidth-4)
+		for _, al := range ansLines {
+			lines = append(lines, " "+style.Render(al))
+		}
+	} else {
+		lines = append(lines, " "+YellowStyle.Render("pending"))
+	}
+	lines = append(lines, "")
+
+	// Options
+	if len(sel.Options) > 0 {
+		for i, opt := range sel.Options {
+			isSel := i == m.optCursor
+			isChosen := sel.Answer != nil && opt.Label == *sel.Answer
+			cur := "   "
+			if isSel {
+				cur = " " + AccentStyle.Render("> ")
+			}
+			style := lipgloss.NewStyle().Foreground(DimGray)
+			if isChosen {
+				style = GreenStyle
+			} else if isSel {
+				style = BoldWhite
+			}
+			optText := trunc(fmt.Sprintf("%s) %s", opt.Key, opt.Label), innerWidth-4)
+			lines = append(lines, cur+style.Render(optText))
+		}
+		lines = append(lines, "")
+	}
+
+	// Why text (brief)
+	if m.whyText != "" && m.whyText != "..." && m.whyText != "Shuffling options..." {
+		whyLines := wrapText(m.whyText, innerWidth-2)
+		maxWhyLines := 6
+		if len(whyLines) > maxWhyLines {
+			whyLines = whyLines[:maxWhyLines]
+			whyLines = append(whyLines, DimStyle.Render("..."))
+		}
+		for _, wl := range whyLines {
+			lines = append(lines, " "+DimStyle.Render(wl))
+		}
+		lines = append(lines, "")
+	} else if m.whyText == "..." || m.whyText == "Shuffling options..." {
+		lines = append(lines, " "+AccentStyle.Render(m.whyText))
+		lines = append(lines, "")
+	}
+
+	// Text input (revise/ask/features)
+	if m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
+		label := "Override:"
+		if m.mode == tmAsk {
+			label = "Ask:"
+		} else if m.mode == tmEditFeatures {
+			label = "Features:"
+		}
+		lines = append(lines, " "+AccentStyle.Render(label))
+		lines = append(lines, " "+m.textInput.View())
+		lines = append(lines, "")
+	}
+
+	// Fill remaining vertical space: h - borders(2) - footer divider(1) - footer(1) = h-4
+	remaining := h - len(lines) - 4
+	for i := 0; i < remaining; i++ {
+		lines = append(lines, "")
+	}
+
+	// Footer
+	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+	var detailFooterActions []footerAction
+	if m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
+		detailFooterActions = []footerAction{
+			{"enter", "submit"},
+			{"esc", "cancel"},
+		}
+	} else {
+		detailFooterActions = []footerAction{
+			{"j/k", "pick"},
+			{"enter", "confirm"},
+			{"c", "custom"},
+			{"w", "why"},
+			{"q", "back"},
+		}
+	}
+	lines = append(lines, renderFooter(detailFooterActions, innerWidth))
+
+	content := strings.Join(lines, "\n")
+	return buildBorderedBoxActive(content, innerWidth, sel.ID, sel.Category, active)
+}
+
+// renderRightPanel renders the right panel (chat + optional resolver).
+func (m TreeModel) renderRightPanel(w, h int) string {
+	if w < 20 {
+		w = 20
+	}
+	innerWidth := w - 4
+	if innerWidth < 10 {
+		innerWidth = 10
+	}
+	active := m.focusPanel == FocusChat
+
+	// Determine resolver lines (if pending decisions exist)
+	resolverLines := m.renderResolver(innerWidth)
+	resolverH := len(resolverLines)
+
+	// Chat content height: h - borders(2) - gap(1) - inputDivider(1) - input(1) - footerDivider(1) - footer(1) - resolver
+	fixedH := 2 + 1 + 1 + 1 + 1 + 1
+	if len(m.completions) > 0 {
+		fixedH++
+	}
+	if resolverH > 0 {
+		fixedH += resolverH + 1 // +1 for the middle border separator
+	}
+	chatContentH := h - fixedH
+	if chatContentH < 3 {
+		chatContentH = 3
+	}
+
+	var lines []string
+	lines = append(lines, "")
+
+	// Render chat entries
+	maxTextWidth := innerWidth - 2
+	if maxTextWidth < 20 {
+		maxTextWidth = 20
+	}
+
+	const maxChildLines = 5
+
+	var chatLines []string
+	for i, entry := range m.chatLog {
+		prevType := ""
+		if i > 0 {
+			prevType = m.chatLog[i-1].Type
+		}
+
+		if prevType != "" {
+			switch {
+			case prevType == "topic" && entry.Type == "topic":
+			case prevType == "tool" && entry.Type == "tool":
+			case prevType == "subtool" && entry.Type == "subtool":
+			default:
+				chatLines = append(chatLines, "")
+			}
+		}
+
+		switch entry.Type {
+		case "topic":
+			label := toolCallLabel(entry.Text)
+			chatLines = append(chatLines, AccentStyle.Render("●")+" "+lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true).Render(label))
+			childCount := len(entry.Children)
+			showCount := childCount
+			if !entry.Expanded && childCount > maxChildLines {
+				showCount = maxChildLines
+			}
+			for ci := 0; ci < showCount; ci++ {
+				child := entry.Children[ci]
+				childLabel := toolCallLabel(child.Text)
+				for li, wl := range wrapText(childLabel, maxTextWidth-4) {
+					if li == 0 {
+						chatLines = append(chatLines, DimStyle.Render(" └ "+wl))
+					} else {
+						chatLines = append(chatLines, DimStyle.Render("   "+wl))
+					}
+				}
+			}
+			if !entry.Expanded && childCount > maxChildLines {
+				remaining := childCount - maxChildLines
+				chatLines = append(chatLines, DimStyle.Render(fmt.Sprintf(" └ ... %d more", remaining)))
+			}
+
+		case "tool":
+			label := toolCallLabel(entry.Text)
+			chatLines = append(chatLines, AccentStyle.Render("● "+label))
+
+		case "agent":
+			var renderedLines []string
+			if m.mdRenderer != nil {
+				if md, err := m.mdRenderer.Render(entry.Text); err == nil {
+					for _, ml := range strings.Split(strings.TrimRight(md, "\n"), "\n") {
+						visWidth := lipgloss.Width(ml)
+						if visWidth > maxTextWidth {
+							renderedLines = append(renderedLines, wrapText(ml, maxTextWidth)...)
+						} else {
+							renderedLines = append(renderedLines, ml)
+						}
+					}
+				}
+			}
+			if len(renderedLines) == 0 {
+				renderedLines = wrapText(entry.Text, maxTextWidth-1)
+			}
+			for _, rl := range renderedLines {
+				chatLines = append(chatLines, strings.TrimRight(rl, " "))
+			}
+
+		case "user":
+			chatLines = append(chatLines, "")
+			wrapped := wrapText(entry.Text, maxTextWidth-5)
+			for j, wl := range wrapped {
+				styledLine := UserMsgStyle.Render(" " + wl + " ")
+				if j == 0 {
+					chatLines = append(chatLines, UserMsgStyle.Render(" > ")+styledLine)
+				} else {
+					chatLines = append(chatLines, UserMsgStyle.Render("   ")+styledLine)
+				}
+			}
+			chatLines = append(chatLines, "")
+
+		case "action":
+			for _, wl := range wrapText(entry.Text, maxTextWidth) {
+				chatLines = append(chatLines, AccentStyle.Render(wl))
+			}
+
+		default:
+			for _, wl := range wrapText(entry.Text, maxTextWidth) {
+				chatLines = append(chatLines, DimStyle.Render(wl))
+			}
+		}
+	}
+
+	// Thinking indicator
+	if m.chatThinking {
+		elapsed := time.Since(m.chatThinkStart)
+		var timeStr string
+		if elapsed < time.Minute {
+			timeStr = fmt.Sprintf("%.0fs", elapsed.Seconds())
+		} else {
+			timeStr = fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
+		}
+		spinner := thinkingSpinner(m.mascotTick)
+		phrase := thinkingPhrase(m.mascotTick, elapsed)
+		chatLines = append(chatLines, "")
+		chatLines = append(chatLines, AccentStyle.Render(spinner+" "+phrase+" ")+DimStyle.Render("("+timeStr+")"))
+	}
+
+	// Scrolling
+	scrollUp := m.chatScrollUp
+	maxScroll := len(chatLines) - chatContentH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scrollUp > maxScroll {
+		scrollUp = maxScroll
+	}
+
+	start := 0
+	if len(chatLines) > chatContentH {
+		start = len(chatLines) - chatContentH - scrollUp
+		if start < 0 {
+			start = 0
+		}
+	}
+	end := start + chatContentH
+	if end > len(chatLines) {
+		end = len(chatLines)
+	}
+	visible := chatLines[start:end]
+
+	for _, cl := range visible {
+		lines = append(lines, cl)
+	}
+
+	// Fill remaining chat space
+	emptyBelow := chatContentH - len(visible)
+	for i := 0; i < emptyBelow; i++ {
+		if len(m.chatLog) == 0 && i == 0 {
+			lines = append(lines, DimStyle.Render("Describe your project to get started."))
+		} else {
+			lines = append(lines, "")
+		}
+	}
+
+	// Resolver section
+	if resolverH > 0 {
+		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+		lines = append(lines, resolverLines...)
+	}
+
+	// Input divider + completions + input
+	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+	if len(m.completions) > 0 {
+		var parts []string
+		for i, c := range m.completions {
+			label := "@" + c
+			if i == m.completionIdx {
+				parts = append(parts, AccentStyle.Render(label))
+			} else {
+				parts = append(parts, DimStyle.Render(label))
+			}
+		}
+		lines = append(lines, " "+strings.Join(parts, "  "))
+	}
+	promptW := lipgloss.Width(m.chatInput.Prompt)
+	m.chatInput.Width = innerWidth - 2 - promptW
+	lines = append(lines, m.chatInput.View())
+
+	// Footer
+	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+	var chatFooterActions []footerAction
+	if resolverH > 0 && active && strings.TrimSpace(m.chatInput.Value()) == "" {
+		// Resolver-focused footer
+		chatFooterActions = []footerAction{
+			{"j/k", "pick"},
+			{"enter", "confirm"},
+			{"n/p", "pending"},
+			{"tab", "switch"},
+		}
+	} else {
+		chatFooterActions = []footerAction{
+			{"enter", "send"},
+			{"pgup", "scroll"},
+			{"n/p", "pending"},
+			{"tab", "switch"},
+		}
+	}
+	if m.pendingCount > 0 {
+		// Prepend pending count indicator
+		chatFooterActions = append([]footerAction{{"○", fmt.Sprintf("%d", m.pendingCount)}}, chatFooterActions...)
+	}
+	lines = append(lines, renderFooter(chatFooterActions, innerWidth))
+
+	content := strings.Join(lines, "\n")
+	title := ""
+	rightStatus := ""
+	if m.overallStatus != "" {
+		rightStatus = m.overallStatus
+	}
+	return buildBorderedBoxActive(content, innerWidth, title, rightStatus, active)
+}
+
+// renderResolver renders the pending decision resolver section.
+// Returns nil if no pending decisions.
+func (m TreeModel) renderResolver(innerWidth int) []string {
+	var pending []decision.Decision
+	for _, d := range m.decisions {
+		if d.IsPending() {
+			pending = append(pending, d)
+		}
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+
+	idx := m.resolverIdx
+	if idx >= len(pending) {
+		idx = len(pending) - 1
+	}
+	if idx < 0 {
+		idx = 0
+	}
+
+	current := pending[idx]
+
+	var lines []string
+	// Header
+	lines = append(lines, " "+DimStyle.Render(fmt.Sprintf("Pending %d/%d", idx+1, len(pending))))
+	lines = append(lines, "")
+	// Question
+	lines = append(lines, " "+YellowStyle.Render("○")+" "+BoldWhite.Render(trunc(current.Question, innerWidth-4)))
+	// Options
+	for i, opt := range current.Options {
+		cursor := "   "
+		style := lipgloss.NewStyle().Foreground(DimGray)
+		if i == m.resolverOptIdx {
+			cursor = " " + AccentStyle.Render("> ")
+			style = AccentStyle
+		}
+		lines = append(lines, cursor+style.Render(fmt.Sprintf("%s) %s", opt.Key, trunc(opt.Label, innerWidth-8))))
+	}
+
+	return lines
+}
+
+// renderCareBar renders a visual auto/review toggle bar.
+func renderCareBar(width int) string {
+	if width < 10 {
+		width = 10
+	}
+	barW := width - 20
+	if barW < 4 {
+		barW = 4
+	}
+	filled := barW / 2
+	empty := barW - filled
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", empty)
+	return DimStyle.Render("[auto ") + AccentStyle.Render(bar) + DimStyle.Render(" review]")
 }
 
 // ========== FULL-SCREEN CHAT VIEW ==========

@@ -22,9 +22,14 @@ import (
 type View int
 
 const (
-	ViewChat View = iota // conversation is the primary view
-	ViewPriorities               // care level picker (overlay, returns to conversation)
-	ViewTree                     // decision tree (tab toggles)
+	ViewMain       View = iota // side-by-side tree + chat (primary view)
+	ViewPriorities             // care level picker (overlay, returns to main)
+)
+
+// Backward compatibility aliases.
+const (
+	ViewChat = ViewMain
+	ViewTree = ViewMain
 )
 
 // Model is the root Bubbletea model.
@@ -77,8 +82,8 @@ func NewModel(task string, provider api.Provider, cwd string, opts ...ModelOpts)
 	ctx, cancel := context.WithCancel(context.Background())
 	tree := NewTreeModel()
 	tree.domainStatuses = make(map[string]string)
-	// Conversation is the default mode — chat input focused
-	tree.mode = tmChat
+	// Chat panel focused by default (right panel in side-by-side)
+	tree.focusPanel = FocusChat
 	tree.chatFocused = true
 	tree.chatInput.Focus()
 
@@ -101,7 +106,7 @@ func NewModel(task string, provider api.Provider, cwd string, opts ...ModelOpts)
 		cancel:           cancel,
 		domainPriorities: make(map[string]agent.CareLevel),
 		notifications:    NewNotificationManager(),
-		view:             ViewChat,
+		view:             ViewMain,
 	}
 
 	m.manager = agent.NewManager(provider, cwd)
@@ -308,7 +313,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case TaskSubmittedMsg:
 		// First message in conversation becomes the task — start decomposition
 		m.task = msg.Task
-		m.view = ViewChat
+		m.view = ViewMain
 		m.manager = agent.NewManager(m.provider, m.cwd)
 		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Analyzing project and identifying decisions..."})
 		ch := m.eventChan
@@ -386,8 +391,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case PrioritiesConfirmedMsg:
 		m.domainPriorities = msg.Priorities
 		savePriorities(m.cwd, msg.Priorities, m.task)
-		m.view = ViewChat
-		m.tree.mode = tmChat
+		m.view = ViewMain
+		m.tree.mode = tmTree
+		m.tree.focusPanel = FocusChat
 		m.tree.chatFocused = true
 		m.tree.chatInput.Focus()
 
@@ -1100,7 +1106,7 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 				cmds = append(cmds, cmd)
 			}
 		}
-	case ViewChat, ViewTree:
+	case ViewMain:
 		var cmd tea.Cmd
 		m.tree, cmd = m.tree.Update(msg)
 		if cmd != nil {
@@ -1135,7 +1141,7 @@ func (m Model) View() string {
 		m.priorities.height = panelHeight
 		base = m.priorities.View()
 
-	case ViewChat, ViewTree:
+	case ViewMain:
 		m.tree.height = panelHeight
 		m.tree.width = m.width
 		base = m.tree.View()
