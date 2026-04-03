@@ -17,7 +17,7 @@ const (
 
 func StatusToMood(status string) MascotMood {
 	switch status {
-	case "thinking", "decomposing", "executing", "planning", "verifying":
+	case "thinking", "decomposing", "executing", "planning", "verifying", "waiting":
 		return MoodActive
 	case "done":
 		return MoodDone

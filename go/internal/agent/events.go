@@ -15,6 +15,7 @@ const (
 	ExecDecisionStored                    // executor logged a new decision
 	ExecToolActivity                      // executor tool call (for live feed)
 	ExecPermissionRequest                 // executor needs permission for a tool
+	ExecWaitingForDecisions               // executor paused, waiting for pending decisions
 	AllExecutorsDone                      // all domain executors finished
 )
 

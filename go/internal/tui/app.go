@@ -558,6 +558,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 
+	case ExecWaitingMsg:
+		// Executor paused — waiting for pending decisions
+		m.tree.pendingCount = m.countPending()
+		m.tree.overallStatus = "waiting"
+		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+			Type: "action",
+			Text: fmt.Sprintf("Paused — %d decisions need your input. Tab to review, then come back.", m.tree.pendingCount),
+		})
+		cmds = append(cmds, ListenForEvents(m.eventChan))
+		return m, tea.Batch(cmds...)
+
 	case AllExecutorsDoneMsg:
 		m.tree.overallStatus = "done"
 		m.tree.chatThinking = false
@@ -664,8 +675,19 @@ If no decisions are incompatible, output: []`, changedDecision.ID, changedDecisi
 			_ = decision.SaveStore(m.cwd, store)
 		}
 
-		// If executors already ran, re-execute with updated decisions
-		if m.executorsLaunched && changedDecision != nil {
+		// Update pending count
+		m.tree.pendingCount = m.countPending()
+
+		// If executor is waiting for decisions and all are now answered, signal continue
+		if m.executorsLaunched && m.tree.pendingCount == 0 && m.tree.overallStatus == "waiting" {
+			m.signalExecutorContinue()
+			m.tree.overallStatus = "executing"
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "All decisions resolved. Continuing..."})
+			return m, nil
+		}
+
+		// If executors already ran and a decision changed, re-execute
+		if m.executorsLaunched && changedDecision != nil && m.tree.overallStatus != "waiting" {
 			m.executorsLaunched = false
 			m.tree.overallStatus = "executing"
 			ch := m.eventChan
@@ -1436,6 +1458,21 @@ func isTopicTool(desc string) bool {
 	}
 	// Everything else is a subtool
 	return false
+}
+
+// signalExecutorContinue tells all waiting executors to resume.
+func (m Model) signalExecutorContinue() {
+	if m.manager == nil {
+		return
+	}
+	for _, exec := range m.manager.Executors() {
+		if exec.State().Status == agent.DomainWaiting {
+			select {
+			case exec.ContinueCh <- struct{}{}:
+			default: // already signalled
+			}
+		}
+	}
 }
 
 func (m Model) countPending() int {

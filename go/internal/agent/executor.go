@@ -26,6 +26,7 @@ type DomainStatus int
 const (
 	DomainPending   DomainStatus = iota
 	DomainPlanning
+	DomainWaiting   // paused, waiting for user to resolve pending decisions
 	DomainExecuting
 	DomainVerifying
 	DomainDone
@@ -35,6 +36,7 @@ const (
 func (s DomainStatus) String() string {
 	switch s {
 	case DomainPlanning:  return "planning"
+	case DomainWaiting:   return "waiting"
 	case DomainExecuting: return "executing"
 	case DomainVerifying: return "verifying"
 	case DomainDone:      return "done"
@@ -67,7 +69,8 @@ type Executor struct {
 	knownCategories  []string
 	state            ExecState
 	onEvent          func(Event)
-	parsedBlockCount int // tracks how many defer-decisions blocks have been parsed
+	parsedBlockCount int           // tracks how many defer-decisions blocks have been parsed
+	ContinueCh       chan struct{} // TUI signals this when all pending decisions are resolved
 }
 
 // ExecOpts configures a new executor.
@@ -112,6 +115,7 @@ func NewExecutor(opts ExecOpts) *Executor {
 		allDecisions:    opts.AllDecisions,
 		knownCategories: cats,
 		onEvent:         opts.OnEvent,
+		ContinueCh:      make(chan struct{}, 1),
 		state: ExecState{
 			ID:        fmt.Sprintf("domain-%s", opts.Domain),
 			Domain:    opts.Domain,
@@ -139,7 +143,7 @@ func (e *Executor) setStatus(s DomainStatus, output, errMsg string) {
 	e.onEvent(Event{Type: ExecStateChanged, ExecutorID: e.state.ID})
 }
 
-// Execute runs the full domain lifecycle.
+// Execute runs the full domain lifecycle, pausing when decisions need resolution.
 func (e *Executor) Execute(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -147,11 +151,18 @@ func (e *Executor) Execute(ctx context.Context) {
 		}
 	}()
 
-	decSummary := e.decisionSummary()
-
-	// Phase 1: Planning -- always runs, care level doesn't affect decision count
+	// Phase 1: Planning — discover implementation decisions
 	e.setStatus(DomainPlanning, "Planning...", "")
+	decSummary := e.decisionSummary()
 	e.plan(ctx, decSummary)
+
+	// Wait for all pending decisions to be resolved
+	if e.waitForPendingDecisions(ctx) {
+		return // cancelled
+	}
+
+	// Refresh summary after decisions are resolved
+	decSummary = e.decisionSummary()
 
 	// Phase 2: Execution
 	e.setStatus(DomainExecuting, "", "")
@@ -160,7 +171,12 @@ func (e *Executor) Execute(ctx context.Context) {
 		return
 	}
 
-	// Phase 3: Verification (always runs)
+	// If new decisions appeared during execution, wait for them
+	if e.waitForPendingDecisions(ctx) {
+		return
+	}
+
+	// Phase 3: Verification
 	e.setStatus(DomainVerifying, "Verifying...", "")
 	issues := e.verify(ctx, fullOutput, decSummary)
 	if issues != "" {
@@ -168,7 +184,7 @@ func (e *Executor) Execute(ctx context.Context) {
 		fullOutput = e.fix(ctx, issues, decSummary)
 	}
 
-	// Phase 4: Extract implicit decisions (always runs)
+	// Phase 4: Extract implicit decisions
 	e.extract(ctx, fullOutput)
 
 	// Phase 5: Build verification
@@ -181,6 +197,36 @@ func (e *Executor) Execute(ctx context.Context) {
 	}
 
 	e.setStatus(DomainDone, fullOutput, "")
+}
+
+// waitForPendingDecisions checks if any decisions are pending (unanswered).
+// If so, pauses the executor and waits for the TUI to signal ContinueCh.
+// Returns true if the context was cancelled (executor should stop).
+func (e *Executor) waitForPendingDecisions(ctx context.Context) bool {
+	pending := 0
+	e.mu.Lock()
+	for _, d := range *e.allDecisions {
+		if d.Answer == nil {
+			pending++
+		}
+	}
+	e.mu.Unlock()
+
+	if pending == 0 {
+		return false // nothing to wait for
+	}
+
+	// Signal the TUI that we're waiting
+	e.setStatus(DomainWaiting, fmt.Sprintf("Waiting for %d pending decisions...", pending), "")
+	e.onEvent(Event{Type: ExecWaitingForDecisions, ExecutorID: e.state.ID})
+
+	// Block until the TUI signals all decisions are resolved, or context cancelled
+	select {
+	case <-ctx.Done():
+		return true
+	case <-e.ContinueCh:
+		return false
+	}
 }
 
 func (e *Executor) decisionSummary() string {

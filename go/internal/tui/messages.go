@@ -80,6 +80,8 @@ func BridgeAgentEvent(ev agent.Event) tea.Msg {
 			}
 		}
 		return nil
+	case agent.ExecWaitingForDecisions:
+		return ExecWaitingMsg{ExecutorID: ev.ExecutorID}
 	case agent.AllExecutorsDone:
 		return AllExecutorsDoneMsg{}
 	default:
@@ -122,3 +124,4 @@ func permissionDescription(req *api.PermissionRequest) string {
 	return tc.HumanDescription()
 }
 type StopAgentMsg struct{}
+type ExecWaitingMsg struct{ ExecutorID string }

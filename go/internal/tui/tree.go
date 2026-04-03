@@ -889,9 +889,9 @@ func (m TreeModel) viewChat() string {
 
 		switch entry.Type {
 		case "topic":
-			// Claude Code style: ● BoldWhite(topic text)
+			// Orange dot, white text
 			label := toolCallLabel(entry.Text)
-			chatLines = append(chatLines, " "+AccentStyle.Render("●")+" "+BoldWhite.Render(label))
+			chatLines = append(chatLines, " "+AccentStyle.Render("●")+" "+lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true).Render(label))
 			// Render children indented with └ connector
 			childCount := len(entry.Children)
 			showCount := childCount
