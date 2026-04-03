@@ -1004,13 +1004,26 @@ func thinkingPhrase(tick int, elapsed time.Duration) string {
 }
 
 func trunc(s string, n int) string {
-	if len(s) <= n {
+	if n <= 0 {
+		return ""
+	}
+	// Use visible width (handles unicode, ANSI codes)
+	if lipgloss.Width(s) <= n {
 		return s
 	}
 	if n <= 3 {
-		return s[:n]
+		runes := []rune(s)
+		if len(runes) > n {
+			return string(runes[:n])
+		}
+		return s
 	}
-	return s[:n-3] + "..."
+	// Truncate by runes to avoid cutting multi-byte chars
+	runes := []rune(s)
+	for len(runes) > 0 && lipgloss.Width(string(runes))+3 > n {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes) + "..."
 }
 
 func pad(s string, n int) string {
