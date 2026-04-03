@@ -112,30 +112,28 @@ Rules for the JSON:
 
 Do NOT use any tools. Just analyze the task and output decisions.`
 
-const ExecutePromptTemplate = `You are implementing a software project. Domain: %s
+const ExecutePromptTemplate = `You are implementing a software project based on confirmed decisions. Domain: %s
 
 %s
 
 CRITICAL RULES:
-- All files MUST be created in the CURRENT WORKING DIRECTORY. Never use /tmp or any other location.
-- Check pwd first if unsure. All project files go in the CWD or subdirectories of it.
-- Never ask the user for permission or confirmation. Never say "should I continue?".
-- The user monitors your decisions and will challenge any they disagree with.
+- All files MUST be created in the CURRENT WORKING DIRECTORY. Never use /tmp.
+- Follow the decisions EXACTLY as specified below. Do not deviate.
+- If you encounter a choice not covered by the decisions, output a ` + "```defer-decisions" + ` block BEFORE proceeding. The system will pause for resolution.
 
 DECISION TRACKING:
-Before implementing each significant choice, output a ` + "```defer-decisions" + ` block.
-This includes: file structure, library choices, patterns, config values, naming conventions.
+Before each group of related files or significant implementation choice, output a ` + "```defer-decisions" + ` block recording what you chose and why. This is mandatory for:
+- File structure decisions
+- Library/dependency choices
+- Config values and patterns
+- Any choice with 2+ reasonable alternatives
 
-Example — before creating a file:
+Format:
 ` + "```defer-decisions" + `
-[{"category": "Structure", "question": "Project file structure?", "options": [{"key": "A", "label": "src/ with feature folders"}, {"key": "B", "label": "flat structure"}, {"key": "C", "label": "domain-driven layout"}], "answer": "A", "reasoning": "Scales well for medium projects", "features": ["scaffold"], "impact": 6}]
+[{"category": "...", "question": "...", "options": [{"key": "A", "label": "..."}, {"key": "B", "label": "..."}], "answer": "A", "reasoning": "...", "features": ["..."], "impact": 5}]
 ` + "```" + `
 
-Then proceed with implementation. Output a defer-decisions block BEFORE each group of related files or significant choice. Small choices (variable names, import order) don't need blocks.
-
-You have these tools: Read, Write, Edit, Bash, Glob, Grep. Use them to implement the full project.
-
-When done, say "Implementation complete."`
+Implement step by step. When done, say "Implementation complete."`
 
 var CarePrompts = map[CareLevel]string{
 	CareLevelAuto:   "Implement autonomously. Make all decisions yourself.",
@@ -158,12 +156,24 @@ The first option (A) should always be what was actually chosen. Other options ar
 The "features" field is an array of lowercase feature names this decision relates to (e.g. "messaging", "auth", "encryption", "ui").`
 
 
-const PlanPrompt = `You are a software architect. Given the task and existing decisions, identify ALL implementation decisions that still need to be made.
+const PlanPrompt = `You are a software architect planning implementation details. Think deeply about EVERY choice that needs to be made before writing code.
 
-For EACH decision, provide 3-4 concrete options to choose from.
+Consider:
+- File structure and organization
+- Library/dependency choices
+- API design (routes, endpoints, schemas)
+- Data models and database schema
+- Authentication and authorization patterns
+- Error handling strategy
+- Configuration and environment variables
+- Testing approach
+- Build and deployment setup
+
+For EACH decision, provide 3-4 concrete options to choose from. Be thorough — it is better to identify too many decisions than too few. The user will filter what matters.
+
+Do NOT include decisions that are already in the ALREADY DECIDED list.
 
 Output ONLY a JSON array:
 [{"category": "...", "question": "what needs to be decided", "options": [{"key": "A", "label": "option 1"}, {"key": "B", "label": "option 2"}, {"key": "C", "label": "option 3"}], "answer": "A", "reasoning": "why you recommend this option", "features": ["messaging", "auth"], "impact": 0-10 (how many other decisions this affects)}]
 
-The "answer" field is the KEY (A, B, C) of your recommended option. Always provide real alternatives, not just your recommendation.
-The "features" field is an array of lowercase feature names this decision relates to (e.g. "messaging", "auth", "encryption", "ui").`
+The "answer" field is the KEY (A, B, C) of your recommended option. Always provide real alternatives.`

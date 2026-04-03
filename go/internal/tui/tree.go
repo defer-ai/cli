@@ -27,8 +27,9 @@ const (
 
 // Focus panel constants for side-by-side layout.
 const (
-	FocusTree = 0 // left panel (tree)
-	FocusChat = 1 // right panel (chat + resolver)
+	FocusTree     = 0 // left panel (tree)
+	FocusChat     = 1 // right panel (chat log)
+	FocusResolver = 2 // right panel (pending decisions)
 
 	minSideBySideWidth = 80
 )
@@ -76,8 +77,8 @@ type TreeModel struct {
 	jumpMatches     []jumpMatch
 	jumpCursor      int
 
-	// Side-by-side layout
-	focusPanel        int  // FocusTree (0) = tree (left), FocusChat (1) = chat (right)
+	// Side-by-side layout — three focus zones
+	focusPanel        int  // FocusTree (0), FocusChat (1), FocusResolver (2)
 	resolverIdx       int  // which pending decision is shown (0-based into pending list)
 	resolverOptIdx    int  // option cursor in the resolver
 	showingPriorities bool // true = resolver shows care level picker instead of decisions
@@ -177,15 +178,20 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	// Exception: chat mode with active completions uses tab for cycling.
 	if key == "tab" && !((m.mode == tmChat || (isWide && m.focusPanel == FocusChat)) && len(m.completions) > 0) {
 		if isWide {
-			// Wide: toggle focus panel
-			if m.focusPanel == FocusChat {
-				m.focusPanel = FocusTree
-				m.chatFocused = false
-				m.chatInput.Blur()
-			} else {
+			// Wide: cycle focus through tree → chat → resolver → tree
+			switch m.focusPanel {
+			case FocusTree:
 				m.focusPanel = FocusChat
 				m.chatFocused = true
 				m.chatInput.Focus()
+			case FocusChat:
+				m.focusPanel = FocusResolver
+				m.chatFocused = false
+				m.chatInput.Blur()
+			case FocusResolver:
+				m.focusPanel = FocusTree
+				m.chatFocused = false
+				m.chatInput.Blur()
 			}
 		} else {
 			// Narrow: toggle tmTree <-> tmChat
@@ -202,9 +208,14 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// --- Wide layout: chat panel focused (right panel) ---
+	// --- Wide layout: chat panel focused ---
 	if isWide && m.focusPanel == FocusChat && m.mode != tmDetail && m.mode != tmRevise && m.mode != tmAsk && m.mode != tmEditFeatures {
 		return m.handleChatKey(msg)
+	}
+
+	// --- Wide layout: resolver panel focused ---
+	if isWide && m.focusPanel == FocusResolver {
+		return m.handleResolverKey(msg)
 	}
 
 	// --- Narrow layout: chat input mode (full screen) ---
@@ -542,11 +553,11 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	return m, nil
 }
 
-// handleChatKey handles key events when the chat panel is focused (wide layout).
-func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
+// handleResolverKey handles key events when the resolver panel is focused.
+func (m TreeModel) handleResolverKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	key := msg.String()
 
-	// Priorities picker mode — intercept all keys
+	// Priorities mode
 	if m.showingPriorities {
 		switch key {
 		case "j", "down":
@@ -558,7 +569,6 @@ func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 				m.priorityCursor--
 			}
 		case "h", "left", "l", "right":
-			// Toggle auto/review for current category
 			cat := m.priorityCategories[m.priorityCursor]
 			if m.priorityLevels[cat] == agent.CareLevelAuto {
 				m.priorityLevels[cat] = agent.CareLevelReview
@@ -566,7 +576,6 @@ func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 				m.priorityLevels[cat] = agent.CareLevelAuto
 			}
 		case "enter":
-			// Confirm priorities
 			m.showingPriorities = false
 			priorities := make(map[string]agent.CareLevel)
 			for k, v := range m.priorityLevels {
@@ -577,14 +586,60 @@ func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 		return m, nil
 	}
 
-	// Check if resolver is showing (pending decisions exist)
+	// Pending decisions
 	var pendingDecs []decision.Decision
 	for _, d := range m.decisions {
 		if d.IsPending() {
 			pendingDecs = append(pendingDecs, d)
 		}
 	}
-	hasResolver := len(pendingDecs) > 0
+	if len(pendingDecs) == 0 {
+		return m, nil
+	}
+
+	switch key {
+	case "j", "down":
+		if m.resolverOptIdx < len(pendingDecs[m.resolverIdx].Options)-1 {
+			m.resolverOptIdx++
+		}
+	case "k", "up":
+		if m.resolverOptIdx > 0 {
+			m.resolverOptIdx--
+		}
+	case "n":
+		m.resolverIdx++
+		if m.resolverIdx >= len(pendingDecs) {
+			m.resolverIdx = 0
+		}
+		m.resolverOptIdx = 0
+	case "p":
+		m.resolverIdx--
+		if m.resolverIdx < 0 {
+			m.resolverIdx = len(pendingDecs) - 1
+		}
+		m.resolverOptIdx = 0
+	case "enter":
+		idx := m.resolverIdx
+		if idx < len(pendingDecs) && m.resolverOptIdx < len(pendingDecs[idx].Options) {
+			d := pendingDecs[idx]
+			answer := d.Options[m.resolverOptIdx].Label
+			m.resolverOptIdx = 0
+			// Advance to next pending
+			if m.resolverIdx >= len(pendingDecs)-1 {
+				m.resolverIdx = 0
+			}
+			return m, func() tea.Msg { return ReviseDecisionMsg{ID: d.ID, NewAnswer: answer} }
+		}
+	}
+	return m, nil
+}
+
+// handleChatKey handles key events when the chat panel is focused (wide layout).
+// Only handles chat input + scrolling. Resolver keys are in handleResolverKey.
+func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
+	key := msg.String()
+
+	// Chat-only handling — resolver keys are in handleResolverKey
 	inputEmpty := strings.TrimSpace(m.chatInput.Value()) == ""
 
 	switch key {
@@ -643,49 +698,17 @@ func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 		m.chatFocused = false
 		m.chatInput.Blur()
 		return m, nil
-	case "n":
-		// Next pending decision in resolver (only when input is empty)
-		if hasResolver && inputEmpty {
-			m.resolverIdx++
-			if m.resolverIdx >= len(pendingDecs) {
-				m.resolverIdx = 0
-			}
-			m.resolverOptIdx = 0
-			return m, nil
-		}
-		// Fall through to text input
-	case "p":
-		// Previous pending decision in resolver (only when input is empty)
-		if hasResolver && inputEmpty {
-			m.resolverIdx--
-			if m.resolverIdx < 0 {
-				m.resolverIdx = len(pendingDecs) - 1
-			}
-			m.resolverOptIdx = 0
-			return m, nil
-		}
-		// Fall through to text input
 	case "j", "down":
-		// Navigate resolver options when input is empty and resolver showing
-		if hasResolver && inputEmpty {
-			idx := m.resolverIdx
-			if idx >= len(pendingDecs) {
-				idx = len(pendingDecs) - 1
-			}
-			if idx >= 0 && m.resolverOptIdx < len(pendingDecs[idx].Options)-1 {
-				m.resolverOptIdx++
-			}
-			return m, nil
+		// Scroll chat down
+		m.chatScrollUp -= 3
+		if m.chatScrollUp < 0 {
+			m.chatScrollUp = 0
 		}
-		// Fall through to text input
+		return m, nil
 	case "k", "up":
-		if hasResolver && inputEmpty {
-			if m.resolverOptIdx > 0 {
-				m.resolverOptIdx--
-			}
-			return m, nil
-		}
-		// Fall through to text input
+		// Scroll chat up
+		m.chatScrollUp += 3
+		return m, nil
 	case "enter":
 		if !inputEmpty {
 			// Send chat message
@@ -699,24 +722,6 @@ func (m TreeModel) handleChatKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 			m.completions = nil
 			m.completionIdx = -1
 			return m, func() tea.Msg { return ChatMessageMsg{Text: input} }
-		}
-		// Input empty + resolver showing = confirm resolver option
-		if hasResolver {
-			idx := m.resolverIdx
-			if idx >= len(pendingDecs) {
-				idx = len(pendingDecs) - 1
-			}
-			if idx >= 0 && idx < len(pendingDecs) {
-				current := pendingDecs[idx]
-				if m.resolverOptIdx < len(current.Options) {
-					id := current.ID
-					answer := current.Options[m.resolverOptIdx].Label
-					m.resolverOptIdx = 0
-					// Auto-advance to next pending
-					// (After the ReviseDecisionMsg is processed, the pending list shrinks)
-					return m, func() tea.Msg { return ReviseDecisionMsg{ID: id, NewAnswer: answer} }
-				}
-			}
 		}
 		return m, nil
 	}

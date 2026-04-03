@@ -151,20 +151,36 @@ func (e *Executor) Execute(ctx context.Context) {
 		}
 	}()
 
-	// Phase 1: Planning — discover implementation decisions
-	e.setStatus(DomainPlanning, "Planning...", "")
-	decSummary := e.decisionSummary()
-	e.plan(ctx, decSummary)
+	// Phase 1: Deep planning — multiple rounds until no new decisions emerge
+	for round := 0; round < 3; round++ {
+		e.setStatus(DomainPlanning, fmt.Sprintf("Planning (round %d)...", round+1), "")
+		decSummary := e.decisionSummary()
+		prevCount := len(*e.allDecisions)
 
-	// Wait for all pending decisions to be resolved
-	if e.waitForPendingDecisions(ctx) {
-		return // cancelled
+		e.plan(ctx, decSummary)
+
+		// Wait for all pending decisions to be resolved
+		if e.waitForPendingDecisions(ctx) {
+			return // cancelled
+		}
+
+		// If no new decisions were discovered, planning is complete
+		newCount := len(*e.allDecisions)
+		if newCount == prevCount {
+			break
+		}
+
+		e.onEvent(Event{
+			Type:         ExecToolActivity,
+			ExecutorID:   e.state.ID,
+			ToolActivity: fmt.Sprintf("Round %d: discovered %d new decisions", round+1, newCount-prevCount),
+		})
 	}
 
-	// Refresh summary after decisions are resolved
-	decSummary = e.decisionSummary()
+	// Refresh summary after all planning rounds
+	decSummary := e.decisionSummary()
 
-	// Phase 2: Execution
+	// Phase 2: Execution — only now does the agent write code
 	e.setStatus(DomainExecuting, "", "")
 	fullOutput := e.execute(ctx, decSummary)
 	if e.state.Status == DomainError {

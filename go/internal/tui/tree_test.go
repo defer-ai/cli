@@ -1051,10 +1051,15 @@ func TestTabWithNoCompletionsGoesBackToTree(t *testing.T) {
 		t.Fatalf("completions = %d, want 0", len(tm.completions))
 	}
 
-	// Tab should go back to tree focus
+	// Tab should cycle to resolver (chat → resolver → tree)
+	tm, _ = updateTree(t, tm, keyTab())
+	if tm.focusPanel != FocusResolver {
+		t.Errorf("focusPanel = %d, want FocusResolver (chat → resolver)", tm.focusPanel)
+	}
+	// One more tab to get to tree
 	tm, _ = updateTree(t, tm, keyTab())
 	if tm.focusPanel != FocusTree {
-		t.Errorf("focusPanel = %d, want FocusTree (no completions, tab should go back)", tm.focusPanel)
+		t.Errorf("focusPanel = %d, want FocusTree (resolver → tree)", tm.focusPanel)
 	}
 }
 
