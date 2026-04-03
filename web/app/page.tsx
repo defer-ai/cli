@@ -33,7 +33,7 @@ export default function Home() {
 
           <div className="flex flex-wrap gap-3">
             <CopyButton
-              text="go install github.com/defer-ai/cli@latest"
+              text="git clone https://github.com/defer-ai/cli.git && cd cli/go && go build -o defer ."
               label="Copy install command"
               className="px-5 py-2.5 text-sm font-medium"
             />
@@ -72,7 +72,7 @@ export default function Home() {
               # Install
             </p>
             <p className="text-foreground">
-              $ go install github.com/defer-ai/cli@latest
+              $ git clone https://github.com/defer-ai/cli.git && cd cli/go && go build -o defer .
             </p>
           </div>
           <div className="border-t border-border/50 pt-4">
