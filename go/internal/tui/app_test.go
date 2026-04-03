@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -84,9 +86,17 @@ func updateModel(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
 
 // setupAtPriorities creates a model in the ViewPriorities state with a real
 // manager and agent, without triggering network calls.
+func cleanupDefer(t *testing.T, cwd string) {
+	t.Helper()
+	t.Cleanup(func() {
+		os.RemoveAll(filepath.Join(cwd, ".defer"))
+	})
+}
+
 func setupAtPriorities(t *testing.T, decs []decision.Decision) Model {
 	t.Helper()
 	dir := t.TempDir()
+	cleanupDefer(t, dir)
 	m := NewModel("", nil, dir)
 	m.task = "test task"
 
@@ -127,6 +137,7 @@ func setupAtTree(t *testing.T, decs []decision.Decision, priorities map[string]a
 func setupAtTreeNoExecutors(t *testing.T, decs []decision.Decision) Model {
 	t.Helper()
 	dir := t.TempDir()
+	cleanupDefer(t, dir)
 	m := NewModel("", nil, dir)
 	m.task = "test task"
 	m.view = ViewTree

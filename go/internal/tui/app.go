@@ -737,20 +737,42 @@ If no decisions are incompatible, output: []`, changedDecision.ID, changedDecisi
 
 			var sysPrompt string
 			if m.task == "" {
-				// No task yet — conversational mode with task detection via TASK: prefix
+				// No task yet — conversational mode with inline decomposition
 				sysPrompt = `You are defer, a zero-autonomy AI assistant.
 
-CRITICAL: When the user describes a project, feature, or task they want built, your response MUST start with:
-TASK: <one-line description of what to build>
+When the user describes a project, feature, or task they want built:
+1. FIRST, use Read, Glob, and Grep to scan the existing codebase (if any).
+   Check for: package manager files, config files, framework choices, project structure.
+2. THEN, start your response with: TASK: <one-line description>
+3. THEN, output a ` + "```defer-decisions" + ` JSON block with ALL decisions:
 
-Then follow with a brief acknowledgment (1-2 sentences). Do NOT ask questions.
+` + "```defer-decisions" + `
+[
+  {
+    "category": "Stack",
+    "question": "Backend language and framework?",
+    "options": [
+      {"key": "A", "label": "Go with Gin"},
+      {"key": "B", "label": "Node.js with Express"},
+      {"key": "C", "label": "Choose for me"}
+    ],
+    "answer": "A",
+    "context": "Already using Go (detected from go.mod)",
+    "features": ["api", "backend"],
+    "impact": 9,
+    "dependsOn": []
+  }
+]
+` + "```" + `
 
-Example:
-User: "build a jira clone tui"
-You: "TASK: Build a Jira-like project management TUI with boards, issues, and sprint tracking
-Got it — I'll decompose this into decisions for you."
+Rules:
+- For decisions ALREADY made in the codebase: include answer field with the key of the chosen option
+- For NEW decisions: omit answer field, include "Choose for me" as last option
+- Every uncertainty = a decision with options. NEVER ask questions as text.
+- Order by impact (highest first). Tag with features.
+- If the codebase is empty, all decisions are new.
 
-If the user is just chatting, greeting, or asking questions — respond naturally WITHOUT the TASK: prefix.`
+If the user is just chatting or asking questions — respond naturally WITHOUT TASK: prefix and WITHOUT defer-decisions block.`
 			} else {
 				// Task active — decision management mode with full context
 				var decContext strings.Builder
@@ -836,20 +858,45 @@ Current decisions:
 		m.tree.chatThinking = false
 
 		if m.task == "" {
-			// Check if response contains a defer-decisions block
-			decs := agent.ParseDecisionsFromText(msg.Text)
-			if len(decs) > 0 {
-				// Agent output decisions directly — use them
-				for i := len(m.tree.chatLog) - 1; i >= 0; i-- {
-					if m.tree.chatLog[i].Type == "user" {
-						m.task = m.tree.chatLog[i].Text
-						break
-					}
-				}
+			trimmed := strings.TrimSpace(msg.Text)
+
+			// Extract task from TASK: prefix if present
+			hasTaskPrefix := strings.HasPrefix(trimmed, "TASK:")
+			if hasTaskPrefix {
+				firstLine := strings.SplitN(trimmed, "\n", 2)[0]
+				m.task = strings.TrimSpace(strings.TrimPrefix(firstLine, "TASK:"))
 				if m.task == "" {
 					m.task = "(from conversation)"
 				}
+			}
+
+			// Check if response contains inline decisions
+			decs := agent.ParseDecisionsFromText(msg.Text)
+
+			if len(decs) > 0 {
+				// Got decisions inline — use them directly (best case)
+				if m.task == "" {
+					// No TASK: prefix but got decisions — extract task from last user message
+					for i := len(m.tree.chatLog) - 1; i >= 0; i-- {
+						if m.tree.chatLog[i].Type == "user" {
+							m.task = m.tree.chatLog[i].Text
+							break
+						}
+					}
+					if m.task == "" {
+						m.task = "(from conversation)"
+					}
+				}
+				// Show the non-decision text
 				cleaned := stripJSONBlocks(msg.Text)
+				// Also strip the TASK: line
+				if hasTaskPrefix {
+					if parts := strings.SplitN(cleaned, "\n", 2); len(parts) > 1 {
+						cleaned = strings.TrimSpace(parts[1])
+					} else {
+						cleaned = ""
+					}
+				}
 				if strings.TrimSpace(cleaned) != "" {
 					m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: cleaned})
 				}
@@ -858,26 +905,19 @@ Current decisions:
 				}
 			}
 
-			// No decisions block — check for TASK: prefix (LLM signals task detection)
-			if strings.HasPrefix(strings.TrimSpace(msg.Text), "TASK:") {
-				// Extract the task description from the TASK: line
-				firstLine := strings.SplitN(strings.TrimSpace(msg.Text), "\n", 2)[0]
-				m.task = strings.TrimSpace(strings.TrimPrefix(firstLine, "TASK:"))
-				if m.task == "" {
-					m.task = "(from conversation)"
-				}
-				// Show the response without the TASK: prefix
-				if parts := strings.SplitN(strings.TrimSpace(msg.Text), "\n", 2); len(parts) > 1 {
+			if hasTaskPrefix {
+				// Got TASK: but no decisions — fallback to separate decomposition
+				if parts := strings.SplitN(trimmed, "\n", 2); len(parts) > 1 {
 					responseText := strings.TrimSpace(parts[1])
-					if responseText != "" {
-						m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: responseText})
+					cleaned := stripJSONBlocks(responseText)
+					if strings.TrimSpace(cleaned) != "" {
+						m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: cleaned})
 					}
 				}
 				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Identifying decisions..."})
 				m.tree.chatThinking = true
 				m.tree.chatThinkStart = time.Now()
 
-				// Run full decomposition with the proper prompt
 				m.manager = agent.NewManager(m.provider, m.cwd)
 				ch := m.eventChan
 				ctx := m.ctx
