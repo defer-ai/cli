@@ -1330,35 +1330,31 @@ func (m Model) computeOverallStatus() string {
 	return "executing" // default to executing if executors exist but not all done
 }
 
-// isTopicTool returns true if the tool description represents a high-level topic
-// (Agent spawn, planning) vs a subprocess call (Bash, Read, Write, etc.).
+// isTopicTool returns true ONLY for clearly high-level operations.
+// Default is subtool (false) — most things nest under the last topic.
 func isTopicTool(desc string) bool {
 	lower := strings.ToLower(desc)
-	// Topics: agent spawns, planning, looking up tools
+	// Only these specific patterns are topics (new context, not sub-operations):
+	topicExact := []string{
+		"planning approach...",
+		"plan complete, executing...",
+	}
+	for _, p := range topicExact {
+		if lower == p {
+			return true
+		}
+	}
+	// Agent spawns with short imperative descriptions are topics
 	topicPrefixes := []string{
-		"explore", "research", "design", "build", "implement",
-		"plan", "investigate", "analyze", "check", "review",
-		"looking up", "planning approach",
+		"explore ", "research ", "design ", "implement ",
+		"investigate ", "scaffold ",
 	}
 	for _, p := range topicPrefixes {
 		if strings.HasPrefix(lower, p) {
 			return true
 		}
 	}
-	// Subtools: running commands, reading/writing files, searching, fetching
-	subtoolPrefixes := []string{
-		"running:", "reading ", "creating ", "editing ", "searching ",
-		"finding ", "fetching ", "waiting", "plan complete",
-	}
-	for _, p := range subtoolPrefixes {
-		if strings.HasPrefix(lower, p) {
-			return false
-		}
-	}
-	// Default: if it looks like a sentence/description (Agent tool), it's a topic
-	if len(desc) > 20 && !strings.Contains(lower, "/") {
-		return true
-	}
+	// Everything else is a subtool
 	return false
 }
 
