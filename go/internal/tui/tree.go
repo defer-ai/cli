@@ -757,8 +757,9 @@ func (m TreeModel) viewChat() string {
 	var lines []string
 	lines = append(lines, "")
 
-	// Chat content area
-	chatContentH := h - 8 // borders + empty + divider + input + footer
+	// Chat content area: total height minus fixed UI elements
+	// Fixed: top empty(1) + gap before input(1) + divider(1) + input(1) + divider(1) + footer(1) + borders(2) = 8
+	chatContentH := h - 9 // -9 to account for gap line
 	if len(m.completions) > 0 {
 		chatContentH-- // completions overlay takes one line
 	}

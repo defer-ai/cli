@@ -534,9 +534,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ToolActivityMsg:
 		m.tree.activityLine = msg.Description
 
-		// Skip AskUserQuestion-related activity — it can't be handled interactively
+		// Skip internal tool lookups and non-interactive tools
 		if strings.Contains(msg.Description, "Waiting for input") ||
-			strings.Contains(msg.Description, "AskUserQuestion") {
+			strings.Contains(msg.Description, "AskUserQuestion") ||
+			strings.HasPrefix(msg.Description, "Looking up tools:") {
 			cmds = append(cmds, ListenForEvents(m.eventChan))
 			return m, tea.Batch(cmds...)
 		}
