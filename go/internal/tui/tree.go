@@ -1072,7 +1072,29 @@ func (m TreeModel) View() string {
 	chatW = w - treeW
 
 	leftPanel := m.renderLeftPanel(treeW, h)
-	rightPanel := m.renderRightPanel(chatW, h)
+
+	// Right side: chat panel on top, resolver panel on bottom
+	resolverLines := m.renderResolver(chatW - 4)
+	resolverH := len(resolverLines) + 4 // +4 for borders, footer, padding
+	if len(resolverLines) == 0 {
+		resolverH = 0
+	}
+
+	chatH := h - resolverH
+	if chatH < 8 {
+		chatH = 8
+	}
+
+	chatPanel := m.renderChatPanel(chatW, chatH)
+	var rightPanel string
+	if resolverH > 0 {
+		resolverPanel := m.renderResolverPanel(chatW, resolverH, resolverLines)
+		rightPanel = chatPanel + "\n" + resolverPanel
+	} else {
+		// No resolver — chat takes full height
+		chatPanel = m.renderChatPanel(chatW, h)
+		rightPanel = chatPanel
+	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 }
@@ -1526,8 +1548,8 @@ func (m TreeModel) renderLeftDetailPanel(innerWidth, h int, active bool) string 
 	return buildBorderedBoxActive(content, innerWidth, sel.ID, sel.Category, active)
 }
 
-// renderRightPanel renders the right panel (chat + optional resolver).
-func (m TreeModel) renderRightPanel(w, h int) string {
+// renderChatPanel renders the chat panel as its own bordered box.
+func (m TreeModel) renderChatPanel(w, h int) string {
 	if w < 20 {
 		w = 20
 	}
@@ -1537,17 +1559,10 @@ func (m TreeModel) renderRightPanel(w, h int) string {
 	}
 	active := m.focusPanel == FocusChat
 
-	// Determine resolver lines (if pending decisions exist)
-	resolverLines := m.renderResolver(innerWidth)
-	resolverH := len(resolverLines)
-
-	// Chat content height: h - borders(2) - gap(1) - inputDivider(1) - input(1) - footerDivider(1) - footer(1) - resolver
+	// Chat content height: h - borders(2) - gap(1) - inputDivider(1) - input(1) - footerDivider(1) - footer(1)
 	fixedH := 2 + 1 + 1 + 1 + 1 + 1
 	if len(m.completions) > 0 {
 		fixedH++
-	}
-	if resolverH > 0 {
-		fixedH += resolverH + 1 // +1 for the middle border separator
 	}
 	chatContentH := h - fixedH
 	if chatContentH < 3 {
@@ -1727,34 +1742,12 @@ func (m TreeModel) renderRightPanel(w, h int) string {
 	m.chatInput.Width = innerWidth - 2 - promptW
 	lines = append(lines, m.chatInput.View())
 
-	// Resolver section (below input)
-	if resolverH > 0 {
-		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
-		lines = append(lines, resolverLines...)
-	}
-
 	// Footer
 	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
-	var chatFooterActions []footerAction
-	if resolverH > 0 && active && strings.TrimSpace(m.chatInput.Value()) == "" {
-		// Resolver-focused footer
-		chatFooterActions = []footerAction{
-			{"j/k", "pick"},
-			{"enter", "confirm"},
-			{"n/p", "pending"},
-			{"tab", "switch"},
-		}
-	} else {
-		chatFooterActions = []footerAction{
-			{"enter", "send"},
-			{"pgup", "scroll"},
-			{"n/p", "pending"},
-			{"tab", "switch"},
-		}
-	}
-	if m.pendingCount > 0 {
-		// Prepend pending count indicator
-		chatFooterActions = append([]footerAction{{"○", fmt.Sprintf("%d", m.pendingCount)}}, chatFooterActions...)
+	chatFooterActions := []footerAction{
+		{"enter", "send"},
+		{"j/k", "scroll"},
+		{"tab", "switch"},
 	}
 	lines = append(lines, renderFooter(chatFooterActions, innerWidth))
 
@@ -1769,6 +1762,47 @@ func (m TreeModel) renderRightPanel(w, h int) string {
 
 // renderResolver renders the pending decision resolver section.
 // Returns nil if no pending decisions and not showing priorities.
+// renderResolverPanel wraps the resolver content in its own bordered box.
+func (m TreeModel) renderResolverPanel(w, h int, resolverLines []string) string {
+	if w < 20 {
+		w = 20
+	}
+	innerWidth := w - 4
+	if innerWidth < 10 {
+		innerWidth = 10
+	}
+	active := m.focusPanel == FocusResolver
+
+	var lines []string
+	lines = append(lines, resolverLines...)
+
+	// Footer
+	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+	footerActions := []footerAction{
+		{"j/k", "pick"},
+		{"enter", "confirm"},
+		{"n/p", "cycle"},
+		{"tab", "switch"},
+	}
+	lines = append(lines, renderFooter(footerActions, innerWidth))
+
+	// Pad to height
+	contentLines := len(lines) + 2 // +2 for top/bottom borders
+	for contentLines < h {
+		lines = append(lines, "")
+		contentLines++
+	}
+
+	// Title
+	title := "Pending"
+	if m.showingPriorities {
+		title = "Care Levels"
+	}
+
+	content := strings.Join(lines, "\n")
+	return buildBorderedBoxActive(content, innerWidth, title, "", active)
+}
+
 func (m TreeModel) renderResolver(innerWidth int) []string {
 	// Priorities picker mode — show care level toggles per domain
 	if m.showingPriorities {
