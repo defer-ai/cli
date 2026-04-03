@@ -121,3 +121,4 @@ func permissionDescription(req *api.PermissionRequest) string {
 	}
 	return tc.HumanDescription()
 }
+type StopAgentMsg struct{}

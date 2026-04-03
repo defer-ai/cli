@@ -547,6 +547,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				existing[d.ID] = true
 			}
 		}
+		// Update pending count and notify in chat
+		m.tree.pendingCount = m.countPending()
+		if m.tree.pendingCount > 0 {
+			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
+				Type: "action",
+				Text: fmt.Sprintf("New decisions found — %d pending. Tab to review.", m.tree.pendingCount),
+			})
+		}
 		cmds = append(cmds, ListenForEvents(m.eventChan))
 		return m, tea.Batch(cmds...)
 
@@ -738,6 +746,16 @@ If no decisions are incompatible, output: []`, changedDecision.ID, changedDecisi
 		return m, nil
 
 	case TogglePermissionsMsg:
+		return m, nil
+
+	case StopAgentMsg:
+		// Cancel all running agents and create a fresh context
+		m.cancel()
+		m.ctx, m.cancel = context.WithCancel(context.Background())
+		m.tree.chatThinking = false
+		m.tree.overallStatus = "ready"
+		m.executorsLaunched = false
+		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "system", Text: "Agent stopped."})
 		return m, nil
 
 	case ChatMessageMsg:
@@ -1418,6 +1436,16 @@ func isTopicTool(desc string) bool {
 	}
 	// Everything else is a subtool
 	return false
+}
+
+func (m Model) countPending() int {
+	count := 0
+	for _, d := range m.tree.decisions {
+		if d.IsPending() {
+			count++
+		}
+	}
+	return count
 }
 
 func decisionSummaryForAgent(decs []decision.Decision) string {

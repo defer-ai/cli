@@ -774,14 +774,17 @@ func TestChatFooterShowsActions(t *testing.T) {
 	if !strings.Contains(output, "send") {
 		t.Error("chat footer should contain 'send'")
 	}
-	if !strings.Contains(output, "reference") {
-		t.Error("chat footer should contain 'reference'")
+	if !strings.Contains(output, "tree") {
+		t.Error("chat footer should contain 'tree'")
+	}
+	if !strings.Contains(output, "stop") {
+		t.Error("chat footer should contain 'stop'")
 	}
 }
 
 // ========== Split-pane tests ==========
 
-func TestSplitPaneRendersOnWideTerminal(t *testing.T) {
+func TestDetailReplacesTreeFullScreen(t *testing.T) {
 	tm := newTree(fiveDecisions())
 	tm.width = 140
 	tm.height = 40
@@ -792,14 +795,9 @@ func TestSplitPaneRendersOnWideTerminal(t *testing.T) {
 	}
 
 	output := tm.View()
-	// Split pane should contain both the tree content and the detail content
-	// The detail pane shows the decision ID as a title in the border
+	// Full-screen detail should show the selected decision
 	if !strings.Contains(output, "STA-0001") {
-		t.Error("split pane should contain the selected decision ID")
-	}
-	// The left pane should still show other decisions
-	if !strings.Contains(output, "STA-0002") {
-		t.Error("split pane should show tree with other decisions")
+		t.Error("detail should contain the selected decision ID")
 	}
 }
 

@@ -50,6 +50,7 @@ type TreeModel struct {
 	chatFocused    bool            // true = keys go to chat, false = keys go to tree
 	chatThinking   bool            // true while waiting for agent response
 	chatThinkStart time.Time       // when thinking started
+	pendingCount   int             // number of pending decisions (shown in chat footer)
 	chatScrollUp   int             // lines scrolled up from bottom (0 = at bottom)
 	completions    []string        // current @ID autocomplete matches
 	completionIdx  int             // selected completion (-1 = none)
@@ -186,6 +187,10 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 			}
 			return m, nil
 		case "esc":
+			if m.chatThinking {
+				// Stop the agent — emit a cancel signal
+				return m, func() tea.Msg { return StopAgentMsg{} }
+			}
 			m.mode = tmTree
 			m.chatFocused = false
 			m.chatInput.Reset()
@@ -813,22 +818,8 @@ func (m TreeModel) View() string {
 		h = 24
 	}
 
-	// Revise, ask, and edit-features modes always use full-screen detail
-	if m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
-		return m.viewDetail()
-	}
-
-	// Split pane: tree on left, detail on right when terminal is wide enough
-	if m.mode == tmDetail && w > 100 {
-		leftW := w * 60 / 100
-		rightW := w - leftW
-		leftPane := m.viewTreePane(leftW, h)
-		rightPane := m.viewDetailPane(rightW, h)
-		return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
-	}
-
-	// Narrow terminal: full-screen detail
-	if m.mode == tmDetail {
+	// Detail, revise, ask, edit-features — all full-screen, replacing the tree
+	if m.mode == tmDetail || m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures {
 		return m.viewDetail()
 	}
 
@@ -1061,13 +1052,16 @@ func (m TreeModel) viewChat() string {
 
 	// Footer divider + actions
 	lines = append(lines, buildChatDivider(contentWidth))
-	chatFooterActions := []footerAction{
-		{"enter", "send"},
-		{"@ID/#TAG", "reference"},
-		{"ctrl+o", "expand"},
-		{"tab", "tree"},
-		{"ctrl+q", "quit"},
+	var chatFooterActions []footerAction
+	if m.pendingCount > 0 {
+		chatFooterActions = append(chatFooterActions, footerAction{"○", fmt.Sprintf("%d pending", m.pendingCount)})
 	}
+	chatFooterActions = append(chatFooterActions,
+		footerAction{"enter", "send"},
+		footerAction{"tab", "tree"},
+		footerAction{"esc", "stop"},
+		footerAction{"ctrl+q", "quit"},
+	)
 	lines = append(lines, renderFooter(chatFooterActions, contentWidth))
 
 	return strings.Join(lines, "\n")
@@ -1225,8 +1219,8 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	}
 
 	// Calculate available tree height:
-	// total = h - borders(2) - empty(1) - activity divider(1) - activity(1) - footer divider(1) - footer(1)
-	fixedLines := 2 + 1 + 1 + 1 + 1 + 1
+	// total = h - borders(2) - empty(1) - footer divider(1) - footer(1)
+	fixedLines := 2 + 1 + 1 + 1
 	// If search bar is visible, it takes a divider + content line
 	if m.searchMode || m.searchQuery != "" {
 		fixedLines += 2
@@ -1382,22 +1376,6 @@ func (m TreeModel) viewTreePane(w, h int) string {
 		lines = append(lines, "  "+DimStyle.Render(fmt.Sprintf("Filtered: %d results", total)))
 	}
 
-	// Activity line: show last tool activity or thinking indicator
-	lines = append(lines, buildMiddleBorder(innerWidth))
-	if m.activityLine != "" {
-		lines = append(lines, " "+DimStyle.Render(trunc(m.activityLine, innerWidth-2)))
-	} else if m.chatThinking {
-		elapsed := time.Since(m.chatThinkStart)
-		timeStr := fmt.Sprintf("%.0fs", elapsed.Seconds())
-		if elapsed >= time.Minute {
-			timeStr = fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
-		}
-		spinner := thinkingSpinner(m.mascotTick)
-		phrase := thinkingPhrase(m.mascotTick, elapsed)
-		lines = append(lines, "  "+AccentStyle.Render(spinner+" "+phrase+" ")+DimStyle.Render("("+timeStr+")"))
-	} else {
-		lines = append(lines, "  "+DimStyle.Render("tab to open chat"))
-	}
 
 	// Footer
 	lines = append(lines, buildMiddleBorder(innerWidth))

@@ -61,12 +61,13 @@ type Executor struct {
 	task            string
 	domain          string
 	careLevel       CareLevel
-	priorities      map[string]CareLevel // per-category care levels
-	decisions       []decision.Decision
-	allDecisions    *[]decision.Decision
-	knownCategories []string
-	state           ExecState
-	onEvent         func(Event)
+	priorities       map[string]CareLevel // per-category care levels
+	decisions        []decision.Decision
+	allDecisions     *[]decision.Decision
+	knownCategories  []string
+	state            ExecState
+	onEvent          func(Event)
+	parsedBlockCount int // tracks how many defer-decisions blocks have been parsed
 }
 
 // ExecOpts configures a new executor.
@@ -288,6 +289,9 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 			}
 			e.mu.Unlock()
 			e.onEvent(Event{Type: ExecStateChanged, ExecutorID: e.state.ID})
+
+			// Parse inline defer-decisions blocks from streaming output
+			e.parseInlineDecisionBlocks(fullText)
 
 			// Scan for inline decision updates (e.g. "DECISION: STA-0001 = Go with Gin")
 			e.scanInlineDecisions(ev.Text)
@@ -654,6 +658,27 @@ func (e *Executor) storeDecisions(decs []decision.Decision) {
 	for _, d := range decs {
 		e.storeDecision(d)
 	}
+}
+
+// parseInlineDecisionBlocks finds defer-decisions blocks in streaming text
+// and stores any new decisions found. Only processes blocks not yet parsed.
+func (e *Executor) parseInlineDecisionBlocks(text string) {
+	re := regexp.MustCompile("(?s)```defer-decisions\\s*\n([\\s\\S]*?)\n```")
+	matches := re.FindAllStringSubmatch(text, -1)
+
+	// Only process blocks we haven't seen yet
+	for i := e.parsedBlockCount; i < len(matches); i++ {
+		decs := e.parseImplicitChoices("[" + matches[i][1] + "]")
+		if len(decs) == 0 {
+			// Try parsing the raw match content directly
+			decs = e.parseImplicitChoices(matches[i][1])
+		}
+		for idx := range decs {
+			decs[idx].Source = "agent"
+		}
+		e.storeDecisions(decs)
+	}
+	e.parsedBlockCount = len(matches)
 }
 
 // UpdateDecision finds a decision in allDecisions by ID and updates its answer.
