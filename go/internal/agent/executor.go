@@ -143,9 +143,8 @@ func (e *Executor) setStatus(s DomainStatus, output, errMsg string) {
 	e.onEvent(Event{Type: ExecStateChanged, ExecutorID: e.state.ID})
 }
 
-// Execute runs the full domain lifecycle. There is no separate "plan" phase —
-// the agent discovers and resolves decisions as it implements, pausing whenever
-// new decisions need resolution.
+// Execute runs the full domain lifecycle as an iterative loop.
+// The agent implements in chunks, pausing whenever decisions need resolution.
 func (e *Executor) Execute(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -158,28 +157,60 @@ func (e *Executor) Execute(ctx context.Context) {
 		return
 	}
 
-	// Unified execution — the agent implements step by step, outputting
-	// defer-decisions blocks before each significant choice. When new
-	// pending decisions are detected (via parseInlineDecisionBlocks),
-	// the TUI shows them and the executor pauses after execution completes.
-	decSummary := e.decisionSummary()
-	e.setStatus(DomainExecuting, "", "")
-	fullOutput := e.execute(ctx, decSummary)
-	if e.state.Status == DomainError {
-		return
-	}
+	// Iterative execution: implement → pause for decisions → continue
+	// Each round gets fresh context (updated decisions + existing files)
+	var fullOutput string
+	for round := 0; round < 5; round++ {
+		decSummary := e.decisionSummary()
+		prevDecCount := len(*e.allDecisions)
 
-	// If decisions appeared during execution, wait for resolution
-	if e.waitForPendingDecisions(ctx) {
-		return
+		e.setStatus(DomainExecuting, fmt.Sprintf("Implementing (round %d)...", round+1), "")
+		roundOutput := e.execute(ctx, decSummary)
+		fullOutput += roundOutput
+
+		if e.state.Status == DomainError {
+			return
+		}
+
+		// Extract implicit decisions the agent made without documenting
+		if roundOutput != "" {
+			e.setStatus(DomainVerifying, "Extracting decisions...", "")
+			e.extract(ctx, roundOutput)
+		}
+
+		// Check if new decisions appeared (inline + extracted)
+		newDecCount := len(*e.allDecisions)
+		if newDecCount > prevDecCount {
+			e.onEvent(Event{
+				Type:         ExecToolActivity,
+				ExecutorID:   e.state.ID,
+				ToolActivity: fmt.Sprintf("Round %d: %d new decisions discovered", round+1, newDecCount-prevDecCount),
+			})
+		}
+
+		// Pause for any pending decisions
+		if e.waitForPendingDecisions(ctx) {
+			return
+		}
+
+		// If no new decisions and the agent said "Implementation complete", we're done
+		if newDecCount == prevDecCount && strings.Contains(strings.ToLower(roundOutput), "implementation complete") {
+			break
+		}
+
+		// If no new decisions but implementation isn't complete, continue
+		if newDecCount == prevDecCount {
+			break // avoid infinite loops — agent didn't produce more decisions
+		}
 	}
 
 	// Verification
+	finalDecSummary := e.decisionSummary()
 	e.setStatus(DomainVerifying, "Verifying...", "")
-	issues := e.verify(ctx, fullOutput, decSummary)
+	issues := e.verify(ctx, fullOutput, finalDecSummary)
 	if issues != "" {
 		e.setStatus(DomainExecuting, "Fixing issues...", "")
-		fullOutput = e.fix(ctx, issues, decSummary)
+		fullOutput = e.fix(ctx, issues, finalDecSummary)
 	}
 
 	// Phase 4: Extract implicit decisions
@@ -288,7 +319,7 @@ func (e *Executor) simpleCompletion(ctx context.Context, systemPrompt, userMsg s
 func (e *Executor) execute(ctx context.Context, decSummary string) string {
 	systemPrompt := fmt.Sprintf(ExecutePromptTemplate, e.domain, CarePrompts[e.careLevel])
 
-	userMsg := fmt.Sprintf("Task: %s\n\nProject directory: %s\nDomain: %s\nDecisions:\n%s\n\nImplement the %s domain now. All files must go in %s or its subdirectories.",
+	userMsg := fmt.Sprintf("Task: %s\n\nProject directory: %s\nDomain: %s\nDecisions:\n%s\n\nIMPORTANT: Before writing code, use Glob and Read to check what files already exist. Continue from where the previous round left off. Do not recreate existing files.\n\nImplement the %s domain now. All files must go in %s or its subdirectories.",
 		e.task, e.cwd, e.domain, decSummary, e.domain, e.cwd)
 
 	events := make(chan api.Event, 100)
