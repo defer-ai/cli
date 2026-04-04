@@ -74,21 +74,23 @@ type Executor struct {
 	knownCategories  []string
 	state            ExecState
 	onEvent          func(Event)
-	researchResults  []string      // collected research findings to inject in next round
-	ContinueCh       chan struct{} // TUI signals this when all pending decisions are resolved
+	researchResults   []string      // collected research findings to inject in next round
+	codebaseManifest  string        // pre-scanned project structure
+	ContinueCh        chan struct{} // TUI signals this when all pending decisions are resolved
 }
 
 // ExecOpts configures a new executor.
 type ExecOpts struct {
-	Provider     api.Provider
-	CWD          string
-	Task         string
-	Domain       string
-	CareLevel    CareLevel
-	Priorities   map[string]CareLevel
-	Decisions    []decision.Decision
-	AllDecisions *[]decision.Decision
-	OnEvent      func(Event)
+	Provider          api.Provider
+	CWD               string
+	Task              string
+	Domain            string
+	CareLevel         CareLevel
+	Priorities        map[string]CareLevel
+	Decisions         []decision.Decision
+	AllDecisions      *[]decision.Decision
+	OnEvent           func(Event)
+	CodebaseManifest  string // pre-scanned project structure to avoid re-exploration
 }
 
 // NewExecutor creates a domain executor.
@@ -119,8 +121,9 @@ func NewExecutor(opts ExecOpts) *Executor {
 		decisions:       opts.Decisions,
 		allDecisions:    opts.AllDecisions,
 		knownCategories: cats,
-		onEvent:         opts.OnEvent,
-		ContinueCh:      make(chan struct{}, 1),
+		onEvent:          opts.OnEvent,
+		codebaseManifest: opts.CodebaseManifest,
+		ContinueCh:       make(chan struct{}, 1),
 		state: ExecState{
 			ID:        fmt.Sprintf("domain-%s", opts.Domain),
 			Domain:    opts.Domain,
@@ -332,8 +335,14 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 		careLevelCtx.WriteString(fmt.Sprintf("%s: %s\n", cat, string(level)))
 	}
 
-	userMsg := fmt.Sprintf("Task: %s\n\nProject directory: %s\nDomain: %s\n\nCare levels per domain:\n%s\nDecisions:\n%s\n\nIMPORTANT: Before writing code, use Glob and Read to check what files already exist. Continue from where the previous round left off. Do not recreate existing files.\n\nImplement the %s domain now. All files must go in %s or its subdirectories.",
-		e.task, e.cwd, e.domain, careLevelCtx.String(), decSummary, e.domain, e.cwd)
+	// Build codebase manifest context
+	manifestCtx := ""
+	if e.codebaseManifest != "" {
+		manifestCtx = "\n\nExisting project structure (DO NOT re-explore these — they are already known):\n" + e.codebaseManifest + "\n"
+	}
+
+	userMsg := fmt.Sprintf("Task: %s\n\nProject directory: %s\nDomain: %s\n\nCare levels per domain:\n%s\nDecisions:\n%s%s\nContinue from where the previous round left off. Do not recreate existing files.\n\nImplement the %s domain now. All files must go in %s or its subdirectories.",
+		e.task, e.cwd, e.domain, careLevelCtx.String(), decSummary, manifestCtx, e.domain, e.cwd)
 
 	events := make(chan api.Event, 100)
 

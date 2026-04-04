@@ -2,6 +2,9 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -78,17 +81,21 @@ func (m *Manager) LaunchExecutors(ctx context.Context, task string, decisions []
 		return li < lj
 	})
 
+	// Generate codebase manifest to avoid redundant exploration
+	manifest := generateCodebaseManifest(m.cwd)
+
 	// Single executor implements everything with full context
 	unified := NewExecutor(ExecOpts{
-		Provider:     m.provider,
-		CWD:          m.cwd,
-		Task:         task,
-		Domain:       "Implementation",
-		CareLevel:    CareLevelAuto,
-		Priorities:   priorities,
-		Decisions:    decisions,
-		AllDecisions: &m.allDecs,
-		OnEvent:      onEvent,
+		Provider:         m.provider,
+		CWD:              m.cwd,
+		Task:             task,
+		Domain:           "Implementation",
+		CareLevel:        CareLevelAuto,
+		Priorities:       priorities,
+		Decisions:        decisions,
+		AllDecisions:     &m.allDecs,
+		OnEvent:          onEvent,
+		CodebaseManifest: manifest,
 	})
 	m.executors = []*Executor{unified}
 
@@ -108,7 +115,7 @@ func (m *Manager) LaunchExecutors(ctx context.Context, task string, decisions []
 	}()
 }
 
-// AutoDecide auto-answers decisions for non-paranoid/high domains.
+// AutoDecide auto-answers decisions for auto-level domains.
 func (m *Manager) AutoDecide(priorities map[string]CareLevel) {
 	if m.agent == nil {
 		return
@@ -173,6 +180,44 @@ func (m *Manager) SyncDecisions(treeDecs []decision.Decision) {
 			m.allDecs = append(m.allDecs, d)
 		}
 	}
+}
+
+// generateCodebaseManifest scans the project directory and returns a compact
+// file listing so executors don't waste tokens re-exploring the codebase.
+func generateCodebaseManifest(cwd string) string {
+	var lines []string
+	maxFiles := 100 // cap to prevent huge manifests
+
+	err := filepath.Walk(cwd, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // skip errors
+		}
+		// Skip hidden dirs, .defer, node_modules, .git, vendor
+		name := info.Name()
+		if info.IsDir() {
+			if name == ".git" || name == ".defer" || name == "node_modules" || name == "vendor" || name == ".next" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if len(lines) >= maxFiles {
+			return filepath.SkipAll
+		}
+		rel, _ := filepath.Rel(cwd, path)
+		if rel == "" {
+			return nil
+		}
+		size := info.Size()
+		lines = append(lines, fmt.Sprintf("  %s (%d bytes)", rel, size))
+		return nil
+	})
+	if err != nil {
+		return ""
+	}
+	if len(lines) == 0 {
+		return "(empty project)"
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *Manager) persistDecisions(task string) {
