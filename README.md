@@ -8,10 +8,23 @@ Defer decomposes your task into a tree of decisions, lets you set care levels pe
 
 ## Install
 
-**From source (recommended):**
+**Homebrew:**
 
 ```bash
-git clone https://github.com/defer-ai/cli.git && cd cli/go
+brew tap defer-ai/tap
+brew install defer
+```
+
+**go install:**
+
+```bash
+go install github.com/defer-ai/cli@latest
+```
+
+**From source:**
+
+```bash
+git clone https://github.com/defer-ai/cli.git && cd cli
 go build -ldflags "-s -w" -o defer .
 sudo mv defer /usr/local/bin/
 ```
@@ -154,7 +167,7 @@ All keybindings are configurable via `~/.defer/keybindings.json`.
 
 The pending resolver is the bottom section of the right (chat) panel. When the agent discovers decisions that require your input, they appear here as a wizard -- one at a time, showing progress (e.g., "Pending 1/3").
 
-Each pending decision shows its question and concrete options. Use `j`/`k` (when the chat input is empty) to navigate options and `enter` to confirm. Use `n`/`p` to cycle to the next or previous pending decision. Care levels are also set inline here when the first decisions arrive -- no separate picker screen.
+Each pending decision shows its question and concrete options. Use `↑`/`↓` (when the chat input is empty) to navigate options and `enter` to confirm. Use `←`/`→` to cycle to the next or previous pending decision. Care levels are also set inline here when the first decisions arrive -- no separate picker screen.
 
 ## Care Levels
 
@@ -322,6 +335,42 @@ Skills are discovered by walking up from the current directory. Project-level sk
 }
 ```
 
+## Decision Presets
+
+Start projects faster with pre-defined decision templates. Presets provide a common set of decisions for typical project types.
+
+**Built-in presets:**
+
+| Preset | Description |
+|--------|-------------|
+| `rest-api` | Backend framework, language, database, ORM, API style, auth, hosting |
+| `cli-tool` | Language, TUI framework, output format, distribution, config |
+| `web-app` | Frontend framework, language, CSS, state management, API, hosting, CI/CD |
+
+```bash
+defer init claude-code --preset rest-api    # scaffold config + seed 7 decisions
+defer init cursor --preset web-app          # works with any target
+```
+
+**Custom presets.** Create YAML files in `.defer/templates/` or `~/.defer/templates/`:
+
+```yaml
+name: my-preset
+description: Custom decisions for my team's stack
+decisions:
+  - category: Stack
+    question: "Backend framework?"
+    options:
+      - key: A
+        label: Express
+      - key: B
+        label: FastAPI
+    impact: 9
+    context: "We're a Python shop"
+```
+
+Project presets override global presets, which override built-in presets (by name).
+
 ## Portable Mode (No CLI Required)
 
 You don't need the defer CLI to follow the defer process. Run `defer init` to scaffold a config file for your AI tool:
@@ -330,11 +379,102 @@ You don't need the defer CLI to follow the defer process. Run `defer init` to sc
 defer init claude-code    # Creates CLAUDE.md
 defer init cursor         # Creates .cursorrules
 defer init copilot        # Creates .github/copilot-instructions.md
-defer init codex          # Creates AGENTS.md
+defer init codex          # Creates AGENTS.md (also works for Amp)
+defer init windsurf       # Creates .windsurf/rules/defer.md
+defer init zed            # Creates .rules
+defer init cline          # Creates .clinerules
+defer init gemini         # Creates GEMINI.md
+defer init aider          # Creates CONVENTIONS.md
+defer init continue       # Creates .continue/rules/defer.md
 defer init universal      # Creates DEFER.md (copy into any tool's config)
 ```
 
 The generated file contains the full defer philosophy (decompose, present, decide, implement, track, extract, verify). The AI tool reads it and follows the process natively -- no CLI needed.
+
+## Git Integration
+
+Track which decisions influenced each commit with git trailers.
+
+```bash
+defer trailers              # print Decision-Ref trailers for all decided decisions
+defer trailers --ids STA-0001,DAT-0001   # specific decisions only
+
+defer commit -m "Add auth"  # git commit with trailers auto-appended
+defer commit -m "Add auth" --dry-run     # preview the full message
+```
+
+Example commit message:
+```
+Add auth
+
+Decision-Ref: @STA-0001
+Decision-Ref: @AUT-0001
+Decision-Ref: @DAT-0001
+```
+
+## Decision Analytics
+
+```bash
+defer stats
+```
+
+Shows: total/pending/decided counts, auto/review ratio, override rate, per-category breakdown, impact distribution, dependency chain depth, and most-revised decisions.
+
+## Cross-Project Import
+
+Reuse decisions from other projects:
+
+```bash
+defer import ../api-project @STA-0001 @DAT-0001    # import specific decisions
+defer import ../api-project --category Stack        # import by category
+defer import ../api-project --keep-answers          # preserve original answers
+```
+
+Imported decisions are re-IDed to avoid conflicts, dependencies are remapped, and provenance is tracked (`importedFrom` field in the decision store).
+
+## Review
+
+Post a decision diff as a GitHub PR comment:
+
+```bash
+defer review --pr 42              # post changes since last commit
+defer review --pr 42 --diff-only  # just print the diff
+defer review --pr 42 --base ../old-project   # compare against baseline
+```
+
+Requires `gh` CLI (recommended) or `GITHUB_TOKEN` environment variable.
+
+## MCP Server Mode
+
+Run defer as an MCP (Model Context Protocol) server so AI tools can read and modify decisions programmatically:
+
+```bash
+defer serve --mcp
+```
+
+**6 tools exposed:**
+
+| Tool | Description |
+|------|-------------|
+| `read_decisions` | List/filter decisions by status, category, feature, source |
+| `list_pending` | Get pending decisions sorted by impact |
+| `confirm_decision` | Set answer on a decision (cascades invalidation) |
+| `update_decision` | Modify decision properties (question, options, impact) |
+| `get_session_state` | Summary: task, counts, progress, features, categories |
+| `get_decision_tree` | Hierarchical view grouped by dependencies |
+
+**Example MCP config for Claude Code** (`~/.claude/mcp.json`):
+
+```json
+{
+  "servers": {
+    "defer": {
+      "command": "defer",
+      "args": ["serve", "--mcp"]
+    }
+  }
+}
+```
 
 ## Provider Support
 
@@ -359,12 +499,20 @@ Auto-detected from environment, or set explicitly with flags:
 ```
 defer "task"                Start a new project with the given task
 defer                       Resume the last session in the current directory
-defer init [target]         Scaffold config for: claude-code, cursor, copilot, codex, universal
+defer init [target]         Scaffold config for AI tools (see Portable Mode)
+defer init --preset <name>  Initialize with preset decisions (rest-api, cli-tool, web-app)
+defer stats                 Show decision analytics for current session
+defer trailers              Print git Decision-Ref trailers
+defer commit -m "msg"       Git commit with decision trailers appended
+defer import <path> [@IDs]  Import decisions from another project
+defer review --pr <n>   Post decision diff as GitHub PR comment
+defer serve --mcp           Run as MCP server (stdio transport)
 defer sessions list         List all sessions in directory tree
 defer sessions delete       Delete .defer/ in current directory
 defer sessions export       Print DECISIONS.md to stdout
+defer update                Check for and install updates
 defer --debug "task"        Headless mode (no TUI, prints to stdout)
-defer --model opus "task"   Use a specific model (sonnet, opus, haiku, or provider-specific ID)
+defer --model opus "task"   Use a specific model
 defer --provider <p> "task" Override the AI provider
 defer --api-key <k> "task"  Override the API key
 defer --no-mascot "task"    Hide the mascot header
@@ -384,22 +532,20 @@ Tool classification: `Glob`, `Grep`, `Read` are read actions. `Write`, `Edit` ar
 
 ## Architecture
 
-The codebase lives under `go/` and is organized into these packages:
-
 | Package | Purpose |
 |---------|---------|
-| `cmd` | CLI entry point, cobra commands (root, sessions, init, debug) |
+| `cmd` | CLI entry point, cobra commands |
 | `internal/agent` | Decomposition agent, domain executor, manager coordinator, system prompts, events |
 | `internal/api` | Provider interface, auto-detection, Claude Code subprocess, OpenAI-compatible HTTP, tool execution |
 | `internal/config` | Settings cascade (global -> project -> CLI flags) |
-| `internal/decision` | Core types (Decision, DecisionStore, Feature), persistence, ID generation, DECISIONS.md, dependency tracking |
+| `internal/decision` | Core types, persistence, ID generation, DECISIONS.md, dependency tracking, stats, trailers, diffs |
 | `internal/hooks` | Lifecycle hooks (shell commands + webhooks) |
 | `internal/keybindings` | Configurable keybindings with defaults |
-| `internal/mcp` | MCP client (JSON-RPC 2.0 over stdio) |
+| `internal/mcp` | MCP client + server (JSON-RPC 2.0 over stdio) |
 | `internal/permissions` | Care-level-aware tool permissions |
 | `internal/skills` | Skill file loading (.md with YAML frontmatter), directory discovery |
-| `internal/templates` | Defer philosophy spec, tool-specific config templates (5 targets) |
-| `internal/tui` | Bubbletea TUI: app, tree, priorities, welcome, mascot (box-drawn, 4 lines tall), styles, notifications, messages |
+| `internal/templates` | Defer philosophy spec, tool-specific config templates, decision presets |
+| `internal/tui` | Bubbletea TUI: app, tree, priorities, mascot, styles, notifications, messages |
 | `internal/update` | Version update checking |
 
 Session state is persisted in `.defer/`:
@@ -411,7 +557,6 @@ Session state is persisted in `.defer/`:
 ## Development
 
 ```bash
-cd go
 go build ./...              # build all packages
 go test ./... -count=1      # run tests
 go test ./... -race         # tests with race detector

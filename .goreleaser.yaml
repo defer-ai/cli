@@ -4,11 +4,10 @@ project_name: defer
 
 before:
   hooks:
-    - sh -c "cd go && go mod tidy"
+    - go mod tidy
 
 builds:
   - id: defer
-    dir: go
     main: .
     binary: defer
     ldflags:
@@ -51,6 +50,25 @@ changelog:
       - "^test:"
       - "^ci:"
       - "^chore:"
+
+brews:
+  - name: defer
+    repository:
+      owner: defer-ai
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/defer-ai/cli"
+    description: "Zero-autonomy AI. Every decision is yours."
+    license: "MIT"
+    install: |
+      bin.install "defer"
+    test: |
+      system "#{bin}/defer", "--version"
+    commit_author:
+      name: goreleaserbot
+      email: goreleaserbot@users.noreply.github.com
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
 
 release:
   github:
