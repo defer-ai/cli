@@ -160,7 +160,14 @@ func (m OnboardingModel) View() string {
 				cursor = accent.Render("> ")
 				nameStyle = selStyle
 			}
-			b.WriteString(fmt.Sprintf("%s%-14s %s\n", cursor, nameStyle.Render(c.Name), dim.Render(c.Description)))
+			name := nameStyle.Render(c.Name)
+			// Pad based on visible width, not byte length (ANSI codes inflate bytes)
+			visW := lipgloss.Width(name)
+			pad := ""
+			if visW < 14 {
+				pad = strings.Repeat(" ", 14-visW)
+			}
+			b.WriteString(fmt.Sprintf("%s%s%s %s\n", cursor, name, pad, dim.Render(c.Description)))
 		}
 		b.WriteString("\n")
 		b.WriteString(dim.Render("  ↑↓ navigate  enter select  esc skip") + "\n")

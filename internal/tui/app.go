@@ -157,12 +157,6 @@ func NewModel(task string, provider api.Provider, cwd string, opts ...ModelOpts)
 				m.tree.overallStatus = "done"
 			}
 			// Never show priorities on resume — decisions are already loaded
-		} else {
-			// Fresh start with no task — show onboarding
-			m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
-				Type: "system",
-				Text: "Welcome to defer. Describe what you want to build and the agent will decompose it into decisions before writing any code.\n\nExamples:\n  \"build a URL shortener with analytics\"\n  \"add auth to the existing API\"\n  \"refactor the database layer to use PostgreSQL\"\n\nEvery decision is yours. You set care levels, approve or challenge, and the agent implements.",
-			})
 		}
 	} else {
 		// Task given via CLI arg — add as first message and start decomposition
