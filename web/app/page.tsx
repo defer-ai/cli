@@ -66,9 +66,8 @@ export default function Home() {
       <section className="max-w-3xl mx-auto px-6 py-10">
         <h2 className="text-2xl font-bold mb-3">See it work</h2>
         <p className="text-muted mb-8">
-          Both panels are always visible — tree on the left, chat on the
-          right. You give it a task, it decomposes it into decisions, and
-          you resolve them with full context.
+          Decisions on the left, chat on the right. You give it a task,
+          it decomposes it into decisions, and you resolve them with full context.
         </p>
         <Demo />
       </section>
@@ -150,16 +149,16 @@ export default function Home() {
             </h3>
             <p className="text-sm text-muted leading-relaxed">
               Every choice is recorded, whether you made it or the AI did.
-              Both panels are always visible — tree on the left, chat on
-              the right. Press{" "}
+              Decisions on the left as cards with{" "}
+              <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
+                @ID
+              </code>
+              , domain, and feature tags. Chat on the right with real-time
+              execution output. Press{" "}
               <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
                 tab
               </code>{" "}
-              to switch focus between them. Icons show status:{" "}
-              <span className="text-green-400">+</span> yours,{" "}
-              <span className="text-gray-400">*</span> auto-decided,{" "}
-              <span className="text-yellow-400">o</span> pending.
-              IDs colored by impact.
+              to switch focus between panels.
             </p>
           </div>
           <div className="p-5 border border-border rounded-xl bg-surface">
@@ -179,20 +178,24 @@ export default function Home() {
           </div>
           <div className="p-5 border border-border rounded-xl bg-surface">
             <h3 className="font-semibold text-foreground text-sm mb-2">
-              Feature tagging
+              Sort and search
             </h3>
             <p className="text-sm text-muted leading-relaxed">
-              Tag decisions with features like &ldquo;auth&rdquo; or
-              &ldquo;messaging.&rdquo; Press{" "}
+              Press{" "}
               <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
-                g
+                s
               </code>{" "}
-              to switch between grouping by domain and grouping by feature.
+              to sort decisions by domain, impact, status, or alphabetically.
+              Press{" "}
+              <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
+                /
+              </code>{" "}
+              to filter.
               Press{" "}
               <code className="text-accent font-mono text-xs bg-accent/10 px-1 py-0.5 rounded">
                 f
               </code>{" "}
-              to find and jump to any decision, category, or feature.
+              to find and jump to any decision or feature.
             </p>
           </div>
           <div className="p-5 border border-border rounded-xl bg-surface">
@@ -205,7 +208,8 @@ export default function Home() {
                 defer init cursor
               </code>{" "}
               to drop the defer philosophy into your tool&apos;s config file.
-              Works with Claude Code, Cursor, Copilot, and Codex.
+              Works with Claude Code, Cursor, Copilot, Codex, Windsurf, Zed,
+              Cline, Gemini, Aider, and Continue.
             </p>
           </div>
         </div>
@@ -236,30 +240,30 @@ export default function Home() {
                 <tr className="border-b border-border/50">
                   <td className="py-2 pr-4 text-accent">@STA-0001</td>
                   <td className="py-2 pr-4">Stack</td>
-                  <td className="py-2 pr-4">Backend language?</td>
+                  <td className="py-2 pr-4">Backend language</td>
                   <td className="py-2 pr-4">Node.js (TypeScript)</td>
                   <td className="py-2 pr-4 text-green-400">user</td>
                 </tr>
                 <tr className="border-b border-border/50">
                   <td className="py-2 pr-4 text-accent">@DAT-0001</td>
                   <td className="py-2 pr-4">Data</td>
-                  <td className="py-2 pr-4">Database?</td>
+                  <td className="py-2 pr-4">Database</td>
                   <td className="py-2 pr-4">PostgreSQL</td>
-                  <td className="py-2 pr-4 text-gray-400">delegated</td>
+                  <td className="py-2 pr-4 text-gray-400">auto</td>
                 </tr>
                 <tr className="border-b border-border/50">
                   <td className="py-2 pr-4 text-gray-500">@NAM-0001</td>
                   <td className="py-2 pr-4">Naming</td>
-                  <td className="py-2 pr-4">Route naming convention?</td>
+                  <td className="py-2 pr-4">Route naming convention</td>
                   <td className="py-2 pr-4">camelCase</td>
-                  <td className="py-2 pr-4 text-gray-500">extracted</td>
+                  <td className="py-2 pr-4 text-gray-500">agent</td>
                 </tr>
                 <tr>
                   <td className="py-2 pr-4 text-gray-500">@ERR-0001</td>
                   <td className="py-2 pr-4">Error</td>
-                  <td className="py-2 pr-4">Validation status code?</td>
+                  <td className="py-2 pr-4">Validation status code</td>
                   <td className="py-2 pr-4">422</td>
-                  <td className="py-2 pr-4 text-gray-500">extracted</td>
+                  <td className="py-2 pr-4 text-gray-500">agent</td>
                 </tr>
               </tbody>
             </table>
@@ -271,7 +275,7 @@ export default function Home() {
       <section className="max-w-3xl mx-auto px-6 py-10">
         <h2 className="text-2xl font-bold mb-3">Shortcuts</h2>
         <div className="p-5 border border-border rounded-xl bg-surface font-mono text-xs space-y-1">
-          <p className="text-muted"># Tree panel (left)</p>
+          <p className="text-muted"># Decisions (left)</p>
           <p>
             <span className="text-accent">↑↓</span>
             <span className="text-muted">
@@ -287,14 +291,14 @@ export default function Home() {
             <span className="text-accent">s</span>
             <span className="text-muted"> Sort</span>
           </p>
-          <p className="mt-2 text-muted"># Chat panel (right)</p>
+          <p className="mt-2 text-muted"># Chat (right)</p>
           <p>
             <span className="text-accent">enter</span>
             <span className="text-muted">
               {"    "}Send message
             </span>
             {"  "}
-            <span className="text-accent">pgup</span>
+            <span className="text-accent">↑↓</span>
             <span className="text-muted"> Scroll</span>
             {"  "}
             <span className="text-accent">←→</span>
@@ -313,7 +317,7 @@ export default function Home() {
           <p>
             <span className="text-accent">tab</span>
             <span className="text-muted">
-              {"      "}Cycle focus (tree → chat → resolver)
+              {"      "}Cycle focus (decisions → chat → resolver)
             </span>
             {"  "}
             <span className="text-accent">shift+tab</span>
