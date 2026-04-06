@@ -34,9 +34,22 @@ export default function Home() {
           <div className="flex flex-wrap gap-3">
             <CopyButton
               text="brew tap defer-ai/tap && brew install defer"
-              label="Copy install command"
+              label="Homebrew"
               className="px-5 py-2.5 text-sm font-medium"
             />
+            <CopyButton
+              text="go install github.com/defer-ai/cli@latest"
+              label="Go"
+              className="px-5 py-2.5 text-sm font-medium border border-border bg-transparent text-foreground hover:bg-surface"
+            />
+            <a
+              href="https://github.com/defer-ai/cli/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 border border-border text-foreground font-medium rounded-lg hover:bg-surface hover:border-border transition-colors text-sm"
+            >
+              Releases
+            </a>
             <a
               href="https://github.com/defer-ai/cli"
               target="_blank"
