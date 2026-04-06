@@ -2257,7 +2257,6 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	if pending > 0 {
 		statusParts = append(statusParts, fmt.Sprintf("○ %d pending", pending))
 	}
-	statusParts = append(statusParts, sortLabel(m.sortMode))
 	if m.overallStatus != "" {
 		statusParts = append(statusParts, m.overallStatus)
 	}
@@ -2332,94 +2331,127 @@ func (m TreeModel) viewTreePane(w, h int) string {
 		}
 	}
 
-	idW := 12
-	ansW := (innerWidth - idW - 14) / 2 // split remaining space between question and answer
-	qW := innerWidth - idW - ansW - 10
-	if qW < 10 {
-		qW = 10
-	}
-	if ansW < 10 {
-		ansW = 10
+	// Card rendering (same as wide-terminal version)
+	cardInner := innerWidth - 4
+	if cardInner < 10 {
+		cardInner = 10
 	}
 
-	rendered := 0
-	for i := scrollStart; i < len(flat) && rendered < treeH; i++ {
-		item := flat[i]
+	// Compute card heights for scroll
+	type cardInfo struct {
+		dec       *decision.Decision
+		decIdx    int
+		height    int
+		startLine int
+	}
+	var cards []cardInfo
+	totalLines := 0
+	for _, item := range flat {
 		if item.isCat {
-			if item.cat == "" {
-				lines = append(lines, "")
-			} else {
-				lines = append(lines, "  "+CategoryStyle.Render(item.cat))
-			}
-			rendered++
 			continue
 		}
-
-		d := item.dec
-		isCur := item.decIdx == m.cursor
-		icon := "○"
-		iconStyle := YellowStyle
-		if d.Answer != nil {
-			if d.Source == "user" {
-				icon = "✓"
-				iconStyle = GreenStyle
-			} else {
-				icon = "▪"
-				iconStyle = DimStyle
-			}
+		ch := 4
+		hasTags := item.dec.Category != "" || len(item.dec.Features) > 0
+		if hasTags {
+			ch = 6
 		}
-
-		cursor := "  "
-		if isCur {
-			cursor = AccentStyle.Render("> ")
-		}
-
-		answer := ""
-		if d.Answer != nil {
-			answer = "→ " + trunc(*d.Answer, ansW)
-		} else {
-			answer = DimStyle.Render("(pending)")
-		}
-
-		// Color the ID based on impact level
-		idStr := pad(d.ID, idW)
-		qStr := trunc(d.Question, qW)
-
-		var idStyle lipgloss.Style
-		if d.Impact >= 7 {
-			idStyle = RedStyle
-		} else if d.Impact >= 4 {
-			idStyle = YellowStyle
-		} else if d.Impact >= 1 {
-			idStyle = DimStyle
-		} else {
-			idStyle = lipgloss.NewStyle()
-		}
-
-		var row string
-		if isCur {
-			curIDStyle := idStyle.Bold(true)
-			row = fmt.Sprintf(" %s%s %s %s  %s",
-				cursor,
-				iconStyle.Render(icon),
-				curIDStyle.Render(idStr),
-				BoldWhite.Render(qStr),
-				DimStyle.Render(answer),
-			)
-		} else {
-			row = fmt.Sprintf(" %s%s %s %s  %s",
-				cursor,
-				iconStyle.Render(icon),
-				idStyle.Render(idStr),
-				qStr,
-				DimStyle.Render(answer),
-			)
-		}
-		lines = append(lines, row)
-		rendered++
+		cards = append(cards, cardInfo{dec: item.dec, decIdx: item.decIdx, height: ch, startLine: totalLines})
+		totalLines += ch
 	}
 
-	// Fill remaining tree space
+	// Scroll to keep cursor visible
+	scrollLine := 0
+	if m.cursor >= 0 && m.cursor < len(cards) {
+		curCard := cards[m.cursor]
+		if curCard.startLine+curCard.height > scrollLine+treeH {
+			scrollLine = curCard.startLine + curCard.height - treeH
+		}
+		if curCard.startLine < scrollLine {
+			scrollLine = curCard.startLine
+		}
+	}
+	if scrollLine < 0 {
+		scrollLine = 0
+	}
+
+	// Render cards
+	var cardLines []string
+	for _, ci := range cards {
+		d := ci.dec
+		isCur := ci.decIdx == m.cursor
+		borderCol := BorderColor
+		if isCur {
+			borderCol = ActiveBorderColor
+		}
+		bStyle := lipgloss.NewStyle().Foreground(borderCol)
+
+		padLine := func(content string) string {
+			cw := lipgloss.Width(content)
+			right := cardInner - cw
+			if right < 0 { right = 0 }
+			return " " + bStyle.Render("│") + " " + content + strings.Repeat(" ", right) + " " + bStyle.Render("│")
+		}
+
+		idLabel := " @" + d.ID + " "
+		fillLen := cardInner + 2 - lipgloss.Width(idLabel)
+		if fillLen < 0 { fillLen = 0 }
+		topLine := " " + bStyle.Render("╭") + bStyle.Render(idLabel) + bStyle.Render(strings.Repeat("─", fillLen)) + bStyle.Render("╮")
+
+		qStr := trunc(d.Question, cardInner-1)
+		if isCur { qStr = BoldWhite.Render(qStr) }
+
+		var ansStr string
+		if d.Answer != nil {
+			ans := trunc(*d.Answer, cardInner-4)
+			if isCur {
+				ansStr = "  " + GreenStyle.Render(ans)
+			} else {
+				ansStr = "  " + DimStyle.Render(ans)
+			}
+		} else {
+			ansStr = "  " + YellowStyle.Render("pending")
+		}
+
+		var tagStr string
+		if d.Category != "" || len(d.Features) > 0 {
+			var tags []string
+			seen := map[string]bool{}
+			if d.Category != "" {
+				catKey := strings.ToLower(strings.TrimSpace(d.Category))
+				seen[catKey] = true
+				tags = append(tags, renderTag(d.Category))
+			}
+			for _, f := range d.Features {
+				fKey := strings.ToLower(strings.TrimSpace(f))
+				if seen[fKey] { continue }
+				seen[fKey] = true
+				t := renderTag(f)
+				testLine := strings.Join(append(tags, t), " ")
+				if lipgloss.Width(testLine) > cardInner-1 { break }
+				tags = append(tags, t)
+			}
+			tagStr = strings.Join(tags, " ")
+		}
+
+		bottomLine := " " + bStyle.Render("╰") + bStyle.Render(strings.Repeat("─", cardInner+2)) + bStyle.Render("╯")
+
+		cardLines = append(cardLines, topLine)
+		cardLines = append(cardLines, padLine(qStr))
+		cardLines = append(cardLines, padLine(ansStr))
+		if tagStr != "" {
+			cardLines = append(cardLines, padLine(""))
+			cardLines = append(cardLines, padLine(tagStr))
+		}
+		cardLines = append(cardLines, bottomLine)
+	}
+
+	// Slice visible portion
+	endLine := scrollLine + treeH
+	if endLine > len(cardLines) { endLine = len(cardLines) }
+	if scrollLine < len(cardLines) {
+		lines = append(lines, cardLines[scrollLine:endLine]...)
+	}
+	rendered := endLine - scrollLine
 	for rendered < treeH {
 		lines = append(lines, "")
 		rendered++
@@ -2480,8 +2512,7 @@ func (m TreeModel) viewTreePane(w, h int) string {
 			{"↑↓", "navigate"},
 			{"enter", "inspect"},
 			{"/", "filter"},
-			{"f", "find"},
-			{"g", "group"},
+			{"s", "sort"},
 			{"tab", "chat"},
 			{"ctrl+q", "quit"},
 		}

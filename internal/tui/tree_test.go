@@ -1232,14 +1232,14 @@ func TestSortModeCycle(t *testing.T) {
 	}
 }
 
-func TestTreeFooterShowsGroupAndFind(t *testing.T) {
+func TestTreeFooterShowsSortAndFilter(t *testing.T) {
 	tm := newTree(fiveDecisions())
 	output := tm.viewTree()
-	if !strings.Contains(output, "group") {
-		t.Error("tree footer should contain 'g group'")
+	if !strings.Contains(output, "sort") {
+		t.Error("tree footer should contain 's sort'")
 	}
-	if !strings.Contains(output, "find") {
-		t.Error("tree footer should contain 'ctrl+f find'")
+	if !strings.Contains(output, "filter") {
+		t.Error("tree footer should contain '/ filter'")
 	}
 }
 
