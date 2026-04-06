@@ -819,7 +819,7 @@ func sortLabel(mode int) string {
 	case 1: return "impact"
 	case 2: return "status"
 	case 3: return "a-z"
-	default: return "category"
+	default: return "domain"
 	}
 }
 
@@ -1259,7 +1259,9 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 
 	var lines []string
 	lines = append(lines, titleLine)
-	lines = append(lines, DimStyle.Render(" "+strings.Repeat("─", innerWidth)))
+	dividerLen := innerWidth - 4
+	if dividerLen < 4 { dividerLen = 4 }
+	lines = append(lines, "  "+DimStyle.Render(strings.Repeat("─", dividerLen)))
 
 	// Card dimensions: full width, no centering margin
 	cardInner := innerWidth - 4
@@ -1441,15 +1443,15 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 		lines = append(lines, " "+DimStyle.Render(fmt.Sprintf("Filtered: %d results", total)))
 	}
 
-	// Footer (no border, just text)
-	lines = append(lines, DimStyle.Render(" "+strings.Repeat("─", innerWidth)))
+	// Footer
+	lines = append(lines, "  "+DimStyle.Render(strings.Repeat("─", dividerLen)))
 	var footerActions []footerAction
 	if m.jumpSearchMode {
 		footerActions = []footerAction{{"type", "find"}, {"↑↓", "select"}, {"enter", "jump"}, {"esc", "close"}}
 	} else if m.searchMode {
 		footerActions = []footerAction{{"type", "filter"}, {"enter", "confirm"}, {"esc", "clear"}}
 	} else {
-		footerActions = []footerAction{{"↑↓", "navigate"}, {"enter", "inspect"}, {"/", "filter"}, {"s", sortLabel(m.sortMode)}}
+		footerActions = []footerAction{{"↑↓", "navigate"}, {"enter", "inspect"}, {"/", "filter"}, {"s", "sort"}}
 	}
 	lines = append(lines, renderFooter(footerActions, innerWidth))
 
