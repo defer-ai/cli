@@ -70,7 +70,7 @@ type TreeModel struct {
 	searchQuery    string          // current search filter (persists after exiting search mode)
 	searchInput    textinput.Model // input for search filtering
 	showDetail     bool            // true when a decision is selected and terminal is wide enough for split pane
-	groupByFeature bool            // true = group tree by feature tag, false = group by category (default)
+	sortMode       int             // 0=category, 1=impact, 2=status, 3=alphabetical
 	// Jump search (Ctrl+F) — find and jump without filtering
 	jumpSearchMode  bool
 	jumpSearchInput textinput.Model
@@ -553,8 +553,9 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 		m.jumpMatches = nil
 		m.jumpCursor = 0
 		return m, nil
-	case "g":
-		m.groupByFeature = !m.groupByFeature
+	case "s":
+		// Cycle sort: category → impact → status → alphabetical → category
+		m.sortMode = (m.sortMode + 1) % 4
 		m.cursor = 0
 		return m, nil
 	case "down":
@@ -792,8 +793,34 @@ func (m TreeModel) decisionItems() []decision.Decision {
 		}
 		items = filtered
 	}
-	sortDecisionsByCategory(items)
+	// Sort based on current mode
+	switch m.sortMode {
+	case 0: // category
+		sortDecisionsByCategory(items)
+	case 1: // impact (high first)
+		sort.SliceStable(items, func(i, j int) bool { return items[i].Impact > items[j].Impact })
+	case 2: // status (pending first)
+		sort.SliceStable(items, func(i, j int) bool {
+			pi, pj := items[i].IsPending(), items[j].IsPending()
+			if pi != pj { return pi }
+			return false
+		})
+	case 3: // alphabetical
+		sort.SliceStable(items, func(i, j int) bool {
+			return strings.ToLower(items[i].Question) < strings.ToLower(items[j].Question)
+		})
+	}
 	return items
+}
+
+// sortLabel returns the display name of the current sort mode.
+func sortLabel(mode int) string {
+	switch mode {
+	case 1: return "impact"
+	case 2: return "status"
+	case 3: return "a-z"
+	default: return "category"
+	}
 }
 
 // sortDecisionsByCategory sorts decisions so same-category items are grouped,
@@ -1204,7 +1231,7 @@ func (m TreeModel) renderLeftPanel(w, h int) string {
 	return m.renderLeftTreePanel(innerWidth, h, active)
 }
 
-// renderLeftTreePanel renders the tree list for the left panel.
+// renderLeftTreePanel renders the decision list for the left panel.
 func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 	visibleDecs := m.decisionItems()
 	total := len(visibleDecs)
@@ -1218,7 +1245,7 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 		}
 	}
 
-	// Status for title bar
+	// Status summary
 	var statusParts []string
 	statusParts = append(statusParts, fmt.Sprintf("%d/%d", answered, total))
 	if pending > 0 {
@@ -1226,147 +1253,76 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 	}
 	rightStatus := strings.Join(statusParts, " ")
 
+	// Title line (no border, just text)
+	title := TitleStyle.Render("Decisions")
+	titleLine := " " + title + strings.Repeat(" ", innerWidth-lipgloss.Width(title)-lipgloss.Width(rightStatus)-2) + DimStyle.Render(rightStatus) + " "
+
 	var lines []string
-	lines = append(lines, "")
+	lines = append(lines, titleLine)
+	lines = append(lines, DimStyle.Render(" "+strings.Repeat("─", innerWidth)))
 
-	// Build flat items
-	type flatItem struct {
-		isCat  bool
-		cat    string
-		dec    *decision.Decision
-		decIdx int
+	// Card dimensions: full width, no centering margin
+	cardInner := innerWidth - 4
+	if cardInner < 10 {
+		cardInner = 10
 	}
 
-	var flat []flatItem
-
-	if m.groupByFeature {
-		featureMap := map[string][]int{}
-		var featureOrder []string
-		featureSeen := map[string]bool{}
-		for i, d := range visibleDecs {
-			if len(d.Features) == 0 {
-				if !featureSeen["untagged"] {
-					featureOrder = append(featureOrder, "untagged")
-					featureSeen["untagged"] = true
-				}
-				featureMap["untagged"] = append(featureMap["untagged"], i)
-			}
-			for _, f := range d.Features {
-				fl := strings.ToLower(strings.TrimSpace(f))
-				if !featureSeen[fl] {
-					featureOrder = append(featureOrder, fl)
-					featureSeen[fl] = true
-				}
-				featureMap[fl] = append(featureMap[fl], i)
-			}
+	// Compute card heights to map cursor → scroll position
+	type cardInfo struct {
+		dec      *decision.Decision
+		decIdx   int
+		height   int
+		startLine int
+	}
+	var cards []cardInfo
+	totalLines := 0
+	for i, d := range visibleDecs {
+		ch := 4 // top + question + answer + bottom
+		hasTags := d.Category != "" || len(d.Features) > 0
+		if hasTags {
+			ch = 6 // +blank line +tags
 		}
-		sort.Strings(featureOrder)
-		for _, feat := range featureOrder {
-			indices := featureMap[feat]
-			label := "#" + feat
-			if feat == "untagged" {
-				label = "(untagged)"
-			}
-			if len(flat) > 0 {
-				flat = append(flat, flatItem{isCat: true, cat: ""})
-			}
-			flat = append(flat, flatItem{isCat: true, cat: label})
-			for _, idx := range indices {
-				flat = append(flat, flatItem{dec: &visibleDecs[idx], decIdx: idx})
-			}
-		}
-	} else {
-		sortDecisionsByCategory(visibleDecs)
-		lastCat := ""
-		decIdx := 0
-		for i := range visibleDecs {
-			d := &visibleDecs[i]
-			catKey := strings.ToLower(strings.TrimSpace(d.Category))
-			lastKey := strings.ToLower(strings.TrimSpace(lastCat))
-			if catKey != lastKey {
-				if lastCat != "" {
-					flat = append(flat, flatItem{isCat: true, cat: ""})
-				}
-				flat = append(flat, flatItem{isCat: true, cat: d.Category})
-				lastCat = d.Category
-			}
-			flat = append(flat, flatItem{dec: d, decIdx: decIdx})
-			decIdx++
-		}
+		cards = append(cards, cardInfo{dec: &visibleDecs[i], decIdx: i, height: ch, startLine: totalLines})
+		totalLines += ch
 	}
 
-	// Find cursor position
-	cursorFlat := 0
-	di := 0
-	for i, item := range flat {
-		if !item.isCat {
-			if di == m.cursor {
-				cursorFlat = i
-				break
-			}
-			di++
-		}
-	}
-
-	// Available tree height: h - borders(2) - empty(1) - footer divider(1) - footer(1)
-	fixedLines := 2 + 1 + 1 + 1
+	// Available height for cards
+	fixedLines := 4 // title + divider + footer divider + footer
 	if m.searchMode || m.searchQuery != "" {
 		fixedLines += 2
 	}
 	if m.jumpSearchMode {
-		dropdownLines := len(m.jumpMatches)
-		if dropdownLines > 8 {
-			dropdownLines = 8
-		}
-		fixedLines += 2 + dropdownLines
+		dd := len(m.jumpMatches)
+		if dd > 8 { dd = 8 }
+		fixedLines += 2 + dd
 	}
 	treeH := h - fixedLines
-	if treeH < 3 {
-		treeH = 3
+	if treeH < 5 {
+		treeH = 5
 	}
 
-	// Scrolling
-	scrollStart := cursorFlat - treeH/2
-	if scrollStart < 0 {
-		scrollStart = 0
-	}
-	if scrollStart+treeH > len(flat) {
-		scrollStart = len(flat) - treeH
-		if scrollStart < 0 {
-			scrollStart = 0
+	// Scroll: ensure the selected card is visible
+	scrollLine := 0
+	if m.cursor >= 0 && m.cursor < len(cards) {
+		curCard := cards[m.cursor]
+		// If card starts before the scroll window, scroll up
+		if curCard.startLine < scrollLine {
+			scrollLine = curCard.startLine
+		}
+		// If card ends after the scroll window, scroll down
+		if curCard.startLine+curCard.height > scrollLine+treeH {
+			scrollLine = curCard.startLine + curCard.height - treeH
 		}
 	}
-
-	// Card width = 80% of panel
-	cardW := innerWidth * 80 / 100
-	if cardW < 16 {
-		cardW = 16
+	if scrollLine < 0 {
+		scrollLine = 0
 	}
-	cardInner := cardW - 4 // border(1) + space(1) each side
-	if cardInner < 10 {
-		cardInner = 10
-	}
-	cardMargin := (innerWidth - cardW) / 2
-	if cardMargin < 0 {
-		cardMargin = 0
-	}
-	cardPad := strings.Repeat(" ", cardMargin)
 
-	rendered := 0
-	for i := scrollStart; i < len(flat) && rendered < treeH; i++ {
-		item := flat[i]
-		if item.isCat {
-			if item.cat == "" {
-				lines = append(lines, "")
-			} else {
-				lines = append(lines, " "+CategoryStyle.Render(item.cat))
-			}
-			rendered++
-			continue
-		}
-
-		d := item.dec
-		isCur := item.decIdx == m.cursor
+	// Render cards into a virtual buffer, then slice
+	var cardLines []string
+	for _, ci := range cards {
+		d := ci.dec
+		isCur := ci.decIdx == m.cursor
 
 		borderCol := BorderColor
 		if isCur {
@@ -1374,82 +1330,80 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 		}
 		bStyle := lipgloss.NewStyle().Foreground(borderCol)
 
-		// Pad content line to cardInner, wrapped in side borders
 		padLine := func(content string) string {
 			w := lipgloss.Width(content)
 			right := cardInner - w
-			if right < 0 {
-				right = 0
-			}
-			return bStyle.Render("│") + " " + content + strings.Repeat(" ", right) + " " + bStyle.Render("│")
+			if right < 0 { right = 0 }
+			return " " + bStyle.Render("│") + " " + content + strings.Repeat(" ", right) + " " + bStyle.Render("│")
 		}
 
-		// Top border with ID: ╭ @STA-0001 ──────────────╮
+		// Top border with ID
 		idLabel := " @" + d.ID + " "
-		fillLen := cardInner + 2 - len(idLabel)
-		if fillLen < 0 {
-			fillLen = 0
-		}
-		topLine := bStyle.Render("╭") + bStyle.Render(idLabel) + bStyle.Render(strings.Repeat("─", fillLen)) + bStyle.Render("╮")
+		fillLen := cardInner + 2 - lipgloss.Width(idLabel)
+		if fillLen < 0 { fillLen = 0 }
+		topLine := " " + bStyle.Render("╭") + bStyle.Render(idLabel) + bStyle.Render(strings.Repeat("─", fillLen)) + bStyle.Render("╮")
 
-		// Line 1: question (bold)
+		// Question
 		qStr := trunc(d.Question, cardInner-1)
-		var questionLine string
 		if isCur {
-			questionLine = BoldWhite.Render(qStr)
-		} else {
-			questionLine = qStr
+			qStr = BoldWhite.Render(qStr)
 		}
 
-		// Line 2: indented answer or pending
-		var answerLine string
+		// Answer
+		var answerStr string
 		if d.Answer != nil {
 			ans := trunc(*d.Answer, cardInner-4)
 			if isCur {
-				answerLine = "  " + GreenStyle.Render(ans)
+				answerStr = "  " + GreenStyle.Render(ans)
 			} else {
-				answerLine = "  " + DimStyle.Render(ans)
+				answerStr = "  " + DimStyle.Render(ans)
 			}
 		} else {
-			answerLine = "  " + YellowStyle.Render("pending")
+			answerStr = "  " + YellowStyle.Render("pending")
 		}
 
-		// Line 3: feature/domain tags with background colors
-		var tagLine string
-		if len(d.Features) > 0 || d.Category != "" {
+		// Tags (truncated to fit)
+		var tagStr string
+		if d.Category != "" || len(d.Features) > 0 {
 			var tags []string
 			if d.Category != "" {
 				tags = append(tags, renderTag(d.Category))
 			}
 			for _, f := range d.Features {
-				tags = append(tags, renderTag(f))
+				t := renderTag(f)
+				// Check if adding this tag would overflow
+				testLine := strings.Join(append(tags, t), " ")
+				if lipgloss.Width(testLine) > cardInner-1 {
+					break
+				}
+				tags = append(tags, t)
 			}
-			tagLine = strings.Join(tags, " ")
+			tagStr = strings.Join(tags, " ")
 		}
 
-		// Bottom border
-		bottomLine := bStyle.Render("╰") + bStyle.Render(strings.Repeat("─", cardInner+2)) + bStyle.Render("╯")
+		bottomLine := " " + bStyle.Render("╰") + bStyle.Render(strings.Repeat("─", cardInner+2)) + bStyle.Render("╯")
 
-		// Card height: top + question + answer + tags (if any) + bottom = 4 or 5
-		cardHeight := 4
-		if tagLine != "" {
-			cardHeight = 5
+		cardLines = append(cardLines, topLine)
+		cardLines = append(cardLines, padLine(qStr))
+		cardLines = append(cardLines, padLine(answerStr))
+		if tagStr != "" {
+			cardLines = append(cardLines, padLine("")) // blank line before tags
+			cardLines = append(cardLines, padLine(tagStr))
 		}
-		if rendered+cardHeight > treeH {
-			break
-		}
-
-		lines = append(lines, cardPad+topLine)
-		lines = append(lines, cardPad+padLine(questionLine))
-		lines = append(lines, cardPad+padLine(answerLine))
-		if tagLine != "" {
-			lines = append(lines, cardPad+padLine(tagLine))
-		}
-		lines = append(lines, cardPad+bottomLine)
-		rendered += cardHeight
+		cardLines = append(cardLines, bottomLine)
 	}
 
-	// Fill remaining
+	// Slice the visible portion
+	endLine := scrollLine + treeH
+	if endLine > len(cardLines) {
+		endLine = len(cardLines)
+	}
+	if scrollLine < len(cardLines) {
+		lines = append(lines, cardLines[scrollLine:endLine]...)
+	}
+
+	// Fill remaining height
+	rendered := endLine - scrollLine
 	for rendered < treeH {
 		lines = append(lines, "")
 		rendered++
@@ -1457,7 +1411,7 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 
 	// Jump search overlay
 	if m.jumpSearchMode {
-		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+		lines = append(lines, DimStyle.Render(" "+strings.Repeat("─", innerWidth)))
 		lines = append(lines, " "+m.jumpSearchInput.View())
 		maxDropdown := 8
 		if len(m.jumpMatches) < maxDropdown {
@@ -1480,41 +1434,26 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 
 	// Search bar
 	if m.searchMode {
-		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+		lines = append(lines, DimStyle.Render(" "+strings.Repeat("─", innerWidth)))
 		lines = append(lines, " "+m.searchInput.View())
 	} else if m.searchQuery != "" {
-		lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+		lines = append(lines, DimStyle.Render(" "+strings.Repeat("─", innerWidth)))
 		lines = append(lines, " "+DimStyle.Render(fmt.Sprintf("Filtered: %d results", total)))
 	}
 
-	// Footer
-	lines = append(lines, buildMiddleBorderActive(innerWidth, active))
+	// Footer (no border, just text)
+	lines = append(lines, DimStyle.Render(" "+strings.Repeat("─", innerWidth)))
 	var footerActions []footerAction
 	if m.jumpSearchMode {
-		footerActions = []footerAction{
-			{"type", "find"},
-			{"↑↓", "select"},
-			{"enter", "jump"},
-			{"esc", "close"},
-		}
+		footerActions = []footerAction{{"type", "find"}, {"↑↓", "select"}, {"enter", "jump"}, {"esc", "close"}}
 	} else if m.searchMode {
-		footerActions = []footerAction{
-			{"type", "filter"},
-			{"enter", "confirm"},
-			{"esc", "clear"},
-		}
+		footerActions = []footerAction{{"type", "filter"}, {"enter", "confirm"}, {"esc", "clear"}}
 	} else {
-		footerActions = []footerAction{
-			{"↑↓", "navigate"},
-			{"enter", "inspect"},
-			{"/", "filter"},
-			{"g", "group"},
-		}
+		footerActions = []footerAction{{"↑↓", "navigate"}, {"enter", "inspect"}, {"/", "filter"}, {"s", sortLabel(m.sortMode)}}
 	}
 	lines = append(lines, renderFooter(footerActions, innerWidth))
 
-	content := strings.Join(lines, "\n")
-	return buildBorderedBoxActive(content, innerWidth, "", rightStatus, active)
+	return strings.Join(lines, "\n")
 }
 
 // renderLeftDetailPanel renders the detail view for the left panel.
@@ -1878,12 +1817,11 @@ func (m TreeModel) renderChatPanel(w, h int) string {
 	lines = append(lines, renderFooter(chatFooterActions, innerWidth))
 
 	content := strings.Join(lines, "\n")
-	title := ""
 	rightStatus := ""
 	if m.overallStatus != "" {
 		rightStatus = m.overallStatus
 	}
-	return buildBorderedBoxActive(content, innerWidth, title, rightStatus, active)
+	return buildBorderedBoxActive(content, innerWidth, "Chat", rightStatus, active)
 }
 
 // renderResolver renders the pending decision resolver section.
@@ -2301,11 +2239,7 @@ func (m TreeModel) viewTreePane(w, h int) string {
 	if pending > 0 {
 		statusParts = append(statusParts, fmt.Sprintf("○ %d pending", pending))
 	}
-	if m.groupByFeature {
-		statusParts = append(statusParts, "by feature")
-	} else {
-		statusParts = append(statusParts, "by domain")
-	}
+	statusParts = append(statusParts, sortLabel(m.sortMode))
 	if m.overallStatus != "" {
 		statusParts = append(statusParts, m.overallStatus)
 	}
@@ -2330,69 +2264,9 @@ func (m TreeModel) viewTreePane(w, h int) string {
 
 	var flat []flatItem
 
-	if m.groupByFeature {
-		// Group by feature tags
-		featureMap := map[string][]int{} // feature name → decision indices (into visibleDecs)
-		var featureOrder []string
-		featureSeen := map[string]bool{}
-		for i, d := range visibleDecs {
-			if len(d.Features) == 0 {
-				if !featureSeen["untagged"] {
-					featureOrder = append(featureOrder, "untagged")
-					featureSeen["untagged"] = true
-				}
-				featureMap["untagged"] = append(featureMap["untagged"], i)
-			}
-			for _, f := range d.Features {
-				fl := strings.ToLower(strings.TrimSpace(f))
-				if !featureSeen[fl] {
-					featureOrder = append(featureOrder, fl)
-					featureSeen[fl] = true
-				}
-				featureMap[fl] = append(featureMap[fl], i)
-			}
-		}
-		sort.Strings(featureOrder)
-		// Build flat items grouped by feature
-		decIdx := 0
-		// We need a global index mapping: visibleDecs index → decIdx
-		// Since feature grouping can show same decision under multiple features,
-		// we use the original visibleDecs order for cursor mapping.
-		// Build a mapping from visibleDecs index to decIdx (they are 1:1)
-		for _, feat := range featureOrder {
-			indices := featureMap[feat]
-			label := "#" + feat
-			if feat == "untagged" {
-				label = "(untagged)"
-			}
-			if len(flat) > 0 {
-				flat = append(flat, flatItem{isCat: true, cat: ""})
-			}
-			flat = append(flat, flatItem{isCat: true, cat: label})
-			for _, idx := range indices {
-				flat = append(flat, flatItem{dec: &visibleDecs[idx], decIdx: idx})
-			}
-		}
-		_ = decIdx
-	} else {
-		// Default: group by category
-		sortDecisionsByCategory(visibleDecs)
-		lastCat := ""
-		decIdx := 0
-		for i := range visibleDecs {
-			d := &visibleDecs[i]
-			catKey := strings.ToLower(strings.TrimSpace(d.Category))
-			lastKey := strings.ToLower(strings.TrimSpace(lastCat))
-			if catKey != lastKey {
-				if lastCat != "" {
-					flat = append(flat, flatItem{isCat: true, cat: ""})
-				}
-				flat = append(flat, flatItem{isCat: true, cat: d.Category})
-				lastCat = d.Category
-			}
-			flat = append(flat, flatItem{dec: d, decIdx: decIdx})
-			decIdx++
-		}
+	// Flat list — no category grouping (domain shown as tag in each card)
+	for i := range visibleDecs {
+		flat = append(flat, flatItem{dec: &visibleDecs[i], decIdx: i})
 	}
 
 	// Find cursor position in flat list

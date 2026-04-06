@@ -271,8 +271,8 @@ export default function Home() {
             <span className="text-accent">/</span>
             <span className="text-muted"> Filter</span>
             {"  "}
-            <span className="text-accent">g</span>
-            <span className="text-muted"> Group by feature</span>
+            <span className="text-accent">s</span>
+            <span className="text-muted"> Sort</span>
           </p>
           <p className="mt-2 text-muted"># Chat panel (right)</p>
           <p>

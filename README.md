@@ -135,7 +135,7 @@ Impact bars: `|||` high (red), `||` medium (yellow), `|` low (dim)
 | `enter` | Inspect decision |
 | `/` | Filter decisions by ID, category, or question |
 | `f` or `ctrl+f` | Find and jump to a decision, category, or feature |
-| `g` | Toggle grouping between category and feature |
+| `s` | Cycle sort: category, impact, status, a-z |
 
 ### Decision Detail
 
@@ -184,7 +184,7 @@ Decisions can be tagged with features (e.g., "messaging", "auth", "encryption").
 
 **Feature tagging.** Press `f` in the decision detail view to edit a decision's feature tags. Enter comma-separated values (e.g., `auth, onboarding`). Feature IDs use the `#` prefix and follow the same 3-letter prefix rules as categories: `#MSG`, `#AUT`, `#ENC`.
 
-**Grouping.** Press `g` in the tree view to toggle between grouping by category (default) and grouping by feature.
+**Sorting.** Press `s` in the decision list to cycle sort order: category, impact (high first), status (pending first), alphabetical.
 
 **Search.** Press `/` to filter decisions by any part of their ID, category, or question text. Press `enter` to lock the filter and navigate within results. Press `esc` to clear.
 

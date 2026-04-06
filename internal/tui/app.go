@@ -390,6 +390,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		summary.WriteString("\nSet care level per domain in the panel below.")
 		m.tree.chatLog = append(m.tree.chatLog, ChatEntry{Type: "agent", Text: summary.String()})
+		m.tree.overallStatus = "waiting"
 
 		// Show priorities inline in the resolver (not full-screen)
 		cats := []string{}

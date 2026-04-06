@@ -1203,61 +1203,32 @@ func TestHighlightRefsNoRefs(t *testing.T) {
 
 // ========== Feature mode toggle tests ==========
 
-func TestFeatureGroupToggle(t *testing.T) {
+func TestSortModeCycle(t *testing.T) {
 	tm := newTree(fiveDecisions())
 
-	if tm.groupByFeature {
-		t.Fatal("groupByFeature should be false by default")
+	if tm.sortMode != 0 {
+		t.Fatal("sortMode should be 0 (category) by default")
 	}
 
-	// Press 'g' to toggle
-	tm, _ = updateTree(t, tm, keyRunes("g"))
-	if !tm.groupByFeature {
-		t.Error("groupByFeature should be true after pressing g")
+	// Press 's' to cycle through sort modes
+	tm, _ = updateTree(t, tm, keyRunes("s"))
+	if tm.sortMode != 1 {
+		t.Errorf("sortMode = %d, want 1 (impact)", tm.sortMode)
 	}
 
-	// Press 'g' again to toggle back
-	tm, _ = updateTree(t, tm, keyRunes("g"))
-	if tm.groupByFeature {
-		t.Error("groupByFeature should be false after pressing g again")
-	}
-}
-
-func TestFeatureGroupViewRenders(t *testing.T) {
-	decs := fiveDecisions()
-	decs[0].Features = []string{"auth", "backend"}
-	decs[1].Features = []string{"backend"}
-	decs[2].Features = []string{"data"}
-
-	tm := newTree(decs)
-	tm.groupByFeature = true
-
-	output := tm.viewTree()
-	// Should show feature group headers
-	if !strings.Contains(output, "#auth") {
-		t.Error("feature group view should contain #auth header")
-	}
-	if !strings.Contains(output, "#backend") {
-		t.Error("feature group view should contain #backend header")
-	}
-	if !strings.Contains(output, "(untagged)") {
-		t.Error("feature group view should contain (untagged) for decisions without features")
-	}
-}
-
-func TestFeatureGroupStatusShowsByFeature(t *testing.T) {
-	tm := newTree(fiveDecisions())
-	tm.groupByFeature = true
-
-	output := tm.viewTree()
-	if !strings.Contains(output, "by feature") {
-		t.Error("status should show 'by feature' when groupByFeature is true")
+	tm, _ = updateTree(t, tm, keyRunes("s"))
+	if tm.sortMode != 2 {
+		t.Errorf("sortMode = %d, want 2 (status)", tm.sortMode)
 	}
 
-	tm.groupByFeature = false
-	output = tm.viewTree()
-	if !strings.Contains(output, "by domain") {
-		t.Error("status should show 'by domain' when groupByFeature is false")
+	tm, _ = updateTree(t, tm, keyRunes("s"))
+	if tm.sortMode != 3 {
+		t.Errorf("sortMode = %d, want 3 (a-z)", tm.sortMode)
+	}
+
+	tm, _ = updateTree(t, tm, keyRunes("s"))
+	if tm.sortMode != 0 {
+		t.Errorf("sortMode = %d, want 0 (back to category)", tm.sortMode)
 	}
 }
 
