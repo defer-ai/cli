@@ -1306,11 +1306,21 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 		}
 	}
 
-	// Layout: question gets most width, answer on the right
-	qW := innerWidth - 6 // cursor(1) + icon(1) + spaces(2) + padding(2)
-	if qW < 10 {
-		qW = 10
+	// Card width = 80% of panel
+	cardW := innerWidth * 80 / 100
+	if cardW < 16 {
+		cardW = 16
 	}
+	cardInner := cardW - 4 // border(1) + space(1) each side
+	if cardInner < 10 {
+		cardInner = 10
+	}
+	// Left margin to center the card
+	cardMargin := (innerWidth - cardW) / 2
+	if cardMargin < 0 {
+		cardMargin = 0
+	}
+	pad := strings.Repeat(" ", cardMargin)
 
 	rendered := 0
 	for i := scrollStart; i < len(flat) && rendered < treeH; i++ {
@@ -1344,40 +1354,69 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 			}
 		}
 
-		cursor := " "
+		// Build card content lines
+		// Line 1: icon + question
+		qStr := trunc(d.Question, cardInner-3)
+		questionLine := iconStyle.Render(icon) + " "
 		if isCur {
-			cursor = AccentStyle.Render(">")
-		}
-
-		// Card: line 1 = cursor + icon + question
-		//        line 2 = ID + answer (or "pending")
-		qStr := trunc(d.Question, qW-2)
-
-		var line1, line2 string
-		if isCur {
-			line1 = fmt.Sprintf("%s%s %s", cursor, iconStyle.Render(icon), BoldWhite.Render(qStr))
+			questionLine += BoldWhite.Render(qStr)
 		} else {
-			line1 = fmt.Sprintf("%s%s %s", cursor, iconStyle.Render(icon), qStr)
+			questionLine += qStr
 		}
 
-		idStr := DimStyle.Render("@" + d.ID)
+		// Line 2: @ID + domain + features
+		meta := DimStyle.Render("@"+d.ID) + "  " + DimStyle.Render(d.Category)
+		if len(d.Features) > 0 {
+			tags := ""
+			for _, f := range d.Features {
+				tags += " #" + f
+			}
+			meta += DimStyle.Render(tags)
+		}
+		meta = trunc(meta, cardInner)
+
+		// Line 3: answer or pending
+		var answerLine string
 		if d.Answer != nil {
-			answerStr := trunc(*d.Answer, qW-lipgloss.Width(idStr)-4)
+			ans := trunc(*d.Answer, cardInner-2)
 			if isCur {
-				line2 = fmt.Sprintf("    %s %s", idStr, GreenStyle.Render(answerStr))
+				answerLine = GreenStyle.Render("→ " + ans)
 			} else {
-				line2 = fmt.Sprintf("    %s %s", idStr, DimStyle.Render(answerStr))
+				answerLine = DimStyle.Render("→ " + ans)
 			}
 		} else {
-			line2 = fmt.Sprintf("    %s %s", idStr, YellowStyle.Render("pending"))
+			answerLine = YellowStyle.Render("○ pending")
 		}
 
-		lines = append(lines, line1)
-		rendered++
-		if rendered < treeH {
-			lines = append(lines, line2)
-			rendered++
+		// Render bordered card
+		borderCol := BorderColor
+		if isCur {
+			borderCol = ActiveBorderColor
 		}
+		bStyle := lipgloss.NewStyle().Foreground(borderCol)
+		hLine := bStyle.Render(strings.Repeat("─", cardInner+2))
+
+		// Card needs 5 lines: top border, question, meta, answer, bottom border
+		if rendered+5 > treeH {
+			break // not enough room for a full card
+		}
+
+		// Pad each content line to cardInner width
+		padLine := func(content string) string {
+			w := lipgloss.Width(content)
+			right := cardInner - w
+			if right < 0 {
+				right = 0
+			}
+			return bStyle.Render("│") + " " + content + strings.Repeat(" ", right) + " " + bStyle.Render("│")
+		}
+
+		lines = append(lines, pad+bStyle.Render("╭")+hLine+bStyle.Render("╮"))
+		lines = append(lines, pad+padLine(questionLine))
+		lines = append(lines, pad+padLine(meta))
+		lines = append(lines, pad+padLine(answerLine))
+		lines = append(lines, pad+bStyle.Render("╰")+hLine+bStyle.Render("╯"))
+		rendered += 5
 	}
 
 	// Fill remaining
