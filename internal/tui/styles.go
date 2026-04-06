@@ -6,6 +6,35 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Theme defines a color scheme.
+type Theme struct {
+	Name        string
+	Description string
+	Accent      lipgloss.Color
+}
+
+var Themes = []Theme{
+	{Name: "Default", Description: "", Accent: lipgloss.Color("#f97316")},
+	{Name: "Calm", Description: "", Accent: lipgloss.Color("#3b82f6")},
+	{Name: "Terminal", Description: "", Accent: lipgloss.Color("#22c55e")},
+	{Name: "Twilight", Description: "", Accent: lipgloss.Color("#a855f7")},
+	{Name: "Candy", Description: "", Accent: lipgloss.Color("#ec4899")},
+	{Name: "Ice", Description: "", Accent: lipgloss.Color("#06b6d4")},
+	{Name: "Ember", Description: "", Accent: lipgloss.Color("#ef4444")},
+	{Name: "Gold", Description: "", Accent: lipgloss.Color("#eab308")},
+}
+
+// ApplyTheme updates all accent-derived styles to use the given color.
+func ApplyTheme(accent lipgloss.Color) {
+	Accent = accent
+	ActiveBorderColor = accent
+	AccentStyle = lipgloss.NewStyle().Foreground(accent)
+	BoldAccent = lipgloss.NewStyle().Foreground(accent).Bold(true)
+	TitleStyle = lipgloss.NewStyle().Foreground(accent).Bold(true)
+	DetailTitleStyle = lipgloss.NewStyle().Foreground(accent).Bold(true)
+	CategoryStyle = lipgloss.NewStyle().Foreground(accent).Bold(true)
+}
+
 var (
 	Accent  = lipgloss.Color("#f97316")
 	DimGray = lipgloss.Color("240")

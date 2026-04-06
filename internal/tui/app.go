@@ -36,6 +36,7 @@ const (
 // ModelOpts configures the TUI model.
 type ModelOpts struct {
 	ShowMascot bool
+	MascotSize int // display pixels per eye (0 = use default)
 	Version    string
 	ModelName  string
 }
@@ -48,6 +49,7 @@ type Model struct {
 
 	// Header
 	showMascot bool
+	mascotSize int // display pixels per eye
 	version    string
 	modelName  string
 
@@ -99,6 +101,7 @@ func NewModel(task string, provider api.Provider, cwd string, opts ...ModelOpts)
 		provider:         provider,
 		cwd:              cwd,
 		showMascot:       o.ShowMascot,
+		mascotSize:       o.MascotSize,
 		version:          o.Version,
 		modelName:        o.ModelName,
 		tree:             tree,
@@ -471,6 +474,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		m.tree.pendingCount = m.countPending()
+
 		if allAnswered && !isScanOnly {
 			ch := m.eventChan
 			ctx := m.ctx
@@ -482,7 +487,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tree.chatThinking = true
 			m.tree.chatThinkStart = time.Now()
 		} else if !allAnswered {
-			m.tree.overallStatus = "thinking"
+			m.tree.overallStatus = "waiting"
 		} else {
 			m.tree.overallStatus = "done" // scan complete, all cataloged
 		}
@@ -1218,12 +1223,15 @@ Output ONLY a JSON array with 4 new, creative alternatives:
 }
 
 func (m Model) View() string {
-	// Render header (mascot + info) if enabled
+	// Render header
 	header := ""
 	headerHeight := 0
 	if m.showMascot {
 		header = m.renderHeader(m.width)
-		headerHeight = strings.Count(header, "\n") + 2 // +1 for the line itself, +1 for gap
+		headerHeight = strings.Count(header, "\n") + 2
+	} else {
+		header = m.renderCompactHeader(m.width)
+		headerHeight = strings.Count(header, "\n") + 1
 	}
 
 	// Remaining height for the main panel
@@ -1265,10 +1273,16 @@ func (m Model) View() string {
 func (m Model) renderHeader(width int) string {
 	// Determine mascot mood from multiple sources
 	mood := StatusToMood(m.tree.overallStatus)
-	if mood == MoodIdle && m.tree.chatThinking {
-		mood = MoodActive // chat is waiting for a response
+	if m.tree.pendingCount > 0 {
+		mood = MoodAsking // pending decisions need attention
+	} else if mood == MoodIdle && m.tree.chatThinking {
+		mood = MoodActive
 	}
-	mascot := RenderMascot(mood, m.mascotTick)
+	sz := m.mascotSize
+	if sz == 0 {
+		sz = displaySize // default
+	}
+	mascot := RenderMascotAtSize(mood, m.mascotTick, sz, eyeGap)
 	mascotLines := strings.Split(mascot, "\n")
 
 	// Info panel on the right of the mascot
@@ -1314,14 +1328,15 @@ func (m Model) renderHeader(width int) string {
 		maxLines = len(info)
 	}
 
-	var headerLines []string
+	// Build the combined mascot + info block
 	gap := "   "
+	var rawLines []string
+	contentWidth := 0
 	for i := 0; i < maxLines; i++ {
 		left := ""
 		if i < len(mascotLines) {
 			left = mascotLines[i]
 		}
-		// Pad left to mascot width
 		leftPad := mascotWidth - lipgloss.Width(left)
 		if leftPad < 0 {
 			leftPad = 0
@@ -1332,11 +1347,46 @@ func (m Model) renderHeader(width int) string {
 		if i < len(info) {
 			right = info[i]
 		}
-		headerLines = append(headerLines, " "+left+gap+right)
+		line := left + gap + right
+		rawLines = append(rawLines, line)
+		if w := lipgloss.Width(line); w > contentWidth {
+			contentWidth = w
+		}
 	}
 
-	// Add top padding so mascot doesn't clip with terminal top
+	// Center horizontally
+	var headerLines []string
+	for _, line := range rawLines {
+		padLeft := (m.width - contentWidth) / 2
+		if padLeft < 1 {
+			padLeft = 1
+		}
+		headerLines = append(headerLines, strings.Repeat(" ", padLeft)+line)
+	}
+
 	return "\n" + strings.Join(headerLines, "\n")
+}
+
+// renderCompactHeader renders a single-line header when mascot is disabled.
+func (m Model) renderCompactHeader(width int) string {
+	cwd := m.cwd
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		cwd = strings.Replace(cwd, home, "~", 1)
+	}
+
+	status := m.tree.overallStatus
+	if m.tree.chatThinking {
+		status = "thinking"
+	} else if status == "" {
+		status = "ready"
+	}
+
+	left := BoldAccent.Render("defer") + " " + DimStyle.Render("v"+m.version)
+	mid := DimStyle.Render("model: ") + m.modelName + DimStyle.Render("  cwd: ") + DimStyle.Render(cwd)
+	right := DimStyle.Render("status: ") + status
+
+	line := " " + left + "  " + mid + "  " + right
+	return line
 }
 
 func (m Model) overlayPermission(base string, width, height int) string {

@@ -123,6 +123,14 @@ func NewTreeModel() TreeModel {
 	return TreeModel{mode: tmTree, mdRenderer: r, chatInput: ci, textInput: ti, searchInput: si, jumpSearchInput: ji, completionIdx: -1, focusPanel: FocusChat}
 }
 
+// --- Exported setters for snapshot/testing ---
+
+func (m *TreeModel) SetDecisions(decs []decision.Decision) { m.decisions = decs }
+func (m *TreeModel) SetChatLog(log []ChatEntry)             { m.chatLog = log }
+func (m *TreeModel) SetSize(w, h int)                       { m.width = w; m.height = h }
+func (m *TreeModel) SetFocusPanel(f int)                    { m.focusPanel = f }
+func (m *TreeModel) SetOverallStatus(s string)              { m.overallStatus = s }
+
 func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -1698,7 +1706,7 @@ func (m TreeModel) renderChatPanel(w, h int) string {
 			}
 			if !entry.Expanded && childCount > maxChildLines {
 				remaining := childCount - maxChildLines
-				chatLines = append(chatLines, DimStyle.Render(fmt.Sprintf(" └ ... %d more", remaining)))
+				chatLines = append(chatLines, DimStyle.Render(fmt.Sprintf(" └ ... %d more (ctrl+o to expand)", remaining)))
 			}
 
 		case "tool":
@@ -1870,10 +1878,16 @@ func (m TreeModel) renderResolverPanel(w, h int, resolverLines []string) string 
 		contentLines++
 	}
 
-	// Title
-	title := "Pending"
+	// Title — blinks when there are pending decisions
+	title := "Resolver"
 	if m.showingPriorities {
 		title = "Care Levels"
+	} else if m.pendingCount > 0 && !active {
+		if (m.mascotTick/5)%2 == 0 {
+			title = YellowStyle.Render(fmt.Sprintf("● %d to resolve", m.pendingCount))
+		} else {
+			title = DimStyle.Render(fmt.Sprintf("● %d to resolve", m.pendingCount))
+		}
 	}
 
 	content := strings.Join(lines, "\n")

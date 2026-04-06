@@ -52,13 +52,15 @@ func saveSetupResult(result tui.OnboardingResult) error {
 		cfg = &config.Config{}
 	}
 
-	if result.Provider == "claude" {
-		cfg.Provider = "" // empty = auto-detect (claude is default)
-	} else {
-		cfg.Provider = result.Provider
-	}
+	cfg.Provider = result.Provider
 	if result.APIKey != "" {
 		cfg.APIKey = result.APIKey
+	}
+	if result.MascotSize != "" {
+		cfg.MascotSize = result.MascotSize
+	}
+	if result.Theme != "" {
+		cfg.Theme = result.Theme
 	}
 
 	if err := config.SaveGlobalConfig(cfg); err != nil {

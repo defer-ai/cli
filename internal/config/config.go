@@ -16,6 +16,8 @@ type Config struct {
 	DomainCare  map[string]string       `json:"domainCare,omitempty"` // per-domain care level defaults
 	Hooks       map[string][]HookConfig `json:"hooks,omitempty"`      // lifecycle hooks
 	Skills      SkillsConfig            `json:"skills,omitempty"`     // skill directories
+	MascotSize  string                  `json:"mascotSize,omitempty"` // "none", "small", "medium", "large"
+	Theme       string                  `json:"theme,omitempty"`      // accent color name
 }
 
 // HookConfig describes a single lifecycle hook action.
@@ -148,6 +150,8 @@ func merge(base, override *Config) *Config {
 	out.Provider = mergeString(base.Provider, override.Provider)
 	out.APIKey = mergeString(base.APIKey, override.APIKey)
 	out.DefaultCare = mergeString(base.DefaultCare, override.DefaultCare)
+	out.MascotSize = mergeString(base.MascotSize, override.MascotSize)
+	out.Theme = mergeString(base.Theme, override.Theme)
 
 	// Map[string]string — merge keys.
 	out.DomainCare = mergeMapString(base.DomainCare, override.DomainCare)

@@ -120,29 +120,61 @@ CRITICAL RULES:
 - All files MUST be created in the CURRENT WORKING DIRECTORY. Never use /tmp.
 - Follow the decisions EXACTLY as specified below. Do not deviate.
 
-DECISION PROTOCOL:
-After any action that creates or modifies something, you MUST output exactly one of:
+DECISION PROTOCOL — THIS IS MANDATORY:
+You MUST output a DECIDED line for every choice you make during implementation.
+A "choice" is anything where you picked one option over another — no matter how small.
 
-1. DECIDED: category | question | answer | alternatives | reasoning
-   Use when: the choice is straightforward, low impact, or follows directly from existing decisions.
+Format (each on its own line, pipe-separated):
 
-2. PENDING: category | question | A) option1, B) option2, C) option3 | context
-   Use when: the domain is marked "review" in the decisions list below (the user will choose).
+DECIDED: category | question | answer | alternatives | reasoning
+PENDING: category | question | A) opt1, B) opt2, C) opt3 | context
+RESEARCH: question | what to investigate
 
-3. RESEARCH: question | what to investigate
-   Use when: the choice requires understanding existing code, dependencies, or external context that you don't have.
+When to use each:
+- DECIDED: You made the choice yourself. Output IMMEDIATELY, before the next tool call.
+- PENDING: The domain is marked "review" — the user must decide. Stop and wait.
+- RESEARCH: You need more context. The system will investigate.
+
+DEPTH REQUIRED — these are ALL decisions, not just the big ones:
+- Creating a file → DECIDED about the file's purpose and location
+- Choosing a function signature → DECIDED about the return type, parameter design
+- Picking a data structure → DECIDED about slice vs map, struct fields
+- Naming something → DECIDED about the naming convention
+- Error handling → DECIDED about return error vs panic vs log
+- Adding a dependency → DECIDED about which package and why
+- Picking a pattern → DECIDED about MVC vs flat, middleware vs wrapper
+- Config values → DECIDED about defaults, formats, locations
+- Skipping something → DECIDED about what was excluded and why
+
+WRONG (too shallow — only 2 decisions for an entire file):
+  Write main.go
+  DECIDED: Structure | Entry point? | main.go | cmd/main.go | Simple project
+
+RIGHT (every choice in that file documented):
+  Write main.go
+  DECIDED: Structure | Entry point location? | main.go | cmd/main.go | Single-file project, no need for cmd/
+  DECIDED: Structure | Package name? | main | app | Entry point must be package main
+  DECIDED: Dependencies | Argument parsing? | os.Args | cobra, flag | Zero dependencies for a simple CLI
+  DECIDED: Error handling | How to report errors? | fmt.Fprintf(os.Stderr, ...) + os.Exit(1) | log.Fatal, panic | Clean stderr output
+  DECIDED: Structure | Function organization? | One function per command (cmdAdd, cmdList, cmdDone) | Single switch block | Testable, readable
 
 Rules:
-- Output NOTHING for read-only operations (Read, Glob, Grep, ls)
-- DECIDED/PENDING/RESEARCH must be on a SINGLE LINE immediately after the tool result
-- Every DECIDED and resolved PENDING is permanently recorded
-- For RESEARCH: the system will investigate and return findings. Wait for the response before continuing.
-- Check the care level in the decisions list: domains marked "review" MUST use PENDING, not DECIDED
+- Do NOT batch. Output each DECIDED line immediately after the choice.
+- Do NOT skip "obvious" choices. If you chose X over Y, document it.
+- Do NOT re-ask questions already answered in the decisions list below.
+- Each DECIDED/PENDING/RESEARCH must be on a SINGLE LINE.
+- Read-only operations (Read, Glob, Grep) do not need decision lines.
+- Domains marked "review" MUST use PENDING, never DECIDED.
 
-Examples:
-After creating main.go:     DECIDED: Structure | Entry point location? | cmd/main.go | main.go, internal/app/main.go | Standard Go project layout
-After hitting a fork:        PENDING: Auth | Session storage backend? | A) Redis, B) PostgreSQL, C) In-memory | Affects scaling and deployment
-When unsure about codebase:  RESEARCH: What ORM patterns are used in the existing codebase? | Check all *.go files for database imports and query patterns
+WORKFLOW — follow this cycle for EVERY file:
+1. BEFORE writing: output DECIDED lines for the choices you're about to make
+   (file location, purpose, pattern, naming, dependencies, what's included/excluded)
+2. Write the file
+3. AFTER writing: output DECIDED lines for any choices that emerged during writing
+   (error handling approach, specific APIs used, config defaults, struct design)
+4. Move to the next file — repeat from step 1
+
+NEVER write multiple files in a row without DECIDED lines between them.
 
 Implement step by step. When done, say "Implementation complete."`
 

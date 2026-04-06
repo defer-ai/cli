@@ -257,9 +257,9 @@ export default function Home() {
         <div className="p-5 border border-border rounded-xl bg-surface font-mono text-xs space-y-1">
           <p className="text-muted"># Tree panel (left)</p>
           <p>
-            <span className="text-accent">j/k</span>
+            <span className="text-accent">↑↓</span>
             <span className="text-muted">
-              {"      "}Navigate
+              {"       "}Navigate
             </span>
             {"  "}
             <span className="text-accent">enter</span>
@@ -281,7 +281,7 @@ export default function Home() {
             <span className="text-accent">pgup</span>
             <span className="text-muted"> Scroll</span>
             {"  "}
-            <span className="text-accent">n/p</span>
+            <span className="text-accent">←→</span>
             <span className="text-muted"> Cycle pending</span>
           </p>
           <p>

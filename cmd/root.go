@@ -25,68 +25,68 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "defer [task]",
 	Short: "Zero-Autonomy AI. Every decision is yours.",
-	Long: `defer decomposes your project into decisions, lets you set how much
-you care about each domain, and implements everything while you watch
-and challenge in real-time.
+	Long: `Zero-autonomy AI. Every decision is yours.
 
-Workflow:
-  1. Describe your project        defer "build a REST API"
-  2. Set care levels per domain   skip / low / medium / high / paranoid
-  3. Inspect & challenge           navigate tree, chat with @ID references
-  4. Watch implementation          executor plans, implements, verifies
-  5. Everything tracked            DECISIONS.md + .defer/decisions.json
+Describe your project and defer decomposes it into decisions, lets you
+set care levels (auto or review), then implements while you watch,
+chat, and challenge in real-time.
 
-Providers (auto-detected from environment):
-  Claude Code subprocess  (default, free with subscription)
-  OpenAI                  OPENAI_API_KEY
-  Groq                    GROQ_API_KEY
-  Mistral                 MISTRAL_API_KEY
-  Together                TOGETHER_API_KEY
-  Ollama                  --provider ollama (local, no key)
-  Any OpenAI-compatible   --provider <url> --api-key <key>
+Quick start:
+  defer "build a REST API"       New project
+  defer                          Resume last session
+  defer setup                    Change AI provider
 
-TUI Keybindings (in decision tree):
-  j/k or up/down   Navigate decisions
-  enter             Inspect decision (split-pane on wide terminals)
-  /                 Search/filter decisions
-  tab               Open conversation panel
-  q or esc          Back
+Keybindings:
+  tab / shift+tab                Cycle focus: tree → chat → resolver
+  ↑↓                             Navigate decisions / options
+  enter                          Inspect / confirm
+  /                              Search decisions
+  ctrl+q                         Quit
 
-TUI Keybindings (in decision detail):
-  j/k               Navigate options
-  enter              Confirm option
-  c                  Custom answer
-  s                  Shuffle (generate new options)
-  w                  Why? (explain tradeoffs)
-  a                  Ask a question
-  q                  Back to tree
-
-TUI Keybindings (in conversation):
-  enter              Send message
-  @ID                Reference a decision
-  tab                Auto-complete @ID / back to tree
-  esc                Back to tree
+Commands:
+  defer init [target]            Scaffold config for AI tools
+  defer init --preset <name>     Seed decisions from a template
+  defer stats                    Decision analytics
+  defer trailers                 Git Decision-Ref trailers
+  defer commit -m "msg"          Git commit with trailers
+  defer import <path> [@IDs]     Import decisions from another project
+  defer review --pr <n>          Post decision diff to a GitHub PR
+  defer serve --mcp              Run as MCP server
+  defer setup                    Change AI provider
+  defer sessions list            List sessions
+  defer sessions delete          Delete .defer/
+  defer sessions export          Print DECISIONS.md
 
 Configuration:
-  ~/.defer/config.json           Global defaults (care levels, model, provider)
+  ~/.defer/config.json           Global defaults
   .defer/config.json             Project overrides
   ~/.defer/keybindings.json      Custom keybindings
-  .defer/skills/*.md             Custom skill/prompt overrides
-
-`,
+  .defer/skills/*.md             Prompt overrides
+  .defer/templates/*.yaml        Decision presets`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// First run: if no global config exists and no flags given, run setup wizard
 		if needsOnboarding() && provider == "" && apiKey == "" {
 			result, err := runSetupWizard()
-			if err == nil && !result.Skipped {
-				saveSetupResult(result)
-				// Apply wizard choices for this session
-				if result.Provider != "" && result.Provider != "claude" {
-					provider = result.Provider
-				}
-				if result.APIKey != "" {
-					apiKey = result.APIKey
+			if err != nil || result.Skipped {
+				// Ctrl+C or error — exit entirely
+				os.Exit(0)
+			}
+			saveSetupResult(result)
+			// Apply wizard choices for this session
+			if result.Provider != "" && result.Provider != "claude" {
+				provider = result.Provider
+			}
+			if result.APIKey != "" {
+				apiKey = result.APIKey
+			}
+			// Apply theme for this session
+			if result.Theme != "" {
+				for _, t := range tui.Themes {
+					if t.Name == result.Theme {
+						tui.ApplyTheme(t.Accent)
+						break
+					}
 				}
 			}
 		}
@@ -128,8 +128,28 @@ Configuration:
 			return runDebug(task, model, p, cwd)
 		}
 
+		// Load display preferences from config
+		mascotSize := "medium"
+		if cfgLoaded, _ := config.LoadGlobalConfig(); cfgLoaded != nil {
+			if cfgLoaded.MascotSize != "" {
+				mascotSize = cfgLoaded.MascotSize
+			}
+			if cfgLoaded.Theme != "" {
+				for _, t := range tui.Themes {
+					if t.Name == cfgLoaded.Theme {
+						tui.ApplyTheme(t.Accent)
+						break
+					}
+				}
+			}
+		}
+		if noMascot {
+			mascotSize = "none"
+		}
+
 		m := tui.NewModel(task, p, cwd, tui.ModelOpts{
-			ShowMascot: !noMascot,
+			ShowMascot: mascotSize != "none",
+			MascotSize: tui.MascotDisplaySize(mascotSize),
 			Version:    Version,
 			ModelName:  p.GetModel(),
 		})
