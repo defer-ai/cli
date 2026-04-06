@@ -1,8 +1,7 @@
-# defer
+<img width="1378" height="1002" alt="image" src="https://github.com/user-attachments/assets/2a6005cd-4815-4da6-9c4d-8d02e178f399" />
+<p align="center">Zero-autonomy AI. Every decision is yours.</p>
 
-Zero-autonomy AI. Every decision is yours.
-
-## What is defer
+## What is Defer
 
 Defer decomposes your task into a tree of decisions, lets you set care levels per domain (auto or review), auto-decides the rest, then implements everything while you watch, chat, and challenge in real-time. Every choice -- from framework to variable name -- is tracked, reversible, and exportable. The agent never asks questions as text; all ambiguity becomes decisions with concrete options.
 
