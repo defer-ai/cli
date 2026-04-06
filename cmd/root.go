@@ -129,7 +129,7 @@ Configuration:
 		}
 
 		// Load display preferences from config
-		mascotSize := "medium"
+		mascotSize := "small"
 		if cfgLoaded, _ := config.LoadGlobalConfig(); cfgLoaded != nil {
 			if cfgLoaded.MascotSize != "" {
 				mascotSize = cfgLoaded.MascotSize

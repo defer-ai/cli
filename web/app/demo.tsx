@@ -477,7 +477,7 @@ export function Demo() {
             : ord(phase, "pick-1") && (pick1 === null || pick2 === null) ? "waiting"
             : "resolving"}
         </span>
-        <span className="text-gray-600 text-[10px] font-mono">n/p cycle pending | click to interact</span>
+        <span className="text-gray-600 text-[10px] font-mono">←→ cycle pending | click to interact</span>
       </div>
 
       <style jsx>{`

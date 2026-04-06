@@ -16,7 +16,7 @@ type Config struct {
 	DomainCare  map[string]string       `json:"domainCare,omitempty"` // per-domain care level defaults
 	Hooks       map[string][]HookConfig `json:"hooks,omitempty"`      // lifecycle hooks
 	Skills      SkillsConfig            `json:"skills,omitempty"`     // skill directories
-	MascotSize  string                  `json:"mascotSize,omitempty"` // "none", "small", "medium", "large"
+	MascotSize  string                  `json:"mascotSize,omitempty"` // "none", "small", "large"
 	Theme       string                  `json:"theme,omitempty"`      // accent color name
 }
 

@@ -33,7 +33,7 @@ export default function Home() {
 
           <div className="flex flex-wrap gap-3">
             <CopyButton
-              text="git clone https://github.com/defer-ai/cli.git && cd cli/go && go build -o defer ."
+              text="brew tap defer-ai/tap && brew install defer"
               label="Copy install command"
               className="px-5 py-2.5 text-sm font-medium"
             />
@@ -70,10 +70,13 @@ export default function Home() {
         <div className="p-5 border border-border rounded-xl bg-surface font-mono text-sm space-y-4">
           <div>
             <p className="text-muted text-xs mb-2">
-              # Install
+              # Install (pick one)
             </p>
             <p className="text-foreground">
-              $ git clone https://github.com/defer-ai/cli.git && cd cli/go && go build -o defer .
+              $ brew tap defer-ai/tap && brew install defer
+            </p>
+            <p className="text-foreground text-muted">
+              $ go install github.com/defer-ai/cli@latest
             </p>
           </div>
           <div className="border-t border-border/50 pt-4">

@@ -1931,7 +1931,7 @@ func (m TreeModel) renderResolver(innerWidth int) []string {
 			lines = append(lines, line)
 		}
 		lines = append(lines, "")
-		lines = append(lines, " "+AccentStyle.Render("j/k")+" navigate  "+AccentStyle.Render("h/l")+" toggle  "+AccentStyle.Render("enter")+" confirm")
+		lines = append(lines, " "+AccentStyle.Render("↑↓")+" navigate  "+AccentStyle.Render("←→")+" toggle  "+AccentStyle.Render("enter")+" confirm")
 		return lines
 	}
 

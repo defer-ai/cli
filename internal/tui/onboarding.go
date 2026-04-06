@@ -13,7 +13,7 @@ import (
 type OnboardingResult struct {
 	Provider   string
 	APIKey     string
-	MascotSize string // "none", "small", "medium", "large"
+	MascotSize string // "none", "small", "large"
 	Theme      string // accent color name
 	Skipped    bool
 }
