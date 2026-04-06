@@ -1011,6 +1011,37 @@ func thinkingPhrase(tick int, elapsed time.Duration) string {
 	return phrases[idx]
 }
 
+// renderTag renders a #label with a semantic background color.
+func renderTag(label string) string {
+	lower := strings.ToLower(strings.TrimSpace(label))
+	// Pick background color based on label content
+	var bg, fg string
+	switch {
+	case strings.Contains(lower, "stack") || strings.Contains(lower, "lang"):
+		bg, fg = "#1e2840", "#64a0ff" // blue
+	case strings.Contains(lower, "data") || strings.Contains(lower, "db") || strings.Contains(lower, "storage"):
+		bg, fg = "#2d1e37", "#a078dc" // purple
+	case strings.Contains(lower, "api") || strings.Contains(lower, "backend"):
+		bg, fg = "#192d1e", "#50c878" // green
+	case strings.Contains(lower, "auth") || strings.Contains(lower, "security"):
+		bg, fg = "#371e1e", "#f06464" // red
+	case strings.Contains(lower, "ui") || strings.Contains(lower, "frontend") || strings.Contains(lower, "style"):
+		bg, fg = "#37291e", "#f9a050" // orange
+	case strings.Contains(lower, "deploy") || strings.Contains(lower, "infra") || strings.Contains(lower, "ci"):
+		bg, fg = "#142d2d", "#50c8c8" // teal
+	case strings.Contains(lower, "test"):
+		bg, fg = "#2d2d14", "#c8c850" // yellow
+	case strings.Contains(lower, "scope") || strings.Contains(lower, "config"):
+		bg, fg = "#2d1e28", "#c878a0" // pink
+	default:
+		bg, fg = "#232323", "#8c8c8c" // neutral gray
+	}
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(fg)).
+		Background(lipgloss.Color(bg))
+	return style.Render(" #" + lower + " ")
+}
+
 func trunc(s string, n int) string {
 	if n <= 0 {
 		return ""
@@ -1315,12 +1346,11 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 	if cardInner < 10 {
 		cardInner = 10
 	}
-	// Left margin to center the card
 	cardMargin := (innerWidth - cardW) / 2
 	if cardMargin < 0 {
 		cardMargin = 0
 	}
-	pad := strings.Repeat(" ", cardMargin)
+	cardPad := strings.Repeat(" ", cardMargin)
 
 	rendered := 0
 	for i := scrollStart; i < len(flat) && rendered < treeH; i++ {
@@ -1338,70 +1368,13 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 		d := item.dec
 		isCur := item.decIdx == m.cursor
 
-		// Status icon
-		icon := "○"
-		iconStyle := YellowStyle
-		if d.Answer != nil {
-			if d.Source == "user" {
-				icon = "●"
-				iconStyle = GreenStyle
-			} else if d.Source == "invalidated" {
-				icon = "○"
-				iconStyle = RedStyle
-			} else {
-				icon = "●"
-				iconStyle = DimStyle
-			}
-		}
-
-		// Build card content lines
-		// Line 1: icon + question
-		qStr := trunc(d.Question, cardInner-3)
-		questionLine := iconStyle.Render(icon) + " "
-		if isCur {
-			questionLine += BoldWhite.Render(qStr)
-		} else {
-			questionLine += qStr
-		}
-
-		// Line 2: @ID + domain + features
-		meta := DimStyle.Render("@"+d.ID) + "  " + DimStyle.Render(d.Category)
-		if len(d.Features) > 0 {
-			tags := ""
-			for _, f := range d.Features {
-				tags += " #" + f
-			}
-			meta += DimStyle.Render(tags)
-		}
-		meta = trunc(meta, cardInner)
-
-		// Line 3: answer or pending
-		var answerLine string
-		if d.Answer != nil {
-			ans := trunc(*d.Answer, cardInner-2)
-			if isCur {
-				answerLine = GreenStyle.Render("→ " + ans)
-			} else {
-				answerLine = DimStyle.Render("→ " + ans)
-			}
-		} else {
-			answerLine = YellowStyle.Render("○ pending")
-		}
-
-		// Render bordered card
 		borderCol := BorderColor
 		if isCur {
 			borderCol = ActiveBorderColor
 		}
 		bStyle := lipgloss.NewStyle().Foreground(borderCol)
-		hLine := bStyle.Render(strings.Repeat("─", cardInner+2))
 
-		// Card needs 5 lines: top border, question, meta, answer, bottom border
-		if rendered+5 > treeH {
-			break // not enough room for a full card
-		}
-
-		// Pad each content line to cardInner width
+		// Pad content line to cardInner, wrapped in side borders
 		padLine := func(content string) string {
 			w := lipgloss.Width(content)
 			right := cardInner - w
@@ -1411,12 +1384,69 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 			return bStyle.Render("│") + " " + content + strings.Repeat(" ", right) + " " + bStyle.Render("│")
 		}
 
-		lines = append(lines, pad+bStyle.Render("╭")+hLine+bStyle.Render("╮"))
-		lines = append(lines, pad+padLine(questionLine))
-		lines = append(lines, pad+padLine(meta))
-		lines = append(lines, pad+padLine(answerLine))
-		lines = append(lines, pad+bStyle.Render("╰")+hLine+bStyle.Render("╯"))
-		rendered += 5
+		// Top border with ID: ╭ @STA-0001 ──────────────╮
+		idLabel := " @" + d.ID + " "
+		fillLen := cardInner + 2 - len(idLabel)
+		if fillLen < 0 {
+			fillLen = 0
+		}
+		topLine := bStyle.Render("╭") + bStyle.Render(idLabel) + bStyle.Render(strings.Repeat("─", fillLen)) + bStyle.Render("╮")
+
+		// Line 1: question (bold)
+		qStr := trunc(d.Question, cardInner-1)
+		var questionLine string
+		if isCur {
+			questionLine = BoldWhite.Render(qStr)
+		} else {
+			questionLine = qStr
+		}
+
+		// Line 2: indented answer or pending
+		var answerLine string
+		if d.Answer != nil {
+			ans := trunc(*d.Answer, cardInner-4)
+			if isCur {
+				answerLine = "  " + GreenStyle.Render(ans)
+			} else {
+				answerLine = "  " + DimStyle.Render(ans)
+			}
+		} else {
+			answerLine = "  " + YellowStyle.Render("pending")
+		}
+
+		// Line 3: feature/domain tags with background colors
+		var tagLine string
+		if len(d.Features) > 0 || d.Category != "" {
+			var tags []string
+			if d.Category != "" {
+				tags = append(tags, renderTag(d.Category))
+			}
+			for _, f := range d.Features {
+				tags = append(tags, renderTag(f))
+			}
+			tagLine = strings.Join(tags, " ")
+		}
+
+		// Bottom border
+		bottomLine := bStyle.Render("╰") + bStyle.Render(strings.Repeat("─", cardInner+2)) + bStyle.Render("╯")
+
+		// Card height: top + question + answer + tags (if any) + bottom = 4 or 5
+		cardHeight := 4
+		if tagLine != "" {
+			cardHeight = 5
+		}
+		if rendered+cardHeight > treeH {
+			break
+		}
+
+		lines = append(lines, cardPad+topLine)
+		lines = append(lines, cardPad+padLine(questionLine))
+		lines = append(lines, cardPad+padLine(answerLine))
+		if tagLine != "" {
+			lines = append(lines, cardPad+padLine(tagLine))
+		}
+		lines = append(lines, cardPad+bottomLine)
+		rendered += cardHeight
 	}
 
 	// Fill remaining

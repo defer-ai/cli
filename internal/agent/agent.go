@@ -349,7 +349,7 @@ func parseDecisions(text string, existing []decision.Decision) []decision.Decisi
 		d := decision.Decision{
 			ID:        decision.NextID(all, cat),
 			Category:  cat,
-			Question:  item.Question,
+			Question:  strings.TrimSpace(strings.TrimRight(item.Question, "?")),
 			Options:   opts,
 			Answer:    answerPtr,
 			Context:   item.Context,

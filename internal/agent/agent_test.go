@@ -40,7 +40,7 @@ func TestParseDecisions(t *testing.T) {
 	if decs[0].Category != "Stack" {
 		t.Errorf("decs[0].Category = %q, want Stack", decs[0].Category)
 	}
-	if decs[0].Question != "Backend language?" {
+	if decs[0].Question != "Backend language" {
 		t.Errorf("decs[0].Question = %q", decs[0].Question)
 	}
 	if len(decs[0].Options) != 3 {

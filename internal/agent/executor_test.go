@@ -579,8 +579,8 @@ func TestProcessDecisionLineDecided(t *testing.T) {
 	if len(decs) != 1 {
 		t.Fatalf("expected 1 decision, got %d", len(decs))
 	}
-	if decs[0].Question != "Backend language?" {
-		t.Errorf("question = %q, want 'Backend language?'", decs[0].Question)
+	if decs[0].Question != "Backend language" {
+		t.Errorf("question = %q, want 'Backend language'", decs[0].Question)
 	}
 	if decs[0].Answer == nil || *decs[0].Answer != "Go" {
 		t.Errorf("answer = %v, want 'Go'", decs[0].Answer)
@@ -602,7 +602,7 @@ func TestProcessDecisionLinePending(t *testing.T) {
 	if len(decs) != 1 {
 		t.Fatalf("expected 1 decision, got %d", len(decs))
 	}
-	if decs[0].Question != "Session storage?" {
+	if decs[0].Question != "Session storage" {
 		t.Errorf("question = %q", decs[0].Question)
 	}
 	if decs[0].Answer != nil {

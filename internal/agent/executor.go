@@ -642,6 +642,10 @@ func (e *Executor) storeDecision(d decision.Decision) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	// Strip trailing question mark from question text
+	d.Question = strings.TrimRight(d.Question, "?")
+	d.Question = strings.TrimSpace(d.Question)
+
 	// Normalize category
 	d.Category = e.normalizeCategoryLocked(d.Category)
 
