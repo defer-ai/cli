@@ -1349,64 +1349,35 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 			cursor = AccentStyle.Render(">")
 		}
 
-		// Question on left, answer or ID on right
-		answerStr := ""
-		if d.Answer != nil {
-			answerStr = trunc(*d.Answer, qW/3)
-		}
+		// Card: line 1 = cursor + icon + question
+		//        line 2 = ID + answer (or "pending")
+		qStr := trunc(d.Question, qW-2)
 
-		availQ := qW
-		if answerStr != "" {
-			availQ = qW - lipgloss.Width(answerStr) - 2
-		}
-		if availQ < 8 {
-			availQ = 8
-		}
-		qStr := trunc(d.Question, availQ)
-
-		var row string
+		var line1, line2 string
 		if isCur {
-			if answerStr != "" {
-				// question (bold white) + answer (green dim)
-				gap := qW - lipgloss.Width(qStr) - lipgloss.Width(answerStr)
-				if gap < 1 {
-					gap = 1
-				}
-				row = fmt.Sprintf("%s%s %s%s%s",
-					cursor, iconStyle.Render(icon),
-					BoldWhite.Render(qStr),
-					strings.Repeat(" ", gap),
-					GreenStyle.Render(answerStr),
-				)
+			line1 = fmt.Sprintf("%s%s %s", cursor, iconStyle.Render(icon), BoldWhite.Render(qStr))
+		} else {
+			line1 = fmt.Sprintf("%s%s %s", cursor, iconStyle.Render(icon), qStr)
+		}
+
+		idStr := DimStyle.Render("@" + d.ID)
+		if d.Answer != nil {
+			answerStr := trunc(*d.Answer, qW-lipgloss.Width(idStr)-4)
+			if isCur {
+				line2 = fmt.Sprintf("    %s %s", idStr, GreenStyle.Render(answerStr))
 			} else {
-				row = fmt.Sprintf("%s%s %s  %s",
-					cursor, iconStyle.Render(icon),
-					BoldWhite.Render(qStr),
-					DimStyle.Render(d.ID),
-				)
+				line2 = fmt.Sprintf("    %s %s", idStr, DimStyle.Render(answerStr))
 			}
 		} else {
-			if answerStr != "" {
-				gap := qW - lipgloss.Width(qStr) - lipgloss.Width(answerStr)
-				if gap < 1 {
-					gap = 1
-				}
-				row = fmt.Sprintf("%s%s %s%s%s",
-					cursor, iconStyle.Render(icon),
-					qStr,
-					strings.Repeat(" ", gap),
-					DimStyle.Render(answerStr),
-				)
-			} else {
-				row = fmt.Sprintf("%s%s %s  %s",
-					cursor, iconStyle.Render(icon),
-					qStr,
-					DimStyle.Render(d.ID),
-				)
-			}
+			line2 = fmt.Sprintf("    %s %s", idStr, YellowStyle.Render("pending"))
 		}
-		lines = append(lines, row)
+
+		lines = append(lines, line1)
 		rendered++
+		if rendered < treeH {
+			lines = append(lines, line2)
+			rendered++
+		}
 	}
 
 	// Fill remaining
