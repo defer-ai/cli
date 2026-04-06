@@ -1327,7 +1327,7 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 		isCur := ci.decIdx == m.cursor
 
 		borderCol := BorderColor
-		if isCur {
+		if isCur && active {
 			borderCol = ActiveBorderColor
 		}
 		bStyle := lipgloss.NewStyle().Foreground(borderCol)
