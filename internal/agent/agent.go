@@ -97,7 +97,17 @@ func (a *Agent) runDecompositionSubprocess(ctx context.Context, onEvent func(Eve
 		provider = restricted
 	}
 
-	go provider.RunCompletion(ctx, DecomposePrompt, a.state.Task, events)
+	// Frame the task as a decomposition request, not an implementation request.
+	// This prevents the agent from interpreting detailed prompts as instructions to code.
+	userMsg := fmt.Sprintf(`PROJECT DESCRIPTION (do NOT implement — only identify decisions):
+
+%s
+
+YOUR TASK: Analyze the above project description and output a `+"`defer-decisions`"+` JSON block.
+Do NOT write any code. Do NOT create any files. ONLY output decisions.
+Scan the existing codebase first using Read/Glob/Grep, then identify every decision needed.`, a.state.Task)
+
+	go provider.RunCompletion(ctx, DecomposePrompt, userMsg, events)
 
 	var fullText string
 	for ev := range events {
@@ -176,7 +186,13 @@ func (a *Agent) runDecompositionTextOnly(ctx context.Context, onEvent func(Event
 		provider = restricted
 	}
 
-	userMsg := "Based on this task, output ONLY a defer-decisions JSON block. No tools. Just output the decisions.\n\nTask: " + a.state.Task
+	userMsg := fmt.Sprintf(`The following is a PROJECT DESCRIPTION. Do NOT implement it.
+Your ONLY job is to output a `+"`defer-decisions`"+` JSON block identifying what decisions need to be made.
+
+PROJECT DESCRIPTION:
+%s
+
+Output ONLY the JSON block. No explanation. No code. No questions.`, a.state.Task)
 	go provider.RunCompletion(ctx, DecomposePromptSimple, userMsg, events)
 
 	var fullText string
