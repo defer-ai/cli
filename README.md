@@ -1,4 +1,4 @@
-<p align="center"><img width="510" height="510" alt="defer" src="https://github.com/user-attachments/assets/bca626d3-979d-49e5-9f6e-a4c6fd45ffe1" /></p>
+<p align="center"><img width="255" height="255" alt="defer" src="https://github.com/user-attachments/assets/bca626d3-979d-49e5-9f6e-a4c6fd45ffe1" /></p>
 <p align="center">Zero-autonomy AI. Every decision is yours.</p>
 
 ## What is Defer
