@@ -1253,9 +1253,14 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 	}
 	rightStatus := strings.Join(statusParts, " ")
 
-	// Title line (no border, just text)
+	// Title line with sort indicator
 	title := TitleStyle.Render("Decisions")
-	titleLine := " " + title + strings.Repeat(" ", innerWidth-lipgloss.Width(title)-lipgloss.Width(rightStatus)-2) + DimStyle.Render(rightStatus) + " "
+	sortInfo := DimStyle.Render("by " + sortLabel(m.sortMode))
+	left := " " + title + " " + sortInfo
+	leftW := lipgloss.Width(left)
+	gap := innerWidth - leftW - lipgloss.Width(rightStatus) - 1
+	if gap < 1 { gap = 1 }
+	titleLine := left + strings.Repeat(" ", gap) + DimStyle.Render(rightStatus) + " "
 
 	var lines []string
 	lines = append(lines, titleLine)
@@ -1364,16 +1369,27 @@ func (m TreeModel) renderLeftTreePanel(innerWidth, h int, active bool) string {
 			answerStr = "  " + YellowStyle.Render("pending")
 		}
 
-		// Tags (truncated to fit)
+		// Tags (deduplicated, truncated to fit)
 		var tagStr string
 		if d.Category != "" || len(d.Features) > 0 {
 			var tags []string
+			seen := map[string]bool{}
+
+			// Add category first
 			if d.Category != "" {
+				catKey := strings.ToLower(strings.TrimSpace(d.Category))
+				seen[catKey] = true
 				tags = append(tags, renderTag(d.Category))
 			}
+
+			// Add features, skipping any that match the category
 			for _, f := range d.Features {
+				fKey := strings.ToLower(strings.TrimSpace(f))
+				if seen[fKey] {
+					continue
+				}
+				seen[fKey] = true
 				t := renderTag(f)
-				// Check if adding this tag would overflow
 				testLine := strings.Join(append(tags, t), " ")
 				if lipgloss.Width(testLine) > cardInner-1 {
 					break

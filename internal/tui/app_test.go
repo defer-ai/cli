@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/defer-ai/cli/internal/agent"
@@ -105,7 +106,15 @@ func updateModel(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
 func cleanupDefer(t *testing.T, cwd string) {
 	t.Helper()
 	t.Cleanup(func() {
-		os.RemoveAll(filepath.Join(cwd, ".defer"))
+		dir := filepath.Join(cwd, ".defer")
+		// Retry removal — Windows may hold file locks briefly
+		for i := 0; i < 3; i++ {
+			if err := os.RemoveAll(dir); err == nil {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		os.RemoveAll(dir) // final attempt, ignore error
 	})
 }
 

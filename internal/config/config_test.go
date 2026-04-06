@@ -154,6 +154,7 @@ func TestLoadConfig_FullCascade(t *testing.T) {
 	// Set up a fake home directory with a global config.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // Windows uses USERPROFILE
 
 	globalDir := filepath.Join(home, ".defer")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
