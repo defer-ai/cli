@@ -136,8 +136,12 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	case tea.MouseMsg:
-		// Handle mouse wheel for scrolling the tree or chat
+		// Mouse wheel routes to the focused panel.
 		if msg.Button == tea.MouseButtonWheelUp {
+			if m.focusPanel == FocusChat {
+				m.chatScrollUp += 3
+				return m, nil
+			}
 			if m.mode == tmTree || m.mode == tmDetail {
 				if m.cursor > 0 {
 					m.cursor--
@@ -146,6 +150,13 @@ func (m TreeModel) Update(msg tea.Msg) (TreeModel, tea.Cmd) {
 			return m, nil
 		}
 		if msg.Button == tea.MouseButtonWheelDown {
+			if m.focusPanel == FocusChat {
+				m.chatScrollUp -= 3
+				if m.chatScrollUp < 0 {
+					m.chatScrollUp = 0
+				}
+				return m, nil
+			}
 			if m.mode == tmTree || m.mode == tmDetail {
 				if m.cursor < m.decisionCount()-1 {
 					m.cursor++
@@ -183,8 +194,13 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	isWide := m.width >= minSideBySideWidth
 
 	// Tab toggles focus panel in wide layout, or mode in narrow layout.
-	// Exception: chat mode with active completions uses tab for cycling.
-	if (key == "tab" || key == "shift+tab") && !((m.mode == tmChat || (isWide && m.focusPanel == FocusChat)) && len(m.completions) > 0) {
+	// Exceptions:
+	//   - chat mode with active completions uses tab to cycle completions
+	//   - modal text-input modes (revise/ask/editFeatures) own the input,
+	//     so Tab must not steal focus and leave the user in an inconsistent
+	//     state where chat looks focused but typing still hits the textInput.
+	inModalTextInput := m.mode == tmRevise || m.mode == tmAsk || m.mode == tmEditFeatures
+	if (key == "tab" || key == "shift+tab") && !inModalTextInput && !((m.mode == tmChat || (isWide && m.focusPanel == FocusChat)) && len(m.completions) > 0) {
 		if isWide {
 			if key == "tab" {
 				// Forward: tree → chat → resolver → tree
@@ -235,7 +251,11 @@ func (m TreeModel) handleKey(msg tea.KeyMsg) (TreeModel, tea.Cmd) {
 	}
 
 	// --- Wide layout: chat panel focused ---
-	if isWide && m.focusPanel == FocusChat && m.mode != tmDetail && m.mode != tmRevise && m.mode != tmAsk && m.mode != tmEditFeatures {
+	// tmDetail is a read-only command view on the left, so when chat is focused
+	// keys (including scroll) should reach the chat handler. tmRevise/tmAsk/
+	// tmEditFeatures keep the active textInput on the left, so those still
+	// bypass the chat handler — Tab into those modes is blocked below.
+	if isWide && m.focusPanel == FocusChat && m.mode != tmRevise && m.mode != tmAsk && m.mode != tmEditFeatures {
 		return m.handleChatKey(msg)
 	}
 

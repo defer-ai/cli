@@ -397,6 +397,100 @@ func TestChatInputEscUnfocuses(t *testing.T) {
 	}
 }
 
+// TestChatScrollsInDetailModeWhenChatFocused is a regression test for a bug
+// where opening a decision (tmDetail) and then focusing the chat panel still
+// routed scroll keys to the tree cursor instead of the chat scroll.
+func TestChatScrollsInDetailModeWhenChatFocused(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	// Seed enough chat lines so chatScrollUp can actually move
+	for i := 0; i < 30; i++ {
+		tm.chatLog = append(tm.chatLog, ChatEntry{Type: "user", Text: "msg"})
+	}
+
+	// Open a decision in the detail panel
+	tm, _ = updateTree(t, tm, keyEnter())
+	if tm.mode != tmDetail {
+		t.Fatalf("mode = %v, want tmDetail", tm.mode)
+	}
+	startCursor := tm.cursor
+
+	// Focus the chat panel
+	tm, _ = updateTree(t, tm, keyTab())
+	if tm.focusPanel != FocusChat {
+		t.Fatalf("focusPanel = %d, want FocusChat", tm.focusPanel)
+	}
+	if tm.mode != tmDetail {
+		t.Fatalf("mode after Tab = %v, want tmDetail (Tab should not exit detail)", tm.mode)
+	}
+
+	// Scroll up via pgup — should bump chatScrollUp, not move the tree cursor
+	tm, _ = updateTree(t, tm, tea.KeyMsg{Type: tea.KeyPgUp})
+	if tm.chatScrollUp == 0 {
+		t.Error("pgup with chat focused should scroll chat, but chatScrollUp is still 0")
+	}
+	if tm.cursor != startCursor {
+		t.Errorf("pgup moved tree cursor from %d to %d (should not move)", startCursor, tm.cursor)
+	}
+
+	// Mouse wheel up should also scroll chat, not the tree
+	prevScroll := tm.chatScrollUp
+	tm, _ = updateTree(t, tm, tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	if tm.chatScrollUp <= prevScroll {
+		t.Errorf("wheel up with chat focused should grow chatScrollUp from %d, got %d", prevScroll, tm.chatScrollUp)
+	}
+	if tm.cursor != startCursor {
+		t.Errorf("wheel up moved tree cursor from %d to %d", startCursor, tm.cursor)
+	}
+}
+
+// TestDetailKeysRequireTreeFocus is a regression guard: when chat is focused
+// in tmDetail, single-letter detail commands (q, c, w, etc.) must NOT trigger
+// detail actions — they should be typed into the chat input instead.
+func TestDetailKeysRequireTreeFocus(t *testing.T) {
+	tm := newTree(fiveDecisions())
+	tm, _ = updateTree(t, tm, keyEnter()) // enter detail
+	tm, _ = updateTree(t, tm, keyTab())   // focus chat
+	if tm.mode != tmDetail || tm.focusPanel != FocusChat {
+		t.Fatalf("setup failed: mode=%v focus=%d", tm.mode, tm.focusPanel)
+	}
+
+	// 'q' would normally exit detail. With chat focused, it must reach chat input.
+	tm, _ = updateTree(t, tm, keyRunes("q"))
+	if tm.mode != tmDetail {
+		t.Errorf("'q' with chat focused exited detail (mode=%v); should have typed into chat", tm.mode)
+	}
+	if !strings.Contains(tm.chatInput.Value(), "q") {
+		t.Errorf("'q' should have been typed into chat, input = %q", tm.chatInput.Value())
+	}
+}
+
+// TestTabBlockedInModalTextInputs guards against Tab cycling focus while the
+// user is typing into the revise/ask/editFeatures textInput on the left panel.
+// Cycling focus would leave the user in a state where chat looks active but
+// keystrokes still reach the textInput.
+func TestTabBlockedInModalTextInputs(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+	}{
+		{"revise", "c"},
+		{"ask", "a"},
+		{"editFeatures", "f"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tm := newTree(fiveDecisions())
+			tm, _ = updateTree(t, tm, keyEnter())     // detail
+			tm, _ = updateTree(t, tm, keyRunes(tc.key)) // enter modal text input
+			startFocus := tm.focusPanel
+			tm, _ = updateTree(t, tm, keyTab())
+			if tm.focusPanel != startFocus {
+				t.Errorf("Tab cycled focus from %d to %d while in modal textInput", startFocus, tm.focusPanel)
+			}
+		})
+	}
+}
+
 func TestDecisionItemsFiltersMisc(t *testing.T) {
 	decs := fiveDecisions()
 	miscAnswer := "(catch-all)"
