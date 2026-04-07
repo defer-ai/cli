@@ -142,8 +142,8 @@ func TestDefaultSkillsPromptsMatchAgent(t *testing.T) {
 	if !strings.Contains(defaults["extract"].Prompt, "extract every decision") {
 		t.Error("extract prompt should contain 'extract every decision'")
 	}
-	if !strings.Contains(defaults["execute"].Prompt, "implementing a software project") {
-		t.Error("execute prompt should contain 'implementing a software project'")
+	if !strings.Contains(defaults["execute"].Prompt, "narrates each choice") {
+		t.Error("execute prompt should describe the architect-narrating role")
 	}
 }
 

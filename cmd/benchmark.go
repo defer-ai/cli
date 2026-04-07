@@ -113,8 +113,12 @@ func runBenchmark(task string, provider api.Provider, cwd string) error {
 	var execDecisions []decision.Decision
 	toolCallCount := 0
 	writeCount := 0
-	decidedLineCount := 0
-	pendingLineCount := 0
+	// Track unique DECIDED/PENDING lines as they appear in agent output.
+	// Each line counted exactly once, in the order it first appears.
+	seenLines := map[string]bool{}
+	var inlineDecidedOrder []int    // for each DECIDED line, the toolCallCount at the moment it appeared
+	var inlineDecidedCount int
+	var inlinePendingCount int
 
 	// Continuously auto-answer pending decisions every 3s
 	go func() {
@@ -153,15 +157,19 @@ func runBenchmark(task string, provider api.Provider, cwd string) error {
 		case agent.ExecStateChanged:
 			for _, e := range mgr.Executors() {
 				st := e.State()
-				output := st.Output
-				// Count DECIDED/PENDING lines in output
-				for _, line := range strings.Split(output, "\n") {
+				// Scan output for new DECIDED/PENDING lines (each counted once)
+				for _, line := range strings.Split(st.Output, "\n") {
 					line = strings.TrimSpace(line)
-					if strings.HasPrefix(line, "DECIDED:") {
-						decidedLineCount++
+					if line == "" || seenLines[line] {
+						continue
 					}
-					if strings.HasPrefix(line, "PENDING:") {
-						pendingLineCount++
+					if strings.HasPrefix(line, "DECIDED:") {
+						seenLines[line] = true
+						inlineDecidedCount++
+						inlineDecidedOrder = append(inlineDecidedOrder, toolCallCount)
+					} else if strings.HasPrefix(line, "PENDING:") {
+						seenLines[line] = true
+						inlinePendingCount++
 					}
 				}
 			}
@@ -169,7 +177,11 @@ func runBenchmark(task string, provider api.Provider, cwd string) error {
 		case agent.ExecToolActivity:
 			toolCallCount++
 			desc := strings.ToLower(ev.ToolActivity)
-			if strings.Contains(desc, "write") || strings.Contains(desc, "edit") || strings.Contains(desc, "bash") {
+			// HumanDescription uses "Creating X" (Write), "Editing X" (Edit),
+			// "Running: ..." (Bash). Match the verbs.
+			if strings.HasPrefix(desc, "creating ") ||
+				strings.HasPrefix(desc, "editing ") ||
+				strings.HasPrefix(desc, "running:") {
 				writeCount++
 			}
 
@@ -216,30 +228,72 @@ func runBenchmark(task string, provider api.Provider, cwd string) error {
 
 	fmt.Printf("Decisions:        %d total (%d from decompose, %d from executor)\n", totalDecs, fromDecompose, fromExec)
 	fmt.Printf("Status:           %d decided, %d still pending\n", decided, pending)
-	fmt.Printf("Tool calls:       %d total, %d writes\n", toolCallCount, writeCount)
-	fmt.Printf("Protocol lines:   %d DECIDED, %d PENDING found in output\n", decidedLineCount, pendingLineCount)
+	fmt.Printf("Tool calls:       %d total, %d writes/edits/bash\n", toolCallCount, writeCount)
+	fmt.Printf("Inline reports:   %d DECIDED, %d PENDING (in agent's text stream)\n", inlineDecidedCount, inlinePendingCount)
+
+	// === KEY METRICS ===
+	fmt.Println("\n═══ INLINE DECISION METRICS ═══")
+	// inline_ratio: how many of the final decisions were reported inline vs recovered by extract()
+	inlineRatio := 0.0
+	if fromExec > 0 {
+		inlineRatio = float64(inlineDecidedCount) / float64(fromExec)
+		if inlineRatio > 1.0 {
+			inlineRatio = 1.0 // duplicate dedup may exceed
+		}
+	}
+	fmt.Printf("inline_ratio:      %.2f  (inline DECIDED / total executor decisions)\n", inlineRatio)
+	if writeCount > 0 {
+		dpw := float64(inlineDecidedCount) / float64(writeCount)
+		fmt.Printf("decisions_per_write: %.2f  (inline DECIDED / write actions)\n", dpw)
+	}
+
+	// Distribution: are inline decisions spread across the run, or batched?
+	if len(inlineDecidedOrder) >= 2 && toolCallCount > 0 {
+		// Compute median position (as fraction of run)
+		// and "early half" vs "late half" counts.
+		half := toolCallCount / 2
+		early := 0
+		late := 0
+		for _, pos := range inlineDecidedOrder {
+			if pos <= half {
+				early++
+			} else {
+				late++
+			}
+		}
+		fmt.Printf("distribution:      %d in first half / %d in second half of run\n", early, late)
+		if late > 3*early {
+			fmt.Println("                   ⚠ heavily batched at the end")
+		} else if early > 3*late {
+			fmt.Println("                   ⚠ heavily front-loaded (decisions before any work?)")
+		} else {
+			fmt.Println("                   ✓ reasonably distributed")
+		}
+	}
 
 	// Coverage analysis
 	fmt.Println("\n═══ COVERAGE ANALYSIS ═══")
 	if writeCount > 0 && fromExec == 0 {
 		fmt.Println("⚠ PROBLEM: Executor made writes but reported ZERO decisions!")
 		fmt.Println("  The agent is not following the DECIDED/PENDING/RESEARCH protocol.")
-	} else if writeCount > 0 && float64(fromExec)/float64(writeCount) < 0.1 {
+	} else if writeCount > 0 && float64(fromExec)/float64(writeCount) < 0.5 {
 		fmt.Printf("⚠ LOW COVERAGE: %d writes but only %d decisions (%.0f%% ratio)\n",
 			writeCount, fromExec, float64(fromExec)/float64(writeCount)*100)
-		fmt.Println("  The agent is making many implicit decisions without documenting them.")
 	} else if fromExec > 0 {
 		fmt.Printf("✓ Coverage OK: %d decisions from %d writes (%.0f%% ratio)\n",
 			fromExec, writeCount, float64(fromExec)/float64(writeCount)*100)
 	}
 
-	if pendingBefore > 0 {
-		fmt.Printf("\nReview decisions: %d were set to REVIEW care level\n", pendingBefore)
-		if decidedLineCount == 0 && pendingLineCount == 0 {
-			fmt.Println("⚠ PROBLEM: No DECIDED/PENDING lines found in executor output at all!")
-			fmt.Println("  The prompt may not be working, or lines are being split across chunks.")
-		}
-	}
+	// Machine-readable summary line for scripting
+	fmt.Printf("\nBENCH_RESULT total=%d inline=%d writes=%d tools=%d inline_ratio=%.3f decisions_per_write=%.3f\n",
+		fromExec, inlineDecidedCount, writeCount, toolCallCount, inlineRatio,
+		func() float64 {
+			if writeCount == 0 {
+				return 0
+			}
+			return float64(inlineDecidedCount) / float64(writeCount)
+		}(),
+	)
 
 	// Dump all final decisions
 	fmt.Println("\n═══ ALL DECISIONS ═══")
