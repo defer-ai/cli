@@ -12,6 +12,7 @@ type Config struct {
 	Model       string                  `json:"model,omitempty"`
 	Provider    string                  `json:"provider,omitempty"`
 	APIKey      string                  `json:"apiKey,omitempty"`
+	Effort      string                  `json:"effort,omitempty"`     // Claude Code only: low/medium/high/max
 	DefaultCare string                  `json:"defaultCare,omitempty"` // auto/review
 	DomainCare  map[string]string       `json:"domainCare,omitempty"` // per-domain care level defaults
 	Hooks       map[string][]HookConfig `json:"hooks,omitempty"`      // lifecycle hooks
@@ -149,6 +150,7 @@ func merge(base, override *Config) *Config {
 	out.Model = mergeString(base.Model, override.Model)
 	out.Provider = mergeString(base.Provider, override.Provider)
 	out.APIKey = mergeString(base.APIKey, override.APIKey)
+	out.Effort = mergeString(base.Effort, override.Effort)
 	out.DefaultCare = mergeString(base.DefaultCare, override.DefaultCare)
 	out.MascotSize = mergeString(base.MascotSize, override.MascotSize)
 	out.Theme = mergeString(base.Theme, override.Theme)

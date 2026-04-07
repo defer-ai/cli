@@ -18,6 +18,7 @@ var (
 	model     string
 	provider  string
 	apiKey    string
+	effort    string
 	debug     bool
 	noMascot  bool
 )
@@ -77,6 +78,9 @@ Configuration:
 			if result.Provider != "" && result.Provider != "claude" {
 				provider = result.Provider
 			}
+			if result.Model != "" {
+				model = result.Model
+			}
 			if result.APIKey != "" {
 				apiKey = result.APIKey
 			}
@@ -92,6 +96,7 @@ Configuration:
 		}
 
 		// Load saved config — CLI flags override saved values
+		var savedEffort string
 		if cfg, err := config.LoadGlobalConfig(); err == nil && cfg != nil {
 			if provider == "" && cfg.Provider != "" {
 				provider = cfg.Provider
@@ -102,6 +107,7 @@ Configuration:
 			if model == "sonnet" && cfg.Model != "" {
 				model = cfg.Model
 			}
+			savedEffort = cfg.Effort
 		}
 
 		p, err := api.ResolveProvider(provider, apiKey, model)
@@ -115,6 +121,16 @@ Configuration:
 			fmt.Fprintln(os.Stderr, "  defer --provider ollama --model llama3.1")
 			fmt.Fprintln(os.Stderr, "  defer setup")
 			os.Exit(1)
+		}
+
+		// Apply effort to Claude Code subprocess (no-op for other providers).
+		// CLI flag overrides config.
+		effortToUse := effort
+		if effortToUse == "" {
+			effortToUse = savedEffort
+		}
+		if cc, ok := p.(*api.ClaudeCodeProvider); ok && effortToUse != "" {
+			cc.SetEffort(effortToUse)
 		}
 
 		task := ""
@@ -164,6 +180,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&model, "model", "sonnet", "Model to use (sonnet, opus, haiku, or provider-specific ID)")
 	rootCmd.PersistentFlags().StringVar(&provider, "provider", "", "AI provider (openai, groq, mistral, together, ollama, or URL)")
 	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "API key (overrides environment variable)")
+	rootCmd.PersistentFlags().StringVar(&effort, "effort", "", "Effort level for Claude Code (low, medium, high, max)")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Run headless (no TUI), print all output to stdout")
 	rootCmd.PersistentFlags().BoolVar(&noMascot, "no-mascot", false, "Hide the mascot header")
 	rootCmd.AddCommand(initCmd)

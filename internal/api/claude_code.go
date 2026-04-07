@@ -61,6 +61,7 @@ type ClaudeCodeProvider struct {
 	cwd          string   // working directory for the subprocess
 	sessionID    string   // Claude session ID (persisted in .defer/)
 	AllowedTools []string // if set, restricts which tools the subprocess can use
+	Effort       string   // "low", "medium", "high", "max" — passed via --effort
 }
 
 // NewClaudeCodeProvider creates a subprocess provider using the current working directory.
@@ -72,6 +73,12 @@ func NewClaudeCodeProvider(model string) *ClaudeCodeProvider {
 // NewClaudeCodeProviderWithCWD creates a subprocess provider with an explicit working directory.
 func NewClaudeCodeProviderWithCWD(model, cwd string) *ClaudeCodeProvider {
 	return &ClaudeCodeProvider{model: model, cwd: cwd}
+}
+
+// SetEffort sets the --effort level for the Claude Code subprocess.
+// Valid values: "low", "medium", "high", "max". Empty string omits the flag.
+func (p *ClaudeCodeProvider) SetEffort(effort string) {
+	p.Effort = effort
 }
 
 // IsClaudeInstalled checks if the claude binary is available.
@@ -120,6 +127,9 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 		"--verbose",
 		"--model", p.model,
 		"--dangerously-skip-permissions",
+	}
+	if p.Effort != "" {
+		args = append(args, "--effort", p.Effort)
 	}
 	// AllowedTools restricts which tools the subprocess can use per-phase:
 	// - Decomposition: read-only (no Write/Edit)

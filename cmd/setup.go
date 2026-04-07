@@ -53,8 +53,14 @@ func saveSetupResult(result tui.OnboardingResult) error {
 	}
 
 	cfg.Provider = result.Provider
+	if result.Model != "" {
+		cfg.Model = result.Model
+	}
 	if result.APIKey != "" {
 		cfg.APIKey = result.APIKey
+	}
+	if result.Effort != "" {
+		cfg.Effort = result.Effort
 	}
 	if result.MascotSize != "" {
 		cfg.MascotSize = result.MascotSize
