@@ -11,9 +11,9 @@ import (
 
 func fiveDecisions() []decision.Decision {
 	return []decision.Decision{
-		{ID: "STA-0001", Category: "Stack", Question: "Language?",
+		{ID: "STA-0001", Category: "Architecture", Question: "Language?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Go"}, {Key: "B", Label: "Rust"}}, Source: "user"},
-		{ID: "STA-0002", Category: "Stack", Question: "Framework?",
+		{ID: "STA-0002", Category: "Architecture", Question: "Framework?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Gin"}, {Key: "B", Label: "Echo"}}, Source: "user"},
 		{ID: "DAT-0001", Category: "Data", Question: "Database?",
 			Options: []decision.DecisionOption{{Key: "A", Label: "Postgres"}, {Key: "B", Label: "MySQL"}}, Source: "user"},
@@ -636,11 +636,11 @@ func TestSearchFiltersByQuestion(t *testing.T) {
 
 func TestSearchIsCaseInsensitive(t *testing.T) {
 	tm := newTree(fiveDecisions())
-	tm.searchQuery = "STACK"
+	tm.searchQuery = "ARCHITECTURE"
 
 	items := tm.decisionItems()
 	if len(items) != 2 {
-		t.Errorf("filtered items = %d, want 2 (Stack category)", len(items))
+		t.Errorf("filtered items = %d, want 2 (Architecture category)", len(items))
 	}
 }
 

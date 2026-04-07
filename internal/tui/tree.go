@@ -793,19 +793,38 @@ func (m TreeModel) decisionItems() []decision.Decision {
 		}
 		items = filtered
 	}
-	// Sort based on current mode
+	// Sort based on current mode. Each mode has a secondary sort to ensure
+	// the order is visibly different from the others (the data arriving from
+	// the decompose phase is already roughly impact-descending, so without
+	// tiebreakers all the modes look identical to it).
 	switch m.sortMode {
-	case 0: // category
-		sortDecisionsByCategory(items)
-	case 1: // impact (high first)
-		sort.SliceStable(items, func(i, j int) bool { return items[i].Impact > items[j].Impact })
-	case 2: // status (pending first)
+	case 0: // domain — alphabetical by category, then impact desc
+		sort.SliceStable(items, func(i, j int) bool {
+			ci := strings.ToLower(strings.TrimSpace(items[i].Category))
+			cj := strings.ToLower(strings.TrimSpace(items[j].Category))
+			if ci != cj {
+				return ci < cj
+			}
+			return items[i].Impact > items[j].Impact
+		})
+	case 1: // impact desc, then alphabetical by category
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].Impact != items[j].Impact {
+				return items[i].Impact > items[j].Impact
+			}
+			ci := strings.ToLower(strings.TrimSpace(items[i].Category))
+			cj := strings.ToLower(strings.TrimSpace(items[j].Category))
+			return ci < cj
+		})
+	case 2: // status — pending first, then by impact desc
 		sort.SliceStable(items, func(i, j int) bool {
 			pi, pj := items[i].IsPending(), items[j].IsPending()
-			if pi != pj { return pi }
-			return false
+			if pi != pj {
+				return pi
+			}
+			return items[i].Impact > items[j].Impact
 		})
-	case 3: // alphabetical
+	case 3: // alphabetical by question
 		sort.SliceStable(items, func(i, j int) bool {
 			return strings.ToLower(items[i].Question) < strings.ToLower(items[j].Question)
 		})
@@ -821,30 +840,6 @@ func sortLabel(mode int) string {
 	case 3: return "a-z"
 	default: return "domain"
 	}
-}
-
-// sortDecisionsByCategory sorts decisions so same-category items are grouped,
-// preserving the order of first appearance for categories.
-func sortDecisionsByCategory(decs []decision.Decision) {
-	if len(decs) <= 1 {
-		return
-	}
-	// Determine category order by first appearance
-	catOrder := map[string]int{}
-	idx := 0
-	for _, d := range decs {
-		key := strings.ToLower(strings.TrimSpace(d.Category))
-		if _, ok := catOrder[key]; !ok {
-			catOrder[key] = idx
-			idx++
-		}
-	}
-	// Stable sort by category order
-	sort.SliceStable(decs, func(i, j int) bool {
-		ki := strings.ToLower(strings.TrimSpace(decs[i].Category))
-		kj := strings.ToLower(strings.TrimSpace(decs[j].Category))
-		return catOrder[ki] < catOrder[kj]
-	})
 }
 
 func (m TreeModel) decisionCount() int {
