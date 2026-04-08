@@ -96,9 +96,15 @@ func TestStrictHookSettingsJSONIsValid(t *testing.T) {
 
 // TestEnsureStrictHookFile — writes the hook file to HOME/.defer/strict-hook.json
 // on first call, returns the existing path on subsequent calls.
+//
+// Note: os.UserHomeDir() reads HOME on Linux/macOS but USERPROFILE on
+// Windows. We set both so the test redirects to the temp dir on every
+// platform — without USERPROFILE override the Windows CI run wrote to
+// the real user home and the path comparison failed.
 func TestEnsureStrictHookFile(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
+	t.Setenv("USERPROFILE", tmpHome)
 
 	// First call writes the file.
 	path, err := ensureStrictHookFile()
