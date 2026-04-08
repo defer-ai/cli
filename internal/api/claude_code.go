@@ -131,6 +131,34 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 	if p.Effort != "" {
 		args = append(args, "--effort", p.Effort)
 	}
+	// DEFER_CLAUDE_SETTINGS is a bench-only hook for injecting extra
+	// Claude Code settings (e.g. PostToolUse hooks) without modifying
+	// the user's ~/.claude/settings.json globally. Set it to a JSON file
+	// path and --settings will be appended to the claude invocation.
+	if extra := os.Getenv("DEFER_CLAUDE_SETTINGS"); extra != "" {
+		args = append(args, "--settings", extra)
+	}
+	// DEFER_CLAUDE_ALLOWED_TOOLS is a bench-only override for the executor's
+	// tool access. Only applies when the provider doesn't already restrict
+	// tools. NOTE: this flag is effectively a no-op when combined with
+	// --dangerously-skip-permissions — Claude Code keeps the full toolkit
+	// available regardless. Use DEFER_CLAUDE_DISALLOWED_TOOLS for real
+	// restriction.
+	if envTools := os.Getenv("DEFER_CLAUDE_ALLOWED_TOOLS"); envTools != "" && len(p.AllowedTools) == 0 {
+		args = append(args, "--allowedTools", envTools)
+	}
+	// DEFER_CLAUDE_DISALLOWED_TOOLS is the working way to strip tools from
+	// the executor, even with --dangerously-skip-permissions. Passes
+	// --disallowedTools which actually removes the tools from the session.
+	if envDisallow := os.Getenv("DEFER_CLAUDE_DISALLOWED_TOOLS"); envDisallow != "" {
+		args = append(args, "--disallowedTools", envDisallow)
+	}
+	// DEFER_CLAUDE_APPEND_SYSTEM_PROMPT adds extra instructions on top of
+	// the system prompt without replacing it. Used by bench experiments to
+	// inject per-variant guidance (e.g. "don't use bash redirects").
+	if extraPrompt := os.Getenv("DEFER_CLAUDE_APPEND_SYSTEM_PROMPT"); extraPrompt != "" {
+		args = append(args, "--append-system-prompt", extraPrompt)
+	}
 	// AllowedTools restricts which tools the subprocess can use per-phase:
 	// - Decomposition: read-only (no Write/Edit)
 	// - Execution: full access (user confirmed decisions)
