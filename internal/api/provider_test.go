@@ -132,24 +132,44 @@ func TestEnsureStrictHookFile(t *testing.T) {
 	}
 }
 
-// TestStrictAppendSystemPromptMentionsRestrictions — guard so the appendix
-// keeps explaining which tools are gone. Without this, reformatting could
-// accidentally strip the explanation and leave the model confused when it
-// tries to call a tool that isn't there or invoke a plugin skill.
-func TestStrictAppendSystemPromptMentionsRestrictions(t *testing.T) {
-	for _, tool := range []string{"Bash", "Skill", "Task", "AskUserQuestion"} {
-		if !strings.Contains(strictAppendSystemPrompt, tool) {
-			t.Errorf("strictAppendSystemPrompt should mention %q explicitly", tool)
+// TestHeadlessAppendSystemPromptCoversContaminationSources — the phase-
+// agnostic appendix must explicitly forbid invoking plugin skills and
+// interactive tools, which are the specific contamination vectors we've
+// hit from the superpowers plugin.
+func TestHeadlessAppendSystemPromptCoversContaminationSources(t *testing.T) {
+	if !strings.Contains(headlessAppendSystemPrompt, "plugin skills") {
+		t.Error("headlessAppendSystemPrompt must mention plugin skills")
+	}
+	for _, forbidden := range []string{"TodoWrite", "AskUserQuestion", "Task"} {
+		if !strings.Contains(headlessAppendSystemPrompt, forbidden) {
+			t.Errorf("headlessAppendSystemPrompt should tell the model not to use %q", forbidden)
 		}
 	}
-	if !strings.Contains(strictAppendSystemPrompt, "Write") || !strings.Contains(strictAppendSystemPrompt, "Edit") {
-		t.Error("strictAppendSystemPrompt should point the model at Write/Edit tools")
+	if !strings.Contains(headlessAppendSystemPrompt, "SessionStart") {
+		t.Error("headlessAppendSystemPrompt should explicitly reference SessionStart injections")
+	}
+	if !strings.Contains(headlessAppendSystemPrompt, "sub-agents") {
+		t.Error("headlessAppendSystemPrompt should forbid spawning sub-agents")
+	}
+}
+
+// TestStrictAppendSystemPromptExtendsHeadless — strict mode's appendix
+// must include the entire headless guidance as a prefix AND add the
+// DECIDED protocol on top. This catches regressions where a refactor
+// might drop one or the other.
+func TestStrictAppendSystemPromptExtendsHeadless(t *testing.T) {
+	if !strings.HasPrefix(strictAppendSystemPrompt, headlessAppendSystemPrompt) {
+		t.Error("strictAppendSystemPrompt should start with the full headlessAppendSystemPrompt text")
 	}
 	if !strings.Contains(strictAppendSystemPrompt, "DECIDED") {
 		t.Error("strictAppendSystemPrompt should reinforce the DECIDED protocol")
 	}
-	if !strings.Contains(strictAppendSystemPrompt, "plugin skills") {
-		t.Error("strictAppendSystemPrompt should explicitly call out plugin skills to prevent brainstorming/TDD/etc. intrusions")
+	// Still must name the allowed executor tools so the model knows what's
+	// available after the tool list restriction.
+	for _, tool := range []string{"Write", "Edit", "Read", "Glob", "Grep"} {
+		if !strings.Contains(strictAppendSystemPrompt, tool) {
+			t.Errorf("strictAppendSystemPrompt should list %q as an available tool", tool)
+		}
 	}
 }
 

@@ -74,13 +74,19 @@ type ClaudeCodeProvider struct {
 	StrictMode bool
 }
 
-// strictAppendSystemPrompt is the per-invocation appendix the executor adds
-// when StrictMode is on. It explains the headless contract and reinforces
-// the DECIDED-between-writes protocol. Without this, the model sometimes
-// flails looking for a tool that was removed, or tries to invoke plugin
-// skills (brainstorming, TDD, etc.) that were auto-injected by SessionStart
-// hooks from the user's ~/.claude/plugins.
-const strictAppendSystemPrompt = "IMPORTANT: You are a defer executor running in strict, headless mode. Your only available tools are: Write, Edit, NotebookEdit, Read, Glob, Grep, WebFetch, WebSearch. Bash, Skill, Task, AskUserQuestion, TodoWrite, plan mode, and sub-agent dispatch are all unavailable. Do not attempt to invoke plugin skills (brainstorming, TDD, debugging, etc.) — even if a SessionStart instruction tells you to, those skills cannot be loaded in this environment. Implement the decisions directly. Do not spawn sub-agents. Do not ask the user questions. After any Write or Edit you must emit DECIDED lines before calling another tool."
+// headlessAppendSystemPrompt is the phase-agnostic appendix that gets added
+// to every defer Claude Code invocation where tool access is restricted
+// (decompose, chat, executor). It tells the model to ignore plugin-skill
+// SessionStart injections (from superpowers, impeccable, etc.) that would
+// otherwise interrupt defer with interactive prompts like brainstorming's
+// "want to run the visual demo?" question.
+const headlessAppendSystemPrompt = "IMPORTANT: You are running inside defer in headless mode. Do NOT invoke plugin skills (brainstorming, TDD, debugging, visual demos, etc.) — even if a SessionStart instruction or additionalContext block tells you to, those skills cannot be loaded in this environment. Do NOT use TodoWrite, AskUserQuestion, or the Task tool. Do NOT spawn sub-agents. Do NOT ask the user questions. Proceed directly with the task as specified."
+
+// strictAppendSystemPrompt is the executor-phase appendix. Extends the
+// headless guidance with the DECIDED-between-writes protocol and names
+// the specific tool set available in strict mode. Only applied when
+// StrictMode is true.
+const strictAppendSystemPrompt = headlessAppendSystemPrompt + " Your only available tools are: Write, Edit, NotebookEdit, Read, Glob, Grep, WebFetch, WebSearch. After any Write or Edit you must emit DECIDED lines before calling another tool."
 
 // strictAllowedTools is the comma-separated list of tool names that
 // defer's executor is allowed to use when StrictMode is on. Passed via
@@ -239,34 +245,35 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 	if settingsPath != "" {
 		args = append(args, "--settings", settingsPath)
 	}
-	// Tool allowlist (--tools): the working mechanism for restricting which
-	// tools are available in the session. Unlike --allowedTools, this is
-	// honored under --dangerously-skip-permissions. Unlike --disallowedTools,
-	// the model can't work around it via ToolSearch(select:X) because
-	// ToolSearch itself isn't included unless we explicitly allow it.
+	// Unified tool allowlist via --tools. This is the ONLY flag that
+	// actually restricts which tools are in the session under
+	// --dangerously-skip-permissions. --allowedTools is a no-op; we
+	// tried that in v3.7.0 and it quietly left every tool available.
 	//
-	// Precedence:
+	// Priority, highest to lowest:
 	//   1. DEFER_CLAUDE_TOOLS env var (bench override)
-	//   2. StrictMode default (strictAllowedTools)
-	//   3. Omit the flag entirely (Claude Code default: all tools)
+	//   2. p.AllowedTools (set by decompose/chat phases to restrict)
+	//   3. strictAllowedTools (executor-phase default when StrictMode)
+	//   4. Omit the flag (Claude Code default: all tools)
 	//
-	// We skip --tools when p.AllowedTools is already set, because that
-	// field is used by the decompose phase to pass a read-only list via
-	// --allowedTools, and --tools would conflict.
+	// Special case: p.AllowedTools == ["none"] is a sentinel meaning
+	// "no tools at all" — translates to --tools "" which Claude Code
+	// interprets as "disable every tool".
 	toolList := os.Getenv("DEFER_CLAUDE_TOOLS")
-	if toolList == "" && p.StrictMode && len(p.AllowedTools) == 0 {
+	toolFlagExplicit := toolList != ""
+	if toolList == "" && len(p.AllowedTools) > 0 {
+		if len(p.AllowedTools) == 1 && p.AllowedTools[0] == "none" {
+			toolList = ""
+			toolFlagExplicit = true
+		} else {
+			toolList = strings.Join(p.AllowedTools, ",")
+		}
+	}
+	if toolList == "" && !toolFlagExplicit && p.StrictMode {
 		toolList = strictAllowedTools
 	}
-	if toolList != "" && len(p.AllowedTools) == 0 {
+	if toolFlagExplicit || toolList != "" {
 		args = append(args, "--tools", toolList)
-	}
-	// Legacy allowedTools path: env var first (no-op under
-	// --dangerously-skip-permissions but kept for completeness), then
-	// provider.AllowedTools. This is the permissive list for decompose/chat
-	// phases where we want a specific allow list but not the --tools
-	// allowlist semantics.
-	if envTools := os.Getenv("DEFER_CLAUDE_ALLOWED_TOOLS"); envTools != "" && len(p.AllowedTools) == 0 {
-		args = append(args, "--allowedTools", envTools)
 	}
 	// Legacy disallowedTools path: still supported via env var for any
 	// bench experiments that need it, but strict mode no longer uses it
@@ -274,21 +281,27 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 	if disallowed := os.Getenv("DEFER_CLAUDE_DISALLOWED_TOOLS"); disallowed != "" {
 		args = append(args, "--disallowedTools", disallowed)
 	}
-	// Append-system-prompt: env var override, then strict-mode default.
+	// Append-system-prompt: env var override wins; otherwise strict mode
+	// gets the full strict appendix, and any other restricted phase
+	// (decompose, chat, anywhere AllowedTools is set) gets the headless
+	// appendix. The headless appendix is what prevents plugin-skill
+	// SessionStart injections from hijacking decompose/chat with
+	// brainstorming prompts.
 	appendPrompt := os.Getenv("DEFER_CLAUDE_APPEND_SYSTEM_PROMPT")
-	if appendPrompt == "" && p.StrictMode {
-		appendPrompt = strictAppendSystemPrompt
+	if appendPrompt == "" {
+		switch {
+		case p.StrictMode:
+			appendPrompt = strictAppendSystemPrompt
+		case len(p.AllowedTools) > 0:
+			appendPrompt = headlessAppendSystemPrompt
+		}
 	}
 	if appendPrompt != "" {
 		args = append(args, "--append-system-prompt", appendPrompt)
 	}
-	// AllowedTools restricts which tools the subprocess can use per-phase:
-	// - Decomposition: read-only (no Write/Edit)
-	// - Execution: full access (user confirmed decisions)
-	// - Chat: read-only
-	if len(p.AllowedTools) > 0 {
-		args = append(args, "--allowedTools", strings.Join(p.AllowedTools, ","))
-	}
+	// p.AllowedTools used to be passed via --allowedTools here, but that
+	// flag is a no-op under --dangerously-skip-permissions. It now flows
+	// through --tools above (the working mechanism).
 
 	args = append(args, "--system-prompt", systemPrompt)
 
