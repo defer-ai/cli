@@ -153,14 +153,29 @@ func TestStrictAppendSystemPromptMentionsRestrictions(t *testing.T) {
 	}
 }
 
-// TestStrictDisallowedToolsIncludesAllProblemTools — regression guard so
-// the disallow list stays comprehensive. Each of these tools is a known
-// source of executor-phase contamination documented on the constant.
-func TestStrictDisallowedToolsIncludesAllProblemTools(t *testing.T) {
-	required := []string{"Bash", "Skill", "Task", "AskUserQuestion", "EnterPlanMode"}
+// TestStrictAllowedToolsIncludesEssentials — regression guard so the
+// allow list keeps the file-write family and read-only exploration tools
+// that defer's executor actually needs. Also checks that contamination
+// tools (Skill, Task, ToolSearch, etc.) are NOT included — the whole
+// point of switching from denylist to allowlist was that the denylist
+// approach let the model bypass via ToolSearch(select:Skill).
+func TestStrictAllowedToolsIncludesEssentials(t *testing.T) {
+	// Must-have tools for implementation:
+	required := []string{"Write", "Edit", "Read", "Glob", "Grep"}
 	for _, tool := range required {
-		if !strings.Contains(strictDisallowedTools, tool) {
-			t.Errorf("strictDisallowedTools should block %q", tool)
+		if !strings.Contains(strictAllowedTools, tool) {
+			t.Errorf("strictAllowedTools should allow %q — defer executor needs it for implementation", tool)
+		}
+	}
+	// Must-NOT-have tools (contamination sources):
+	forbidden := []string{"Bash", "Skill", "Task", "AskUserQuestion", "ToolSearch", "TodoWrite", "EnterPlanMode"}
+	for _, tool := range forbidden {
+		// Use comma-delimited match so "Task" doesn't match "TaskOutput" etc.
+		parts := strings.Split(strictAllowedTools, ",")
+		for _, p := range parts {
+			if strings.TrimSpace(p) == tool {
+				t.Errorf("strictAllowedTools must not include %q — it's a contamination source", tool)
+			}
 		}
 	}
 }

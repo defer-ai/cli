@@ -75,31 +75,45 @@ type ClaudeCodeProvider struct {
 }
 
 // strictAppendSystemPrompt is the per-invocation appendix the executor adds
-// when StrictMode is on. It explains which tools are gone and reinforces
+// when StrictMode is on. It explains the headless contract and reinforces
 // the DECIDED-between-writes protocol. Without this, the model sometimes
 // flails looking for a tool that was removed, or tries to invoke plugin
 // skills (brainstorming, TDD, etc.) that were auto-injected by SessionStart
 // hooks from the user's ~/.claude/plugins.
-const strictAppendSystemPrompt = "IMPORTANT: You are a defer executor running in strict, headless mode. The following tools are NOT available: Bash, Skill, Task, AskUserQuestion, EnterPlanMode. Do not attempt to invoke plugin skills (brainstorming, TDD, debugging, etc.) — implement the decisions directly. Do not spawn sub-agents. Do not ask the user questions. Use only Write, Edit, Read, Glob, and Grep. After any Write or Edit you must emit DECIDED lines before calling another tool."
+const strictAppendSystemPrompt = "IMPORTANT: You are a defer executor running in strict, headless mode. Your only available tools are: Write, Edit, NotebookEdit, Read, Glob, Grep, WebFetch, WebSearch. Bash, Skill, Task, AskUserQuestion, TodoWrite, plan mode, and sub-agent dispatch are all unavailable. Do not attempt to invoke plugin skills (brainstorming, TDD, debugging, etc.) — even if a SessionStart instruction tells you to, those skills cannot be loaded in this environment. Implement the decisions directly. Do not spawn sub-agents. Do not ask the user questions. After any Write or Edit you must emit DECIDED lines before calling another tool."
 
-// strictDisallowedTools is the comma-separated list of tool names removed
-// from the Claude Code executor when StrictMode is on. Each one is a known
-// source of executor-phase contamination:
+// strictAllowedTools is the comma-separated list of tool names that
+// defer's executor is allowed to use when StrictMode is on. Passed via
+// Claude Code's --tools flag, which is an explicit allowlist that wins
+// even under --dangerously-skip-permissions.
 //
-//   Bash             — file-write bypass via cat>EOF heredoc, sed -i, etc.
-//                      Also lets the model run arbitrary shell commands
-//                      that aren't tracked as decisions.
-//   Skill            — loads plugin skills from ~/.claude/plugins (e.g.
-//                      superpowers' brainstorming skill). These are
-//                      designed for interactive use and interrupt defer
-//                      with visual demos and questions.
-//   Task             — spawns a nested Claude Code sub-agent, adding a
-//                      second layer of autonomy defer doesn't track.
-//   AskUserQuestion  — interactive prompts are antithetical to defer's
-//                      zero-autonomy contract.
-//   EnterPlanMode    — plan mode is interactive; the executor has already
-//                      been given confirmed decisions to implement.
-const strictDisallowedTools = "Bash,Skill,Task,AskUserQuestion,EnterPlanMode"
+// We use an allowlist (--tools) rather than a denylist (--disallowedTools)
+// because the denylist approach let the model work around restrictions
+// via ToolSearch(select:Skill) — Claude Code's mechanism for dynamically
+// loading deferred tools. ToolSearch itself was still available even when
+// Skill, Task, etc. were in the disallow list. With --tools, ToolSearch
+// is also gone unless we explicitly include it, and there's no fallback
+// path for the model to load blocked tools.
+//
+// Included:
+//   Write, Edit, NotebookEdit  — file modification (hooked for DECIDED)
+//   Read, Glob, Grep           — read-only exploration
+//   WebFetch, WebSearch        — read-only external lookup, sometimes
+//                                needed for docs/API references
+//
+// Excluded by omission (all are contamination sources):
+//   Bash             — file-write bypass via heredoc/sed -i/tee
+//   Skill            — loads plugin skills (brainstorming, TDD, etc.)
+//   Task             — spawns nested Claude Code sub-agents
+//   AskUserQuestion  — interactive prompts, breaks zero-autonomy
+//   ToolSearch       — dynamic loader for deferred tools; left out so
+//                      the model can't bypass this allowlist
+//   TodoWrite        — Claude Code's built-in todo list; defer has its
+//                      own decision tracking and doesn't need a second
+//   EnterPlanMode    — plan mode is interactive
+//   CronCreate/Delete/List, RemoteTrigger, EnterWorktree/ExitWorktree
+//                    — all irrelevant to defer's executor phase
+const strictAllowedTools = "Write,Edit,NotebookEdit,Read,Glob,Grep,WebFetch,WebSearch"
 
 // strictHookSettingsJSON is the Claude Code settings payload that installs
 // a PreToolUse hook on Write/Edit/MultiEdit/NotebookEdit. The hook's command
@@ -225,21 +239,39 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 	if settingsPath != "" {
 		args = append(args, "--settings", settingsPath)
 	}
-	// Allowed tools: env var first (no-op under --dangerously-skip-permissions
-	// but kept for completeness), then provider.AllowedTools. This is the
-	// permissive list for decompose/chat phases.
+	// Tool allowlist (--tools): the working mechanism for restricting which
+	// tools are available in the session. Unlike --allowedTools, this is
+	// honored under --dangerously-skip-permissions. Unlike --disallowedTools,
+	// the model can't work around it via ToolSearch(select:X) because
+	// ToolSearch itself isn't included unless we explicitly allow it.
+	//
+	// Precedence:
+	//   1. DEFER_CLAUDE_TOOLS env var (bench override)
+	//   2. StrictMode default (strictAllowedTools)
+	//   3. Omit the flag entirely (Claude Code default: all tools)
+	//
+	// We skip --tools when p.AllowedTools is already set, because that
+	// field is used by the decompose phase to pass a read-only list via
+	// --allowedTools, and --tools would conflict.
+	toolList := os.Getenv("DEFER_CLAUDE_TOOLS")
+	if toolList == "" && p.StrictMode && len(p.AllowedTools) == 0 {
+		toolList = strictAllowedTools
+	}
+	if toolList != "" && len(p.AllowedTools) == 0 {
+		args = append(args, "--tools", toolList)
+	}
+	// Legacy allowedTools path: env var first (no-op under
+	// --dangerously-skip-permissions but kept for completeness), then
+	// provider.AllowedTools. This is the permissive list for decompose/chat
+	// phases where we want a specific allow list but not the --tools
+	// allowlist semantics.
 	if envTools := os.Getenv("DEFER_CLAUDE_ALLOWED_TOOLS"); envTools != "" && len(p.AllowedTools) == 0 {
 		args = append(args, "--allowedTools", envTools)
 	}
-	// Disallowed tools: env var override, then strict-mode default.
-	// --disallowedTools actually removes the tool from the session even
-	// under --dangerously-skip-permissions. See strictDisallowedTools for
-	// the rationale on each entry.
-	disallowed := os.Getenv("DEFER_CLAUDE_DISALLOWED_TOOLS")
-	if disallowed == "" && p.StrictMode {
-		disallowed = strictDisallowedTools
-	}
-	if disallowed != "" {
+	// Legacy disallowedTools path: still supported via env var for any
+	// bench experiments that need it, but strict mode no longer uses it
+	// by default since --tools is strictly better.
+	if disallowed := os.Getenv("DEFER_CLAUDE_DISALLOWED_TOOLS"); disallowed != "" {
 		args = append(args, "--disallowedTools", disallowed)
 	}
 	// Append-system-prompt: env var override, then strict-mode default.
