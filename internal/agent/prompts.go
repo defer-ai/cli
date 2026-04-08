@@ -21,6 +21,26 @@ func ExecutePromptForVariant() string {
 	}
 }
 
+// VerifyPromptForVariant returns the verify prompt. DEFER_VERIFY_VARIANT
+// selects between alternates for A/B testing. Default is the original
+// concise binary-gate prompt.
+func VerifyPromptForVariant() string {
+	switch os.Getenv("DEFER_VERIFY_VARIANT") {
+	default:
+		return VerifyPrompt
+	}
+}
+
+// ExtractPromptForVariant returns the extract prompt. DEFER_EXTRACT_VARIANT
+// selects between alternates for A/B testing. Default is the original
+// JSON-only extraction prompt.
+func ExtractPromptForVariant() string {
+	switch os.Getenv("DEFER_EXTRACT_VARIANT") {
+	default:
+		return ExtractPrompt
+	}
+}
+
 const (
 	CareLevelAuto   CareLevel = "auto"
 	CareLevelReview CareLevel = "review"

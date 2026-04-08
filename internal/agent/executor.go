@@ -519,7 +519,7 @@ func (e *Executor) verify(ctx context.Context, output, decSummary string) string
 	msg := fmt.Sprintf("Domain: %s\nTask: %s\nDecisions:\n%s\n\nImplementation:\n%s",
 		e.domain, e.task, decSummary, truncated)
 
-	resp, err := e.simpleCompletion(ctx, VerifyPrompt, msg)
+	resp, err := e.simpleCompletion(ctx, VerifyPromptForVariant(), msg)
 	if err != nil {
 		return ""
 	}
@@ -565,7 +565,7 @@ func (e *Executor) extract(ctx context.Context, output string) {
 	}
 	msg := fmt.Sprintf("Domain: %s\n\nImplementation output:\n%s", e.domain, truncated)
 
-	resp, err := e.simpleCompletion(ctx, ExtractPrompt, msg)
+	resp, err := e.simpleCompletion(ctx, ExtractPromptForVariant(), msg)
 	if err != nil {
 		return
 	}

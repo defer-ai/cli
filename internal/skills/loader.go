@@ -162,7 +162,7 @@ func DefaultSkills() map[string]Skill {
 		"execute": {
 			Name:        "execute",
 			Description: "Implement a domain given decisions",
-			Prompt:      agent.ExecutePromptTemplate,
+			Prompt:      agent.ExecutePromptForVariant(),
 			Metadata: map[string]string{
 				"name":        "execute",
 				"description": "Implement a domain given decisions",
@@ -172,7 +172,7 @@ func DefaultSkills() map[string]Skill {
 		"extract": {
 			Name:        "extract",
 			Description: "Extract decisions from implementation",
-			Prompt:      agent.ExtractPrompt,
+			Prompt:      agent.ExtractPromptForVariant(),
 			Metadata: map[string]string{
 				"name":        "extract",
 				"description": "Extract decisions from implementation",
@@ -182,7 +182,7 @@ func DefaultSkills() map[string]Skill {
 		"verify": {
 			Name:        "verify",
 			Description: "Review domain implementation for correctness",
-			Prompt:      agent.VerifyPrompt,
+			Prompt:      agent.VerifyPromptForVariant(),
 			Metadata: map[string]string{
 				"name":        "verify",
 				"description": "Review domain implementation for correctness",
