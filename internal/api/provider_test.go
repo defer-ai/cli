@@ -132,19 +132,36 @@ func TestEnsureStrictHookFile(t *testing.T) {
 	}
 }
 
-// TestStrictAppendSystemPromptMentionsBash — guard so the appendix keeps
-// explaining why Bash is gone. Without this, reformatting could accidentally
-// strip the explanation and leave the model confused when it tries to call
-// a tool that isn't there.
-func TestStrictAppendSystemPromptMentionsBash(t *testing.T) {
-	if !strings.Contains(strictAppendSystemPrompt, "Bash") {
-		t.Error("strictAppendSystemPrompt should mention Bash explicitly")
+// TestStrictAppendSystemPromptMentionsRestrictions — guard so the appendix
+// keeps explaining which tools are gone. Without this, reformatting could
+// accidentally strip the explanation and leave the model confused when it
+// tries to call a tool that isn't there or invoke a plugin skill.
+func TestStrictAppendSystemPromptMentionsRestrictions(t *testing.T) {
+	for _, tool := range []string{"Bash", "Skill", "Task", "AskUserQuestion"} {
+		if !strings.Contains(strictAppendSystemPrompt, tool) {
+			t.Errorf("strictAppendSystemPrompt should mention %q explicitly", tool)
+		}
 	}
 	if !strings.Contains(strictAppendSystemPrompt, "Write") || !strings.Contains(strictAppendSystemPrompt, "Edit") {
 		t.Error("strictAppendSystemPrompt should point the model at Write/Edit tools")
 	}
 	if !strings.Contains(strictAppendSystemPrompt, "DECIDED") {
 		t.Error("strictAppendSystemPrompt should reinforce the DECIDED protocol")
+	}
+	if !strings.Contains(strictAppendSystemPrompt, "plugin skills") {
+		t.Error("strictAppendSystemPrompt should explicitly call out plugin skills to prevent brainstorming/TDD/etc. intrusions")
+	}
+}
+
+// TestStrictDisallowedToolsIncludesAllProblemTools — regression guard so
+// the disallow list stays comprehensive. Each of these tools is a known
+// source of executor-phase contamination documented on the constant.
+func TestStrictDisallowedToolsIncludesAllProblemTools(t *testing.T) {
+	required := []string{"Bash", "Skill", "Task", "AskUserQuestion", "EnterPlanMode"}
+	for _, tool := range required {
+		if !strings.Contains(strictDisallowedTools, tool) {
+			t.Errorf("strictDisallowedTools should block %q", tool)
+		}
 	}
 }
 

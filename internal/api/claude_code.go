@@ -75,9 +75,31 @@ type ClaudeCodeProvider struct {
 }
 
 // strictAppendSystemPrompt is the per-invocation appendix the executor adds
-// when StrictMode is on. It explains why Bash is gone and reinforces the
-// DECIDED-between-writes protocol.
-const strictAppendSystemPrompt = "IMPORTANT: The Bash tool is not available in this environment. You must use the Write and Edit tools exclusively for file creation and modification. After any Write or Edit you must emit DECIDED lines before calling another tool."
+// when StrictMode is on. It explains which tools are gone and reinforces
+// the DECIDED-between-writes protocol. Without this, the model sometimes
+// flails looking for a tool that was removed, or tries to invoke plugin
+// skills (brainstorming, TDD, etc.) that were auto-injected by SessionStart
+// hooks from the user's ~/.claude/plugins.
+const strictAppendSystemPrompt = "IMPORTANT: You are a defer executor running in strict, headless mode. The following tools are NOT available: Bash, Skill, Task, AskUserQuestion, EnterPlanMode. Do not attempt to invoke plugin skills (brainstorming, TDD, debugging, etc.) — implement the decisions directly. Do not spawn sub-agents. Do not ask the user questions. Use only Write, Edit, Read, Glob, and Grep. After any Write or Edit you must emit DECIDED lines before calling another tool."
+
+// strictDisallowedTools is the comma-separated list of tool names removed
+// from the Claude Code executor when StrictMode is on. Each one is a known
+// source of executor-phase contamination:
+//
+//   Bash             — file-write bypass via cat>EOF heredoc, sed -i, etc.
+//                      Also lets the model run arbitrary shell commands
+//                      that aren't tracked as decisions.
+//   Skill            — loads plugin skills from ~/.claude/plugins (e.g.
+//                      superpowers' brainstorming skill). These are
+//                      designed for interactive use and interrupt defer
+//                      with visual demos and questions.
+//   Task             — spawns a nested Claude Code sub-agent, adding a
+//                      second layer of autonomy defer doesn't track.
+//   AskUserQuestion  — interactive prompts are antithetical to defer's
+//                      zero-autonomy contract.
+//   EnterPlanMode    — plan mode is interactive; the executor has already
+//                      been given confirmed decisions to implement.
+const strictDisallowedTools = "Bash,Skill,Task,AskUserQuestion,EnterPlanMode"
 
 // strictHookSettingsJSON is the Claude Code settings payload that installs
 // a PreToolUse hook on Write/Edit/MultiEdit/NotebookEdit. The hook's command
@@ -209,12 +231,13 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 	if envTools := os.Getenv("DEFER_CLAUDE_ALLOWED_TOOLS"); envTools != "" && len(p.AllowedTools) == 0 {
 		args = append(args, "--allowedTools", envTools)
 	}
-	// Disallowed tools: env var override, then strict-mode default of "Bash".
+	// Disallowed tools: env var override, then strict-mode default.
 	// --disallowedTools actually removes the tool from the session even
-	// under --dangerously-skip-permissions.
+	// under --dangerously-skip-permissions. See strictDisallowedTools for
+	// the rationale on each entry.
 	disallowed := os.Getenv("DEFER_CLAUDE_DISALLOWED_TOOLS")
 	if disallowed == "" && p.StrictMode {
-		disallowed = "Bash"
+		disallowed = strictDisallowedTools
 	}
 	if disallowed != "" {
 		args = append(args, "--disallowedTools", disallowed)
