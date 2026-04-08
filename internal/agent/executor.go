@@ -649,17 +649,43 @@ func (e *Executor) storeDecision(d decision.Decision) {
 	// Normalize category
 	d.Category = e.normalizeCategoryLocked(d.Category)
 
-	// Dedup by question (normalize: strip parenthetical references, lowercase, trim)
+	// Dedup by question. When a match is found, we don't silently drop the
+	// new decision — we reconcile. The incoming decision usually comes from
+	// the extract phase, which observes what the code ACTUALLY does, while
+	// the existing one often came from the decompose phase, which recorded
+	// the AGENT'S PLAN. The two can diverge (e.g. decompose said "Go 1.22
+	// latest stable", the agent actually wrote "go 1.21"). In that case the
+	// extract value is ground truth and should overwrite the stale plan.
 	newQ := normalizeQuestion(d.Question)
-	for _, existing := range *e.allDecisions {
-		existQ := normalizeQuestion(existing.Question)
-		if existQ == newQ {
-			return
+	for i := range *e.allDecisions {
+		existQ := normalizeQuestion((*e.allDecisions)[i].Question)
+		matched := existQ == newQ || questionsOverlap(newQ, existQ)
+		if !matched {
+			continue
 		}
-		// Word-level similarity: if 70%+ of words overlap, treat as duplicate
-		if questionsOverlap(newQ, existQ) {
-			return
+		existing := &(*e.allDecisions)[i]
+		// If the new decision has a concrete answer that differs from the
+		// existing one, treat it as ground truth and update in place.
+		if d.Answer != nil && *d.Answer != "" {
+			newAns := *d.Answer
+			existingAns := ""
+			if existing.Answer != nil {
+				existingAns = *existing.Answer
+			}
+			if existingAns != newAns {
+				existing.SetAnswer(newAns, "agent")
+				if d.Reasoning != "" {
+					existing.Reasoning = d.Reasoning
+				}
+				// Emit a stored event so listeners see the reconciliation.
+				e.onEvent(Event{
+					Type:       ExecDecisionStored,
+					ExecutorID: e.state.ID,
+					Decisions:  []decision.Decision{*existing},
+				})
+			}
 		}
+		return
 	}
 
 	// Regenerate ID
