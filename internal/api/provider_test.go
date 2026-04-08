@@ -1,6 +1,10 @@
 package api
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,6 +47,105 @@ func TestOpenAIProviderResetSession(t *testing.T) {
 	p := NewOpenAIProvider("openai", "key", "gpt-4o")
 	// Should not panic
 	p.ResetSession()
+}
+
+// TestClaudeCodeProviderStrictModeDefault — fresh providers created via
+// the public constructors should have StrictMode off. The executor opts
+// into strict mode explicitly for execute-phase invocations, and tests
+// that construct providers shouldn't inherit behavior they didn't ask for.
+func TestClaudeCodeProviderStrictModeDefault(t *testing.T) {
+	p := NewClaudeCodeProvider("sonnet")
+	if p.StrictMode {
+		t.Error("NewClaudeCodeProvider should create provider with StrictMode=false")
+	}
+	p2 := NewClaudeCodeProviderWithCWD("sonnet", "/tmp")
+	if p2.StrictMode {
+		t.Error("NewClaudeCodeProviderWithCWD should create provider with StrictMode=false")
+	}
+}
+
+// TestStrictHookSettingsJSONIsValid — the hook config embedded in the
+// binary must be parseable as JSON (Claude Code will silently ignore a
+// malformed settings file) and contain the markers that make it do what
+// we want.
+func TestStrictHookSettingsJSONIsValid(t *testing.T) {
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(strictHookSettingsJSON), &parsed); err != nil {
+		t.Fatalf("strictHookSettingsJSON is not valid JSON: %v", err)
+	}
+	// Must target PreToolUse on the file-modifying tools.
+	if !strings.Contains(strictHookSettingsJSON, `"PreToolUse"`) {
+		t.Error("hook JSON missing PreToolUse event")
+	}
+	if !strings.Contains(strictHookSettingsJSON, "Write|Edit|MultiEdit|NotebookEdit") {
+		t.Error("hook JSON missing the write-family matcher")
+	}
+	// The reminder must use hookSpecificOutput/additionalContext — plain
+	// stdout from a hook is discarded by Claude Code, so anything else
+	// won't reach the model.
+	if !strings.Contains(strictHookSettingsJSON, "hookSpecificOutput") {
+		t.Error("hook JSON must use hookSpecificOutput format")
+	}
+	if !strings.Contains(strictHookSettingsJSON, "additionalContext") {
+		t.Error("hook JSON must use additionalContext to inject the reminder")
+	}
+	if !strings.Contains(strictHookSettingsJSON, "DECIDED:") {
+		t.Error("hook JSON reminder must reference the DECIDED protocol")
+	}
+}
+
+// TestEnsureStrictHookFile — writes the hook file to HOME/.defer/strict-hook.json
+// on first call, returns the existing path on subsequent calls.
+func TestEnsureStrictHookFile(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// First call writes the file.
+	path, err := ensureStrictHookFile()
+	if err != nil {
+		t.Fatalf("first ensureStrictHookFile() error: %v", err)
+	}
+	want := filepath.Join(tmpHome, ".defer", "strict-hook.json")
+	if path != want {
+		t.Errorf("path = %q, want %q", path, want)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("cannot read hook file: %v", err)
+	}
+	if string(data) != strictHookSettingsJSON {
+		t.Error("hook file contents do not match strictHookSettingsJSON constant")
+	}
+
+	// Second call returns the existing path without rewriting.
+	origStat, _ := os.Stat(path)
+	path2, err := ensureStrictHookFile()
+	if err != nil {
+		t.Fatalf("second ensureStrictHookFile() error: %v", err)
+	}
+	if path2 != path {
+		t.Errorf("second call returned different path: %q vs %q", path2, path)
+	}
+	newStat, _ := os.Stat(path2)
+	if !origStat.ModTime().Equal(newStat.ModTime()) {
+		t.Error("second call rewrote the file (modtime changed) — should have reused the existing one")
+	}
+}
+
+// TestStrictAppendSystemPromptMentionsBash — guard so the appendix keeps
+// explaining why Bash is gone. Without this, reformatting could accidentally
+// strip the explanation and leave the model confused when it tries to call
+// a tool that isn't there.
+func TestStrictAppendSystemPromptMentionsBash(t *testing.T) {
+	if !strings.Contains(strictAppendSystemPrompt, "Bash") {
+		t.Error("strictAppendSystemPrompt should mention Bash explicitly")
+	}
+	if !strings.Contains(strictAppendSystemPrompt, "Write") || !strings.Contains(strictAppendSystemPrompt, "Edit") {
+		t.Error("strictAppendSystemPrompt should point the model at Write/Edit tools")
+	}
+	if !strings.Contains(strictAppendSystemPrompt, "DECIDED") {
+		t.Error("strictAppendSystemPrompt should reinforce the DECIDED protocol")
+	}
 }
 
 func TestMapModel(t *testing.T) {

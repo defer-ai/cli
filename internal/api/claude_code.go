@@ -62,6 +62,65 @@ type ClaudeCodeProvider struct {
 	sessionID    string   // Claude session ID (persisted in .defer/)
 	AllowedTools []string // if set, restricts which tools the subprocess can use
 	Effort       string   // "low", "medium", "high", "max" — passed via --effort
+	// StrictMode enables the executor-hardening bundle: Bash removed from
+	// the toolkit, a PreToolUse hook reminder on every Write/Edit, and a
+	// system-prompt appendix explaining the restriction. Enabled by default
+	// for the executor phase (via executor.freshProvider) after a 5×2 bench
+	// on a Flask task showed it improves inline narration from 0% to 14%
+	// tool-anchored with a 20% mean inline increase and a 14% speed-up.
+	// Env var overrides (DEFER_CLAUDE_SETTINGS, DEFER_CLAUDE_DISALLOWED_TOOLS,
+	// DEFER_CLAUDE_APPEND_SYSTEM_PROMPT) take precedence over strict's
+	// defaults when set.
+	StrictMode bool
+}
+
+// strictAppendSystemPrompt is the per-invocation appendix the executor adds
+// when StrictMode is on. It explains why Bash is gone and reinforces the
+// DECIDED-between-writes protocol.
+const strictAppendSystemPrompt = "IMPORTANT: The Bash tool is not available in this environment. You must use the Write and Edit tools exclusively for file creation and modification. After any Write or Edit you must emit DECIDED lines before calling another tool."
+
+// strictHookSettingsJSON is the Claude Code settings payload that installs
+// a PreToolUse hook on Write/Edit/MultiEdit/NotebookEdit. The hook's command
+// prints a JSON hookSpecificOutput block with an additionalContext reminder
+// — the only format Claude Code feeds back into the conversation (plain
+// stdout is silently discarded).
+const strictHookSettingsJSON = `{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s' '{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"additionalContext\": \"[STOP: Before this file modification executes, emit one or more DECIDED lines covering the choices you are about to materialize. Format: DECIDED: category | question | chosen | alternatives | reason. The file write will proceed after you emit the narration.]\"}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
+`
+
+// ensureStrictHookFile writes the strict hook settings to ~/.defer/strict-hook.json
+// if it's not already present and returns the absolute path. The file is
+// shared across defer invocations — we write it once per host install.
+func ensureStrictHookFile() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(home, ".defer")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "strict-hook.json")
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
+	if err := os.WriteFile(path, []byte(strictHookSettingsJSON), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // NewClaudeCodeProvider creates a subprocess provider using the current working directory.
@@ -131,33 +190,42 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 	if p.Effort != "" {
 		args = append(args, "--effort", p.Effort)
 	}
-	// DEFER_CLAUDE_SETTINGS is a bench-only hook for injecting extra
-	// Claude Code settings (e.g. PostToolUse hooks) without modifying
-	// the user's ~/.claude/settings.json globally. Set it to a JSON file
-	// path and --settings will be appended to the claude invocation.
-	if extra := os.Getenv("DEFER_CLAUDE_SETTINGS"); extra != "" {
-		args = append(args, "--settings", extra)
+	// Settings file: env var override first, then strict-mode default.
+	// DEFER_CLAUDE_SETTINGS forces a specific --settings file (used by bench
+	// experiments). When unset and StrictMode is on, we write/reuse the
+	// canonical strict-hook.json under ~/.defer and pass that.
+	settingsPath := os.Getenv("DEFER_CLAUDE_SETTINGS")
+	if settingsPath == "" && p.StrictMode {
+		if hookPath, err := ensureStrictHookFile(); err == nil {
+			settingsPath = hookPath
+		}
 	}
-	// DEFER_CLAUDE_ALLOWED_TOOLS is a bench-only override for the executor's
-	// tool access. Only applies when the provider doesn't already restrict
-	// tools. NOTE: this flag is effectively a no-op when combined with
-	// --dangerously-skip-permissions — Claude Code keeps the full toolkit
-	// available regardless. Use DEFER_CLAUDE_DISALLOWED_TOOLS for real
-	// restriction.
+	if settingsPath != "" {
+		args = append(args, "--settings", settingsPath)
+	}
+	// Allowed tools: env var first (no-op under --dangerously-skip-permissions
+	// but kept for completeness), then provider.AllowedTools. This is the
+	// permissive list for decompose/chat phases.
 	if envTools := os.Getenv("DEFER_CLAUDE_ALLOWED_TOOLS"); envTools != "" && len(p.AllowedTools) == 0 {
 		args = append(args, "--allowedTools", envTools)
 	}
-	// DEFER_CLAUDE_DISALLOWED_TOOLS is the working way to strip tools from
-	// the executor, even with --dangerously-skip-permissions. Passes
-	// --disallowedTools which actually removes the tools from the session.
-	if envDisallow := os.Getenv("DEFER_CLAUDE_DISALLOWED_TOOLS"); envDisallow != "" {
-		args = append(args, "--disallowedTools", envDisallow)
+	// Disallowed tools: env var override, then strict-mode default of "Bash".
+	// --disallowedTools actually removes the tool from the session even
+	// under --dangerously-skip-permissions.
+	disallowed := os.Getenv("DEFER_CLAUDE_DISALLOWED_TOOLS")
+	if disallowed == "" && p.StrictMode {
+		disallowed = "Bash"
 	}
-	// DEFER_CLAUDE_APPEND_SYSTEM_PROMPT adds extra instructions on top of
-	// the system prompt without replacing it. Used by bench experiments to
-	// inject per-variant guidance (e.g. "don't use bash redirects").
-	if extraPrompt := os.Getenv("DEFER_CLAUDE_APPEND_SYSTEM_PROMPT"); extraPrompt != "" {
-		args = append(args, "--append-system-prompt", extraPrompt)
+	if disallowed != "" {
+		args = append(args, "--disallowedTools", disallowed)
+	}
+	// Append-system-prompt: env var override, then strict-mode default.
+	appendPrompt := os.Getenv("DEFER_CLAUDE_APPEND_SYSTEM_PROMPT")
+	if appendPrompt == "" && p.StrictMode {
+		appendPrompt = strictAppendSystemPrompt
+	}
+	if appendPrompt != "" {
+		args = append(args, "--append-system-prompt", appendPrompt)
 	}
 	// AllowedTools restricts which tools the subprocess can use per-phase:
 	// - Decomposition: read-only (no Write/Edit)
