@@ -11,7 +11,7 @@ type CareLevel string
 // (ExecutePromptTemplate) is the skill-based version that won the most
 // recent comparison; "rules" is kept as a regression baseline.
 //
-// Variants lifted from the superpowers skill suite (see PROMPT_FINDINGS.md):
+// Variants lifted from the superpowers skill suite:
 //   - "guarded":    base + rationalization table + red flags list
 //   - "escalation": DEPRECATED — benchmark showed this suppresses total
 //                   decision count by 3x (15 vs 50). The CONCERNS/when-stuck
@@ -179,8 +179,6 @@ array now.`
 // output ("you narrate each choice as an architect would") rather than a
 // list of prohibitions, which prevents the model from treating the protocol
 // as a checkbox to surface-pattern-match.
-//
-// See PROMPT_FINDINGS.md for the experiment writeup.
 const ExecutePromptTemplate = `You are a senior engineer implementing %s in the current working directory.
 
 %s
@@ -330,9 +328,9 @@ The "features" field is an array of lowercase feature names this decision relate
 
 // ExecutePromptVariantGuarded layers a rationalization table and red-flags
 // list onto ExecutePromptTemplate. Hypothesis: the role frame is strong but
-// the model still rationalizes away narration under time pressure (the 56→13
-// persistence gap from PROMPT_FINDINGS hints at this). Naming the specific
-// excuses gives the model a checklist for self-correction in real time.
+// the model still rationalizes away narration under time pressure. Naming
+// the specific excuses gives the model a checklist for self-correction in
+// real time.
 const ExecutePromptVariantGuarded = `You are a senior engineer implementing %s in the current working directory.
 
 %s
