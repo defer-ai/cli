@@ -27,6 +27,13 @@ var benchmarkCmd = &cobra.Command{
 			return err
 		}
 
+		// Apply --effort to the provider if it's a Claude Code provider.
+		// Benchmark bypasses the normal TUI entry point that handles this,
+		// so wire it up directly here.
+		if cc, ok := p.(*api.ClaudeCodeProvider); ok && effort != "" {
+			cc.SetEffort(effort)
+		}
+
 		return runBenchmark(task, p, cwd)
 	},
 }
@@ -71,22 +78,19 @@ func runBenchmark(task string, provider api.Provider, cwd string) error {
 		fmt.Printf("  [%s] %-12s %s → %s\n", d.ID, d.Category, d.Question, status)
 	}
 
-	// --- Phase 2: Set mixed care levels ---
+	// --- Phase 2: Set care levels ---
+	// All categories set to auto for deterministic measurement. Previously
+	// the bench randomly flipped the first category (via Go map iteration)
+	// to "review", which caused that category's inline DECIDED lines to be
+	// demoted to PENDING by storeDecision's care-level filter — a huge
+	// source of run-to-run variance in the "inline" metric. All-auto lets
+	// every inline DECIDED land as intended.
 	fmt.Println("\n═══ PHASE 2: CARE LEVELS ═══")
 	groups := agent.GroupByCategory(decisions)
 	priorities := make(map[string]agent.CareLevel)
-
-	// Set first category to "review", rest to "auto"
-	first := true
 	for cat := range groups {
-		if first {
-			priorities[cat] = agent.CareLevelReview
-			fmt.Printf("  %-12s → REVIEW (will require user input)\n", cat)
-			first = false
-		} else {
-			priorities[cat] = agent.CareLevelAuto
-			fmt.Printf("  %-12s → auto\n", cat)
-		}
+		priorities[cat] = agent.CareLevelAuto
+		fmt.Printf("  %-12s → auto\n", cat)
 	}
 
 	mgr.AutoDecide(priorities)
