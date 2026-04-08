@@ -28,7 +28,6 @@ func TestExecutePromptForVariantSelection(t *testing.T) {
 		{"rules", "CRITICAL RULES"},
 		{"anchor", "PROTOCOL — non-negotiable"},
 		{"guarded", "COMMON RATIONALIZATIONS"},
-		{"escalation", "WHEN STUCK"},
 		{"full", "COMMON RATIONALIZATIONS"},
 	}
 	for _, tc := range cases {
@@ -42,20 +41,36 @@ func TestExecutePromptForVariantSelection(t *testing.T) {
 	}
 }
 
+// TestEscalationDeprecated — after the 3×4 benchmark showed the escalation
+// variant suppresses total decision count by 3x, it was removed from the
+// dispatcher and routes to the default prompt instead. This guards the
+// deprecation so the harmful variant can't accidentally be reactivated.
+func TestEscalationDeprecated(t *testing.T) {
+	t.Setenv("DEFER_EXEC_VARIANT", "escalation")
+	if ExecutePromptForVariant() != ExecutePromptTemplate {
+		t.Error("escalation variant should fall back to default (deprecated)")
+	}
+}
+
 // TestExecutePromptVariantFullHasBothLayers — the "full" variant must contain
-// markers from both the guarded layer (rationalizations) and the escalation
-// layer (when-stuck table). Otherwise the combination is broken.
+// markers from both the guarded layer (rationalizations + red flags) and the
+// anchor layer (tool-anchored protocol). Otherwise the combination is broken.
+// Previously "full" was guarded+escalation; rebuilt to guarded+anchor after
+// escalation tested as actively harmful.
 func TestExecutePromptVariantFullHasBothLayers(t *testing.T) {
 	t.Setenv("DEFER_EXEC_VARIANT", "full")
 	got := ExecutePromptForVariant()
 	if !strings.Contains(got, "COMMON RATIONALIZATIONS") {
 		t.Error("full variant missing the guarded layer (rationalizations)")
 	}
-	if !strings.Contains(got, "WHEN STUCK") {
-		t.Error("full variant missing the escalation layer (when-stuck table)")
+	if !strings.Contains(got, "RED FLAGS") {
+		t.Error("full variant missing the guarded layer (red flags)")
 	}
-	if !strings.Contains(got, "CONCERNS:") {
-		t.Error("full variant missing CONCERNS escalation status")
+	if !strings.Contains(got, "PROTOCOL — non-negotiable") {
+		t.Error("full variant missing the anchor layer (tool-anchored protocol)")
+	}
+	if !strings.Contains(got, "After EVERY Write or Edit tool result") {
+		t.Error("full variant missing the anchor layer's tool-boundary requirement")
 	}
 }
 

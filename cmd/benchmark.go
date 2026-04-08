@@ -116,7 +116,8 @@ func runBenchmark(task string, provider api.Provider, cwd string) error {
 	// Track unique DECIDED/PENDING lines as they appear in agent output.
 	// Each line counted exactly once, in the order it first appears.
 	seenLines := map[string]bool{}
-	var inlineDecidedOrder []int    // for each DECIDED line, the toolCallCount at the moment it appeared
+	var inlineDecidedOrder []int // for each DECIDED line, the toolCallCount at the moment it appeared
+	var writePositions []int     // toolCallCount at the moment each Write/Edit happened
 	var inlineDecidedCount int
 	var inlinePendingCount int
 
@@ -179,10 +180,15 @@ func runBenchmark(task string, provider api.Provider, cwd string) error {
 			desc := strings.ToLower(ev.ToolActivity)
 			// HumanDescription uses "Creating X" (Write), "Editing X" (Edit),
 			// "Running: ..." (Bash). Match the verbs.
-			if strings.HasPrefix(desc, "creating ") ||
-				strings.HasPrefix(desc, "editing ") ||
-				strings.HasPrefix(desc, "running:") {
+			isFileWrite := strings.HasPrefix(desc, "creating ") || strings.HasPrefix(desc, "editing ")
+			if isFileWrite || strings.HasPrefix(desc, "running:") {
 				writeCount++
+			}
+			if isFileWrite {
+				// Record Write/Edit positions so we can check whether the
+				// agent followed the tool-anchored protocol (DECIDED line
+				// emitted between this write and the next tool call).
+				writePositions = append(writePositions, toolCallCount)
 			}
 
 		case agent.ExecDecisionStored:
@@ -284,15 +290,84 @@ func runBenchmark(task string, provider api.Provider, cwd string) error {
 			fromExec, writeCount, float64(fromExec)/float64(writeCount)*100)
 	}
 
+	// Per-quartile breakdown — finer-grained than the binary "first half /
+	// second half" check above. Lets us tell "constant flow" from
+	// "front-loaded" from "tail-batched".
+	if len(inlineDecidedOrder) >= 1 && toolCallCount > 0 {
+		quartiles := [4]int{}
+		for _, pos := range inlineDecidedOrder {
+			q := (pos * 4) / toolCallCount
+			if q > 3 {
+				q = 3
+			}
+			quartiles[q]++
+		}
+		fmt.Printf("quartiles:         Q1=%d Q2=%d Q3=%d Q4=%d (inline DECIDED count per quartile of run)\n",
+			quartiles[0], quartiles[1], quartiles[2], quartiles[3])
+	}
+
+	// Tool-anchored behavior: for each Write/Edit, did a DECIDED line appear
+	// before the next tool call? This is the key metric for the prompt
+	// protocol the "anchor" and "full" variants target — it measures real
+	// between-tool-call narration, not batching in planning blocks.
+	if len(writePositions) > 0 {
+		decidedAtPos := map[int]int{}
+		for _, pos := range inlineDecidedOrder {
+			decidedAtPos[pos]++
+		}
+		anchored := 0
+		totalAnchoredDecided := 0
+		for _, wp := range writePositions {
+			if n, ok := decidedAtPos[wp]; ok && n > 0 {
+				anchored++
+				totalAnchoredDecided += n
+			}
+		}
+		anchorRatio := float64(anchored) / float64(len(writePositions))
+		fmt.Printf("tool_anchored:     %d/%d writes (%.0f%%) had a DECIDED emitted before the next tool call\n",
+			anchored, len(writePositions), anchorRatio*100)
+		fmt.Printf("anchored_decided:  %d DECIDED lines landed between a write and the next tool\n",
+			totalAnchoredDecided)
+	}
+
+	// Inline positions as a comma-separated list of toolCallCount values at
+	// the moment each DECIDED line was first seen. Lets external tools
+	// reconstruct the full distribution.
+	posStrs := make([]string, 0, len(inlineDecidedOrder))
+	for _, pos := range inlineDecidedOrder {
+		posStrs = append(posStrs, fmt.Sprintf("%d", pos))
+	}
+	fmt.Printf("inline_positions:  %s (out of %d tool calls)\n",
+		strings.Join(posStrs, ","), toolCallCount)
+
 	// Machine-readable summary line for scripting
-	fmt.Printf("\nBENCH_RESULT total=%d inline=%d writes=%d tools=%d inline_ratio=%.3f decisions_per_write=%.3f\n",
-		fromExec, inlineDecidedCount, writeCount, toolCallCount, inlineRatio,
+	anchoredWrites := 0
+	anchoredDecidedLines := 0
+	if len(writePositions) > 0 {
+		decidedAtPos := map[int]int{}
+		for _, pos := range inlineDecidedOrder {
+			decidedAtPos[pos]++
+		}
+		for _, wp := range writePositions {
+			if n, ok := decidedAtPos[wp]; ok && n > 0 {
+				anchoredWrites++
+				anchoredDecidedLines += n
+			}
+		}
+	}
+	anchorRatio := 0.0
+	if len(writePositions) > 0 {
+		anchorRatio = float64(anchoredWrites) / float64(len(writePositions))
+	}
+	fmt.Printf("\nBENCH_RESULT total=%d inline=%d writes=%d file_writes=%d tools=%d inline_ratio=%.3f decisions_per_write=%.3f anchored_writes=%d anchored_decided=%d anchor_ratio=%.3f\n",
+		fromExec, inlineDecidedCount, writeCount, len(writePositions), toolCallCount, inlineRatio,
 		func() float64 {
 			if writeCount == 0 {
 				return 0
 			}
 			return float64(inlineDecidedCount) / float64(writeCount)
 		}(),
+		anchoredWrites, anchoredDecidedLines, anchorRatio,
 	)
 
 	// Dump all final decisions

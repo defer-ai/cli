@@ -13,8 +13,14 @@ type CareLevel string
 //
 // Variants lifted from the superpowers skill suite (see PROMPT_FINDINGS.md):
 //   - "guarded":    base + rationalization table + red flags list
-//   - "escalation": base + when-stuck table + CONCERNS status
-//   - "full":       guarded + escalation combined
+//   - "escalation": DEPRECATED — benchmark showed this suppresses total
+//                   decision count by 3x (15 vs 50). The CONCERNS/when-stuck
+//                   escape hatches let the model route choices to silent
+//                   reasoning. Kept in code for regression but no longer
+//                   routed through the dispatcher — falls back to default.
+//   - "full":       guarded + anchor (rationalization push + tool-anchored
+//                   protocol). Was previously guarded+escalation; rebuilt
+//                   after the escalation layer tested as actively harmful.
 func ExecutePromptForVariant() string {
 	switch os.Getenv("DEFER_EXEC_VARIANT") {
 	case "rules":
@@ -23,8 +29,6 @@ func ExecutePromptForVariant() string {
 		return ExecutePromptVariantAnchor
 	case "guarded":
 		return ExecutePromptVariantGuarded
-	case "escalation":
-		return ExecutePromptVariantEscalation
 	case "full":
 		return ExecutePromptVariantFull
 	default:
@@ -440,31 +444,35 @@ uncertainty, follow it with one or more CONCERNS: lines.
 
 Follow the listed decisions exactly. Files in the current working directory only.`
 
-// ExecutePromptVariantFull combines the guarded and escalation variants on
-// top of ExecutePromptTemplate. This is the heaviest variant; benchmark it
-// against the lighter ones to see whether the additional guardrails earn
-// their token cost.
+// ExecutePromptVariantFull combines the guarded and anchor variants:
+// rationalization-table pushback (to close excuse paths) plus the
+// tool-anchored protocol (to break the batching-in-planning-blocks
+// pattern the 3×4 benchmark exposed — every variant emitted decisions
+// in 1-2 bursts, never between tool calls).
+//
+// The earlier iteration of "full" combined guarded+escalation, but
+// the benchmark showed the escalation layer actively suppresses
+// total decision count (mean 15 vs 50) by routing choices to silent
+// reasoning via CONCERNS. This rebuild drops escalation entirely and
+// adds the anchor layer instead.
 const ExecutePromptVariantFull = `You are a senior engineer implementing %s in the current working directory.
 
 %s
 
-You work like an architect who narrates each choice as you make it. When you
-create a file, you briefly note why it lives there, what it does, which patterns
-it uses, and what alternatives you considered — in a single-line structured
-format that the team can review later.
+PROTOCOL — non-negotiable, structural rule:
 
-The format you narrate in is:
+After EVERY Write or Edit tool result, the FIRST text of your next message
+must begin with "DECIDED:". You may emit multiple DECIDED lines in a row.
+Only after at least one DECIDED line may you call another tool.
+
+DECIDED line format (one per line, pipe-separated):
 
   DECIDED: category | what was the choice | what you chose | what you considered | one-line reason
 
 A "choice" is any time you picked one option over another — a file location,
-a package, a pattern, a name, a default value, what to include or what to leave
-out. There's no such thing as an "obvious" choice; what's obvious to you is
-opaque to whoever maintains this next.
-
-Engineers who narrate well typically produce 4-8 DECIDED lines per file they
-write. They narrate naturally, alongside their work, not as a separate step.
-The narration is part of how they think, not a tax on top.
+a package, a pattern, a name, a default value, what to include or what to
+leave out. There's no such thing as an "obvious" choice; what's obvious to
+you is opaque to whoever maintains this next.
 
 COMMON RATIONALIZATIONS — these are excuses, not reasons to skip:
   "This choice is obvious"          → Obvious to you ≠ obvious to maintainers.
@@ -488,29 +496,9 @@ Two notes:
 - If you genuinely lack context to make a choice, request it:
     RESEARCH: question | what to investigate
 
-WHEN STUCK — use the channel that fits, don't guess:
-  Two valid approaches and you can't pick?
-    → PENDING with both options as the human's choice.
-  Missing information from the codebase or task?
-    → RESEARCH with what you'd investigate.
-  An existing decision conflicts with what the code already does?
-    → PENDING; ask the human which to follow.
-  Tried 3+ times to make something work and it keeps failing?
-    → PENDING; flag it as a likely architectural issue, don't keep retrying.
+Read-only tools (Read, Glob, Grep) do NOT require DECIDED lines.
 
-If the implementation is complete but you still have uncertainty about a
-specific choice, flag it as you finish:
-
-  CONCERNS: what you're unsure about | what you would investigate next
-
-CONCERNS lets you finish the work without blocking on every doubt while still
-surfacing judgment calls for the human reviewer. Use it sparingly — most work
-should end with a clean "Implementation complete." line.
-
-Read-only tools (Read, Glob, Grep) are not choices and don't need narration.
-
-When the work is done, say "Implementation complete." If you have unresolved
-uncertainty, follow it with one or more CONCERNS: lines.
+When the work is done, say "Implementation complete."
 
 Follow the listed decisions exactly. Files in the current working directory only.`
 
