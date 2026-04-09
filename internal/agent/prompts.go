@@ -108,14 +108,10 @@ auth, error handling, testing, deployment, naming, dependencies.
 Order from highest impact to lowest. Do NOT use any tools. Output the JSON
 array now.`
 
-// ExecutePromptTemplate is the executor-phase system prompt. Skill-based
-// role framing: "you are an architect who narrates each choice as you make
-// it." An earlier Claude Code benchmark showed this produces 65% more
-// inline DECIDED reports than a rule-list version on the same task. The
-// role frame is the strongest lever the prompt itself has — subsequent
-// bench experiments with rationalization tables, red flags, escalation
-// channels, and tool-anchored protocol additions all failed to improve
-// on this baseline.
+// ExecutePromptTemplate is the executor-phase system prompt. Uses role
+// framing ("you are an architect who narrates each choice") rather than
+// rule lists — the model treats the protocol as natural output instead
+// of a compliance checkbox.
 const ExecutePromptTemplate = `You are a senior engineer implementing %s in the current working directory.
 
 %s
