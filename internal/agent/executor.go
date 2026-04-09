@@ -338,7 +338,7 @@ func (e *Executor) simpleCompletion(ctx context.Context, systemPrompt, userMsg s
 
 
 func (e *Executor) execute(ctx context.Context, decSummary string) string {
-	systemPrompt := fmt.Sprintf(ExecutePromptForVariant(), e.domain, CarePrompts[e.careLevel])
+	systemPrompt := fmt.Sprintf(ExecutePromptTemplate, e.domain, CarePrompts[e.careLevel])
 
 	// Build care level context for the prompt
 	var careLevelCtx strings.Builder
@@ -530,7 +530,7 @@ func (e *Executor) verify(ctx context.Context, output, decSummary string) string
 	msg := fmt.Sprintf("Domain: %s\nTask: %s\nDecisions:\n%s\n\nImplementation:\n%s",
 		e.domain, e.task, decSummary, truncated)
 
-	resp, err := e.simpleCompletion(ctx, VerifyPromptForVariant(), msg)
+	resp, err := e.simpleCompletion(ctx, VerifyPrompt, msg)
 	if err != nil {
 		return ""
 	}
@@ -542,7 +542,7 @@ func (e *Executor) verify(ctx context.Context, output, decSummary string) string
 }
 
 func (e *Executor) fix(ctx context.Context, issues, decSummary string) string {
-	systemPrompt := fmt.Sprintf(ExecutePromptForVariant(), e.domain, CarePrompts[e.careLevel])
+	systemPrompt := fmt.Sprintf(ExecutePromptTemplate, e.domain, CarePrompts[e.careLevel])
 	userMsg := fmt.Sprintf("Verification found issues:\n%s\n\nFix these now.", issues)
 
 	events := make(chan api.Event, 100)
@@ -576,7 +576,7 @@ func (e *Executor) extract(ctx context.Context, output string) {
 	}
 	msg := fmt.Sprintf("Domain: %s\n\nImplementation output:\n%s", e.domain, truncated)
 
-	resp, err := e.simpleCompletion(ctx, ExtractPromptForVariant(), msg)
+	resp, err := e.simpleCompletion(ctx, ExtractPrompt, msg)
 	if err != nil {
 		return
 	}
