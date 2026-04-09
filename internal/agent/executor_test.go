@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -697,4 +698,137 @@ func TestStreamingLineSplitSimulation(t *testing.T) {
 	if *(*e.allDecisions)[0].Answer != "Go" {
 		t.Errorf("answer = %q, want Go", *(*e.allDecisions)[0].Answer)
 	}
+}
+
+// TestSyncDecisionsFromDiskPicksUpMCPWrites is the regression guard for
+// the bug where MCP subprocess writes to .defer/decisions.json never
+// made it to the TUI. The MCP server writes directly to disk from its
+// subprocess, so the in-memory allDecisions slice goes stale unless
+// the executor explicitly reloads after each tool call. This test
+// simulates that scenario: pre-seed a store on disk with a new
+// decision the executor doesn't know about, call
+// syncDecisionsFromDisk, and verify it's been appended to allDecisions
+// and that an ExecDecisionStored event was emitted.
+func TestSyncDecisionsFromDiskPicksUpMCPWrites(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Write a store containing a decision the executor has never seen.
+	answer := "bin/server"
+	store := &decision.DecisionStore{
+		Task: "test",
+		Decisions: []decision.Decision{
+			{ID: "BUI-0001", Category: "Build", Question: "binary location",
+				Answer: &answer, Source: "agent"},
+		},
+	}
+	if err := decision.SaveStore(tmpDir, store); err != nil {
+		t.Fatalf("SaveStore: %v", err)
+	}
+
+	// Build an executor pointing at the tmpDir with an empty in-memory
+	// decisions slice — simulating "MCP just wrote, but the executor
+	// hasn't synced yet".
+	allDecs := []decision.Decision{}
+	var captured []Event
+	e := &Executor{
+		cwd:          tmpDir,
+		allDecisions: &allDecs,
+		onEvent:      func(ev Event) { captured = append(captured, ev) },
+		state:        ExecState{ID: "test-exec", Domain: "Build"},
+	}
+
+	e.syncDecisionsFromDisk()
+
+	// The new decision should now be in the in-memory slice.
+	if len(*e.allDecisions) != 1 {
+		t.Fatalf("after sync: expected 1 decision in allDecisions, got %d", len(*e.allDecisions))
+	}
+	if (*e.allDecisions)[0].ID != "BUI-0001" {
+		t.Errorf("synced decision ID = %q, want BUI-0001", (*e.allDecisions)[0].ID)
+	}
+
+	// And an ExecDecisionStored event should have fired so the TUI
+	// picks it up.
+	var storedEvents int
+	for _, ev := range captured {
+		if ev.Type == ExecDecisionStored {
+			storedEvents++
+		}
+	}
+	if storedEvents != 1 {
+		t.Errorf("ExecDecisionStored events = %d, want 1", storedEvents)
+	}
+}
+
+// TestSyncDecisionsFromDiskSkipsKnownIDs — if a decision is already in
+// the in-memory slice, syncing should leave it alone and NOT emit a
+// duplicate ExecDecisionStored event. This prevents event storms when
+// sync is called on every tool call but no new decisions exist.
+func TestSyncDecisionsFromDiskSkipsKnownIDs(t *testing.T) {
+	tmpDir := t.TempDir()
+	answer := "Go"
+	store := &decision.DecisionStore{
+		Task: "test",
+		Decisions: []decision.Decision{
+			{ID: "STA-0001", Category: "Stack", Question: "lang", Answer: &answer, Source: "agent"},
+		},
+	}
+	if err := decision.SaveStore(tmpDir, store); err != nil {
+		t.Fatalf("SaveStore: %v", err)
+	}
+
+	// Pre-populate the in-memory slice with the same decision (by ID).
+	allDecs := []decision.Decision{
+		{ID: "STA-0001", Category: "Stack", Question: "lang", Answer: &answer, Source: "user"},
+	}
+	var captured []Event
+	e := &Executor{
+		cwd:          tmpDir,
+		allDecisions: &allDecs,
+		onEvent:      func(ev Event) { captured = append(captured, ev) },
+		state:        ExecState{ID: "test-exec", Domain: "Stack"},
+	}
+
+	e.syncDecisionsFromDisk()
+
+	// Slice should still have exactly 1 entry — the existing one, not
+	// duplicated from disk.
+	if len(*e.allDecisions) != 1 {
+		t.Errorf("allDecisions should still have 1 entry, got %d", len(*e.allDecisions))
+	}
+	// No events should have fired.
+	for _, ev := range captured {
+		if ev.Type == ExecDecisionStored {
+			t.Error("ExecDecisionStored should not fire when the id already exists in memory")
+		}
+	}
+}
+
+// TestSyncDecisionsFromDiskHandlesMissingStore — if .defer/decisions.json
+// doesn't exist, sync should be a no-op instead of panicking. This is
+// the startup case where the executor tool call fires before anything
+// has been written.
+func TestSyncDecisionsFromDiskHandlesMissingStore(t *testing.T) {
+	tmpDir := t.TempDir()
+	// No .defer/decisions.json written.
+	allDecs := []decision.Decision{}
+	var captured []Event
+	e := &Executor{
+		cwd:          tmpDir,
+		allDecisions: &allDecs,
+		onEvent:      func(ev Event) { captured = append(captured, ev) },
+		state:        ExecState{ID: "test-exec", Domain: "Test"},
+	}
+
+	// Should not panic, should not produce events, should not modify the
+	// slice.
+	e.syncDecisionsFromDisk()
+
+	if len(*e.allDecisions) != 0 {
+		t.Errorf("allDecisions should still be empty, got %d entries", len(*e.allDecisions))
+	}
+	if len(captured) != 0 {
+		t.Errorf("no events should fire, got %d", len(captured))
+	}
+	// Silence unused import warning if filepath isn't referenced elsewhere.
+	_ = filepath.Join
 }

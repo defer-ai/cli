@@ -404,6 +404,16 @@ func (e *Executor) execute(ctx context.Context, decSummary string) string {
 				})
 			}
 
+		case api.EventToolCallDone:
+			// When ANY tool call completes, sync the in-memory decision
+			// store from disk. The MCP gated-write tools (register_decision,
+			// write_file) mutate .defer/decisions.json directly from their
+			// subprocess, so defer's in-memory state goes stale unless we
+			// reload. Doing this on every tool call is cheap (single file
+			// read + JSON parse + diff against allDecisions) and gives the
+			// TUI near-instant updates as the executor runs.
+			e.syncDecisionsFromDisk()
+
 		case api.EventPermissionRequest:
 			if ev.PermissionReq != nil {
 				e.onEvent(Event{
@@ -889,6 +899,56 @@ func (e *Executor) storeDecisionAndSave(d decision.Decision) {
 func (e *Executor) storeDecisions(decs []decision.Decision) {
 	for _, d := range decs {
 		e.storeDecision(d)
+	}
+}
+
+// syncDecisionsFromDisk reloads .defer/decisions.json and appends any
+// decisions that aren't already in the shared in-memory slice. It's
+// called after every Claude Code tool call completes so the TUI sees
+// decisions written by MCP subprocess tools (register_decision) in
+// near-real-time.
+//
+// Existing decisions are NOT mutated — that would fight with changes
+// the TUI has made via user review. We only add new ones. If a tool on
+// the subprocess side updates an existing decision's answer, that
+// reconciliation needs to go through confirm_decision instead.
+//
+// Cheap to call: single file read, JSON parse, set lookup per decision.
+// Safe to call concurrently because we take e.mu and decision.SaveStore
+// uses its own file lock elsewhere.
+func (e *Executor) syncDecisionsFromDisk() {
+	store, err := decision.LoadStore(e.cwd)
+	if err != nil || store == nil {
+		return
+	}
+
+	e.mu.Lock()
+	// Build a set of IDs already in the in-memory slice. We don't hold
+	// the lock for LoadStore (file I/O) but we do for the diff and
+	// append, which is the correctness-critical part.
+	existing := make(map[string]bool, len(*e.allDecisions))
+	for _, d := range *e.allDecisions {
+		existing[d.ID] = true
+	}
+
+	var added []decision.Decision
+	for _, d := range store.Decisions {
+		if existing[d.ID] {
+			continue
+		}
+		*e.allDecisions = append(*e.allDecisions, d)
+		added = append(added, d)
+	}
+	e.mu.Unlock()
+
+	// Emit ExecDecisionStored AFTER releasing the lock so the TUI
+	// handler can update its own state without a nested lock ordering.
+	for _, d := range added {
+		e.onEvent(Event{
+			Type:       ExecDecisionStored,
+			ExecutorID: e.state.ID,
+			Decisions:  []decision.Decision{d},
+		})
 	}
 }
 

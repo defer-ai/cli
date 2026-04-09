@@ -454,6 +454,30 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 				}
 			}
 
+		case "user":
+			// Claude Code emits user messages to deliver tool results back
+			// to the model. Each tool_result block carries the tool_use_id
+			// and the result content. Emit EventToolCallDone so listeners
+			// (the executor) can react to tool completion — notably, to
+			// reload .defer/decisions.json after mcp__defer__register_decision
+			// has written a new decision to disk.
+			if msg, ok := event["message"].(map[string]interface{}); ok {
+				if content, ok := msg["content"].([]interface{}); ok {
+					for _, block := range content {
+						b, ok := block.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						if t, _ := b["type"].(string); t != "tool_result" {
+							continue
+						}
+						id, _ := b["tool_use_id"].(string)
+						tc := &ToolCall{ID: id}
+						events <- Event{Type: EventToolCallDone, ToolCall: tc}
+					}
+				}
+			}
+
 		case "result":
 			if sid, ok := event["session_id"].(string); ok {
 				p.sessionID = sid
