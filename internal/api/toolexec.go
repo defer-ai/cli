@@ -102,7 +102,56 @@ func (tc *ToolCall) HumanDescription() string {
 		return "Editing notebook..."
 	case "LSP":
 		return "Querying language server..."
+	// --- Defer MCP gated-write tools ---
+	case "mcp__defer__register_decision":
+		var in struct {
+			Category string `json:"category"`
+			Question string `json:"question"`
+			Chosen   string `json:"chosen"`
+		}
+		json.Unmarshal(tc.Input, &in)
+		q := in.Question
+		if len(q) > 60 {
+			q = q[:57] + "..."
+		}
+		if q != "" && in.Chosen != "" {
+			return fmt.Sprintf("%s: %s → %s", in.Category, q, in.Chosen)
+		}
+		if q != "" {
+			return fmt.Sprintf("Deciding: %s", q)
+		}
+		return "Registering decision"
+	case "mcp__defer__write_file":
+		var in struct {
+			Path        string   `json:"path"`
+			DecisionIDs []string `json:"decision_ids"`
+		}
+		json.Unmarshal(tc.Input, &in)
+		if in.Path != "" {
+			return fmt.Sprintf("Writing %s (%d decisions)", filepath.Base(in.Path), len(in.DecisionIDs))
+		}
+		return "Writing file"
+	case "mcp__defer__read_decisions":
+		return "Reading decisions"
+	case "mcp__defer__list_pending":
+		return "Checking pending decisions"
+	case "mcp__defer__confirm_decision":
+		return "Confirming decision"
+	case "mcp__defer__update_decision":
+		return "Updating decision"
+	case "mcp__defer__get_session_state":
+		return "Checking session state"
+	case "mcp__defer__get_decision_tree":
+		return "Viewing decision tree"
 	default:
+		// Strip mcp__ prefix for any unrecognized MCP tools so the UI
+		// doesn't show raw protocol-internal names.
+		if strings.HasPrefix(tc.Name, "mcp__") {
+			parts := strings.SplitN(tc.Name, "__", 3)
+			if len(parts) == 3 {
+				return strings.ReplaceAll(parts[2], "_", " ")
+			}
+		}
 		return tc.Name
 	}
 }

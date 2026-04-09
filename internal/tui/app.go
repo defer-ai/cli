@@ -1604,6 +1604,12 @@ func isTopicTool(desc string) bool {
 			return true
 		}
 	}
+	// File writes via MCP gated-write are top-level events (same visual
+	// weight as the old Write tool's "Creating <file>" description).
+	if strings.HasPrefix(lower, "writing ") {
+		return true
+	}
+
 	// Agent spawns with short imperative descriptions are topics
 	topicPrefixes := []string{
 		"explore ", "research ", "design ", "implement ",
