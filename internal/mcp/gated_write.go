@@ -33,9 +33,54 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/defer-ai/cli/internal/decision"
 )
+
+// normalizeForDedup strips a question down to lowercase alpha+space for
+// dedup matching. "HTTP router / framework?" → "http router framework".
+// This catches the most common duplicate scenario: decompose produces
+// "HTTP router / framework" and the executor re-registers the same
+// question with slightly different punctuation or casing.
+func normalizeForDedup(q string) string {
+	q = strings.ToLower(strings.TrimSpace(q))
+	var sb strings.Builder
+	prevSpace := false
+	for _, r := range q {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			sb.WriteRune(r)
+			prevSpace = false
+		} else if !prevSpace {
+			sb.WriteByte(' ')
+			prevSpace = true
+		}
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+// findExistingDecision returns the index of a decision in the store
+// whose normalized question matches the given one, or -1 if not found.
+func findExistingDecision(decs []decision.Decision, category, question string) int {
+	normQ := normalizeForDedup(question)
+	normCat := strings.ToLower(strings.TrimSpace(category))
+	for i, d := range decs {
+		// Same category (case-insensitive) AND same normalized question.
+		if strings.ToLower(strings.TrimSpace(d.Category)) == normCat &&
+			normalizeForDedup(d.Question) == normQ {
+			return i
+		}
+	}
+	// Fallback: match on question alone (cross-category) if the overlap
+	// is very high. This catches decompose using "Stack" and executor
+	// using "Technology" for the same question.
+	for i, d := range decs {
+		if normalizeForDedup(d.Question) == normQ {
+			return i
+		}
+	}
+	return -1
+}
 
 // toolRegisterDecision appends a new decision to the canonical store and
 // immediately resolves it with the chosen value. The response includes
@@ -80,9 +125,38 @@ func (s *Server) toolRegisterDecision(args json.RawMessage) callToolResult {
 			store = &decision.DecisionStore{Decisions: nil}
 		}
 
-		// Build the Options list with `chosen` as A and any alternatives
-		// as subsequent entries. This mirrors the shape the extract-phase
-		// tool produces so both end up merged consistently in the store.
+		// Dedup: if a decision with the same question already exists
+		// (from the decompose phase or a prior register_decision call),
+		// update it in place instead of creating a duplicate. This is
+		// the MCP equivalent of the executor's reconcile logic — the
+		// agent's register_decision call is ground truth about what it's
+		// about to write, so it should overwrite the decompose plan.
+		answer := params.Chosen
+		if idx := findExistingDecision(store.Decisions, params.Category, params.Question); idx >= 0 {
+			existing := &store.Decisions[idx]
+			existing.SetAnswer(answer, "agent")
+			if params.Reasoning != "" {
+				existing.Reasoning = params.Reasoning
+			}
+
+			if err := decision.SaveStore(s.cwd, store); err != nil {
+				result = errResult(fmt.Sprintf("save failed: %v", err))
+				return nil
+			}
+
+			out := map[string]interface{}{
+				"decision_id":     existing.ID,
+				"resolved_answer": answer,
+				"status":          "resolved",
+				"deduplicated":    true,
+			}
+			data, _ := json.MarshalIndent(out, "", "  ")
+			result = textResult(string(data))
+			return nil
+		}
+
+		// New decision — build the Options list with `chosen` as A and
+		// any alternatives as subsequent entries.
 		opts := []decision.DecisionOption{
 			{Key: "A", Label: params.Chosen},
 		}
@@ -97,7 +171,6 @@ func (s *Server) toolRegisterDecision(args json.RawMessage) callToolResult {
 		}
 
 		id := decision.NextID(store.Decisions, params.Category)
-		answer := params.Chosen
 		d := decision.Decision{
 			ID:        id,
 			Category:  params.Category,

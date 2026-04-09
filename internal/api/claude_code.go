@@ -104,6 +104,9 @@ FILE WRITE PROTOCOL — follow this for every file you need to create or modify:
 
 mcp__defer__write_file will REJECT calls with an empty decision_ids list or with ids that don't exist in the store — you must register first, write second. If you get a rejection, read the error message carefully: it tells you which ids were missing and directs you to register_decision. Do not retry with the same invalid ids.
 
+IMPORTANT — avoid duplicate decisions:
+Before registering a new decision, check the existing decisions (they are in your system prompt under "Decisions:" and also available via mcp__defer__read_decisions). If a decision about the same question already exists from the decompose phase, use its existing ID when calling write_file — do NOT re-register it. Only call register_decision for NEW choices not covered by the existing decisions list. If you do register a question that already exists, the tool will return the existing ID with "deduplicated": true.
+
 Do not attempt to use a "Write" or "Edit" tool — they are not in your toolkit. Use mcp__defer__write_file.`
 
 // strictAllowedTools is the comma-separated list of tool names that

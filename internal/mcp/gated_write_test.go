@@ -131,6 +131,53 @@ func TestRegisterDecisionStoresAlternatives(t *testing.T) {
 	}
 }
 
+func TestRegisterDecisionDeduplicatesExisting(t *testing.T) {
+	cwd := t.TempDir()
+	os.MkdirAll(filepath.Join(cwd, ".defer"), 0o755)
+
+	// Pre-seed a decision (as if decompose created it).
+	callGatedTool(t, cwd, "register_decision", map[string]interface{}{
+		"category": "Stack",
+		"question": "HTTP router / framework?",
+		"chosen":   "Gin",
+	})
+
+	// Now register the "same" question with different punctuation and a
+	// different answer (the executor changed its mind).
+	result := callGatedTool(t, cwd, "register_decision", map[string]interface{}{
+		"category": "Stack",
+		"question": "HTTP router/framework",
+		"chosen":   "net/http stdlib",
+		"reasoning": "zero dependencies",
+	})
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content[0].Text)
+	}
+	var body map[string]interface{}
+	json.Unmarshal([]byte(result.Content[0].Text), &body)
+
+	// Should return the EXISTING decision's ID, not create a new one.
+	if body["deduplicated"] != true {
+		t.Error("expected deduplicated=true for a matching question")
+	}
+	id := body["decision_id"].(string)
+	if !strings.HasPrefix(id, "STA-") {
+		t.Errorf("should reuse the existing STA-* id, got %q", id)
+	}
+	if body["resolved_answer"] != "net/http stdlib" {
+		t.Errorf("answer should be updated to 'net/http stdlib', got %v", body["resolved_answer"])
+	}
+
+	// Store should still have exactly 1 decision, not 2.
+	raw, _ := os.ReadFile(filepath.Join(cwd, ".defer", "decisions.json"))
+	var stored map[string]interface{}
+	json.Unmarshal(raw, &stored)
+	decs := stored["decisions"].([]interface{})
+	if len(decs) != 1 {
+		t.Errorf("expected 1 decision after dedup, got %d", len(decs))
+	}
+}
+
 func TestWriteFileHappyPath(t *testing.T) {
 	cwd := t.TempDir()
 	os.MkdirAll(filepath.Join(cwd, ".defer"), 0o755)
