@@ -138,6 +138,10 @@ func (s *Server) handleToolsCall(req jsonRPCRequest) {
 		result = s.toolGetSessionState(params.Arguments)
 	case "get_decision_tree":
 		result = s.toolGetDecisionTree(params.Arguments)
+	case "register_decision":
+		result = s.toolRegisterDecision(params.Arguments)
+	case "write_file":
+		result = s.toolWriteFile(params.Arguments)
 	default:
 		s.writeError(req.ID, -32602, fmt.Sprintf("Unknown tool: %s", params.Name))
 		return
@@ -657,6 +661,46 @@ func (s *Server) toolDefinitions() []Tool {
 					"root_id": {"type": "string", "description": "Start tree from a specific decision ID"},
 					"group_by": {"type": "string", "enum": ["dependencies", "category", "feature"], "description": "How to organize. Default: dependencies"}
 				},
+				"additionalProperties": false
+			}`),
+		},
+		{
+			Name: "register_decision",
+			Description: "Register a new decision that the executor is about to materialize. " +
+				"Call this BEFORE writing any file — it's the only way to record the choices " +
+				"(file layout, package/library, patterns, names, defaults, trade-offs) that the " +
+				"team will need to review later. The decision is auto-resolved with the chosen " +
+				"value and returned with a decision_id. Pass that id (along with any other " +
+				"decision_ids relevant to the file) to write_file when you're ready to write.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"category":     {"type": "string", "description": "Short category label: Stack, Data, API, Auth, UI, Build, Testing, Structure, Scope, Misc, etc."},
+					"question":     {"type": "string", "description": "The specific choice framed as a concrete question, e.g. 'Where should the compiled binary live?'"},
+					"chosen":       {"type": "string", "description": "The answer you're going with, as a short label, e.g. 'bin/server'"},
+					"alternatives": {"type": "array", "items": {"type": "string"}, "description": "2-3 alternatives you considered and rejected, e.g. ['./server at root', 'dist/server']"},
+					"reasoning":    {"type": "string", "description": "One-line justification for the chosen option"}
+				},
+				"required": ["category", "question", "chosen"],
+				"additionalProperties": false
+			}`),
+		},
+		{
+			Name: "write_file",
+			Description: "Write a file to the working directory. This is the ONLY way to create or " +
+				"modify files in the executor phase — the native Write/Edit tools are not available. " +
+				"Every call must supply decision_ids for the decisions that justify this write; " +
+				"those must have been registered via register_decision first. An empty decision_ids " +
+				"list is rejected. Relative paths are anchored at the working directory. Paths that " +
+				"escape the working directory are rejected.",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"decision_ids": {"type": "array", "items": {"type": "string"}, "description": "IDs returned by register_decision that cover the choices in this file"},
+					"path":         {"type": "string", "description": "Relative or absolute path under the working directory"},
+					"content":      {"type": "string", "description": "Full file contents"}
+				},
+				"required": ["decision_ids", "path", "content"],
 				"additionalProperties": false
 			}`),
 		},

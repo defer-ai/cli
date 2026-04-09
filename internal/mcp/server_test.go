@@ -109,15 +109,19 @@ func TestServerToolsList(t *testing.T) {
 
 	var result toolsListResult
 	json.Unmarshal(resps[0].Result, &result)
-	if len(result.Tools) != 6 {
-		t.Errorf("expected 6 tools, got %d", len(result.Tools))
+	if len(result.Tools) != 8 {
+		t.Errorf("expected 8 tools, got %d", len(result.Tools))
 	}
 
 	names := map[string]bool{}
 	for _, tool := range result.Tools {
 		names[tool.Name] = true
 	}
-	for _, expected := range []string{"read_decisions", "list_pending", "confirm_decision", "update_decision", "get_session_state", "get_decision_tree"} {
+	for _, expected := range []string{
+		"read_decisions", "list_pending", "confirm_decision",
+		"update_decision", "get_session_state", "get_decision_tree",
+		"register_decision", "write_file",
+	} {
 		if !names[expected] {
 			t.Errorf("missing tool: %s", expected)
 		}
