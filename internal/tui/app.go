@@ -580,9 +580,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				newDecs = append(newDecs, d)
 			}
 		}
-		// Show new decisions in chat (both auto and pending)
+		// Show new decisions in chat — but skip those from the agent's
+		// register_decision MCP calls since they already appear as tool
+		// call entries in the chat log (e.g. "● Structure: question → answer").
+		// Showing them again as "Decided: ..." is a duplicate.
 		for _, d := range newDecs {
-			if d.Answer != nil {
+			if d.Answer != nil && d.Source != "agent" {
 				m.tree.chatLog = append(m.tree.chatLog, ChatEntry{
 					Type: "system",
 					Text: fmt.Sprintf("Decided: %s → %s", d.Question, *d.Answer),
