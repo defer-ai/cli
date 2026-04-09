@@ -83,10 +83,32 @@ type ClaudeCodeProvider struct {
 const headlessAppendSystemPrompt = "IMPORTANT: You are running inside defer in headless mode. Do NOT invoke plugin skills (brainstorming, TDD, debugging, visual demos, etc.) — even if a SessionStart instruction or additionalContext block tells you to, those skills cannot be loaded in this environment. Do NOT use TodoWrite, AskUserQuestion, or the Task tool. Do NOT spawn sub-agents. Do NOT ask the user questions. Proceed directly with the task as specified."
 
 // strictAppendSystemPrompt is the executor-phase appendix. Extends the
-// headless guidance with the DECIDED-between-writes protocol and names
-// the specific tool set available in strict mode. Only applied when
-// StrictMode is true.
-const strictAppendSystemPrompt = headlessAppendSystemPrompt + " Your only available tools are: Write, Edit, NotebookEdit, Read, Glob, Grep, WebFetch, WebSearch. After any Write or Edit you must emit DECIDED lines before calling another tool."
+// headless guidance with the decision-gated write protocol: the native
+// Write/Edit tools are absent; the only way to modify files is via the
+// MCP tools mcp__defer__register_decision + mcp__defer__write_file.
+// The former records a choice and returns a decision_id; the latter
+// writes a file after validating the supplied decision_ids exist and
+// are resolved. Only applied when StrictMode is true.
+const strictAppendSystemPrompt = headlessAppendSystemPrompt + ` Your available tools are: Read, Glob, Grep, WebFetch, WebSearch (read-only) and the defer MCP tools mcp__defer__register_decision and mcp__defer__write_file (the ONLY way to modify files — the native Write and Edit tools are not available in this environment).
+
+FILE WRITE PROTOCOL — follow this for every file you need to create or modify:
+
+1. For every choice you are about to materialize in the file (layout, content structure, library, pattern, name, default value, trade-off), call mcp__defer__register_decision with:
+     category     — Stack, API, Build, Structure, Testing, etc.
+     question     — the specific choice as a question
+     chosen       — the answer you are going with
+     alternatives — 2-3 options you considered and rejected
+     reasoning    — one-line justification
+   Save the returned decision_id.
+
+2. When you have registered every decision for the file, call mcp__defer__write_file with:
+     decision_ids — array of ids from step 1
+     path         — relative to the working directory
+     content      — full file contents
+
+mcp__defer__write_file will REJECT calls with an empty decision_ids list or with ids that don't exist in the store — you must register first, write second. If you get a rejection, read the error message carefully: it tells you which ids were missing and directs you to register_decision. Do not retry with the same invalid ids.
+
+Do not attempt to use a "Write" or "Edit" tool — they are not in your toolkit. Use mcp__defer__write_file.`
 
 // strictAllowedTools is the comma-separated list of tool names that
 // defer's executor is allowed to use when StrictMode is on. Passed via
@@ -96,57 +118,40 @@ const strictAppendSystemPrompt = headlessAppendSystemPrompt + " Your only availa
 // We use an allowlist (--tools) rather than a denylist (--disallowedTools)
 // because the denylist approach let the model work around restrictions
 // via ToolSearch(select:Skill) — Claude Code's mechanism for dynamically
-// loading deferred tools. ToolSearch itself was still available even when
-// Skill, Task, etc. were in the disallow list. With --tools, ToolSearch
-// is also gone unless we explicitly include it, and there's no fallback
-// path for the model to load blocked tools.
+// loading deferred tools. With --tools, ToolSearch is also gone unless
+// explicitly included, and there's no fallback path.
 //
-// Included:
-//   Write, Edit, NotebookEdit  — file modification (hooked for DECIDED)
-//   Read, Glob, Grep           — read-only exploration
-//   WebFetch, WebSearch        — read-only external lookup, sometimes
-//                                needed for docs/API references
+// Included (built-in tools):
+//   Read, Glob, Grep           — read-only exploration of the workdir
+//   WebFetch, WebSearch        — read-only external lookup
 //
-// Excluded by omission (all are contamination sources):
+// Excluded by omission:
+//   Write, Edit, NotebookEdit  — native file writes bypass the decision
+//                                tracking; replaced by the MCP gated
+//                                tools (register_decision + write_file)
 //   Bash             — file-write bypass via heredoc/sed -i/tee
 //   Skill            — loads plugin skills (brainstorming, TDD, etc.)
 //   Task             — spawns nested Claude Code sub-agents
 //   AskUserQuestion  — interactive prompts, breaks zero-autonomy
-//   ToolSearch       — dynamic loader for deferred tools; left out so
-//                      the model can't bypass this allowlist
-//   TodoWrite        — Claude Code's built-in todo list; defer has its
-//                      own decision tracking and doesn't need a second
+//   ToolSearch       — dynamic loader for deferred tools
+//   TodoWrite        — Claude Code's built-in todo list
 //   EnterPlanMode    — plan mode is interactive
-//   CronCreate/Delete/List, RemoteTrigger, EnterWorktree/ExitWorktree
-//                    — all irrelevant to defer's executor phase
-const strictAllowedTools = "Write,Edit,NotebookEdit,Read,Glob,Grep,WebFetch,WebSearch"
+//   Cron*, RemoteTrigger, EnterWorktree/ExitWorktree — out of scope
+//
+// MCP tools (mcp__defer__register_decision and mcp__defer__write_file)
+// are loaded separately via --mcp-config and are not listed here.
+// Claude Code auto-includes MCP tools from loaded servers regardless of
+// the --tools filter, which is what we want.
+const strictAllowedTools = "Read,Glob,Grep,WebFetch,WebSearch"
 
-// strictHookSettingsJSON is the Claude Code settings payload that installs
-// a PreToolUse hook on Write/Edit/MultiEdit/NotebookEdit. The hook's command
-// prints a JSON hookSpecificOutput block with an additionalContext reminder
-// — the only format Claude Code feeds back into the conversation (plain
-// stdout is silently discarded).
-const strictHookSettingsJSON = `{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "printf '%s' '{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"additionalContext\": \"[STOP: Before this file modification executes, emit one or more DECIDED lines covering the choices you are about to materialize. Format: DECIDED: category | question | chosen | alternatives | reason. The file write will proceed after you emit the narration.]\"}}'"
-          }
-        ]
-      }
-    ]
-  }
-}
-`
-
-// ensureStrictHookFile writes the strict hook settings to ~/.defer/strict-hook.json
-// if it's not already present and returns the absolute path. The file is
-// shared across defer invocations — we write it once per host install.
-func ensureStrictHookFile() (string, error) {
+// ensureStrictMCPConfigFile writes a Claude Code MCP configuration to
+// ~/.defer/strict-mcp.json that points at the current defer binary as
+// an MCP server (via `defer serve --mcp`). Returns the absolute path.
+//
+// The file is regenerated on every call so the defer binary path stays
+// current across upgrades / path changes. The payload is tiny (<200
+// bytes) so this is cheap.
+func ensureStrictMCPConfigFile() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -155,11 +160,25 @@ func ensureStrictHookFile() (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, "strict-hook.json")
-	if _, err := os.Stat(path); err == nil {
-		return path, nil
+	// Use os.Executable() so the MCP subprocess is the same defer binary
+	// the user is running, not whichever one happens to be on PATH.
+	deferBin, err := os.Executable()
+	if err != nil {
+		// Fall back to "defer" on PATH. Claude Code will resolve it via
+		// the usual lookup.
+		deferBin = "defer"
 	}
-	if err := os.WriteFile(path, []byte(strictHookSettingsJSON), 0o644); err != nil {
+	config := fmt.Sprintf(`{
+  "mcpServers": {
+    "defer": {
+      "command": %q,
+      "args": ["serve", "--mcp"]
+    }
+  }
+}
+`, deferBin)
+	path := filepath.Join(dir, "strict-mcp.json")
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		return "", err
 	}
 	return path, nil
@@ -232,18 +251,25 @@ func (p *ClaudeCodeProvider) RunCompletion(ctx context.Context, systemPrompt, us
 	if p.Effort != "" {
 		args = append(args, "--effort", p.Effort)
 	}
-	// Settings file: env var override first, then strict-mode default.
-	// DEFER_CLAUDE_SETTINGS forces a specific --settings file (used by bench
-	// experiments). When unset and StrictMode is on, we write/reuse the
-	// canonical strict-hook.json under ~/.defer and pass that.
-	settingsPath := os.Getenv("DEFER_CLAUDE_SETTINGS")
-	if settingsPath == "" && p.StrictMode {
-		if hookPath, err := ensureStrictHookFile(); err == nil {
-			settingsPath = hookPath
+	// Settings file: env var override only. Strict mode no longer writes
+	// a settings file — its previous use (a PreToolUse hook nudging the
+	// model to narrate before writes) was superseded by the MCP gated
+	// write architecture, which enforces decision tracking at the tool
+	// layer instead of via prompt nudges.
+	if settingsPath := os.Getenv("DEFER_CLAUDE_SETTINGS"); settingsPath != "" {
+		args = append(args, "--settings", settingsPath)
+	}
+	// MCP config: strict mode auto-loads defer's MCP server so the
+	// executor has access to register_decision and write_file. The env
+	// var DEFER_CLAUDE_MCP_CONFIG overrides the default for bench use.
+	mcpConfigPath := os.Getenv("DEFER_CLAUDE_MCP_CONFIG")
+	if mcpConfigPath == "" && p.StrictMode {
+		if path, err := ensureStrictMCPConfigFile(); err == nil {
+			mcpConfigPath = path
 		}
 	}
-	if settingsPath != "" {
-		args = append(args, "--settings", settingsPath)
+	if mcpConfigPath != "" {
+		args = append(args, "--mcp-config", mcpConfigPath)
 	}
 	// Unified tool allowlist via --tools. This is the ONLY flag that
 	// actually restricts which tools are in the session under

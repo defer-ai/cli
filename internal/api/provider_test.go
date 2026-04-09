@@ -64,77 +64,50 @@ func TestClaudeCodeProviderStrictModeDefault(t *testing.T) {
 	}
 }
 
-// TestStrictHookSettingsJSONIsValid — the hook config embedded in the
-// binary must be parseable as JSON (Claude Code will silently ignore a
-// malformed settings file) and contain the markers that make it do what
-// we want.
-func TestStrictHookSettingsJSONIsValid(t *testing.T) {
-	var parsed map[string]interface{}
-	if err := json.Unmarshal([]byte(strictHookSettingsJSON), &parsed); err != nil {
-		t.Fatalf("strictHookSettingsJSON is not valid JSON: %v", err)
-	}
-	// Must target PreToolUse on the file-modifying tools.
-	if !strings.Contains(strictHookSettingsJSON, `"PreToolUse"`) {
-		t.Error("hook JSON missing PreToolUse event")
-	}
-	if !strings.Contains(strictHookSettingsJSON, "Write|Edit|MultiEdit|NotebookEdit") {
-		t.Error("hook JSON missing the write-family matcher")
-	}
-	// The reminder must use hookSpecificOutput/additionalContext — plain
-	// stdout from a hook is discarded by Claude Code, so anything else
-	// won't reach the model.
-	if !strings.Contains(strictHookSettingsJSON, "hookSpecificOutput") {
-		t.Error("hook JSON must use hookSpecificOutput format")
-	}
-	if !strings.Contains(strictHookSettingsJSON, "additionalContext") {
-		t.Error("hook JSON must use additionalContext to inject the reminder")
-	}
-	if !strings.Contains(strictHookSettingsJSON, "DECIDED:") {
-		t.Error("hook JSON reminder must reference the DECIDED protocol")
-	}
-}
-
-// TestEnsureStrictHookFile — writes the hook file to HOME/.defer/strict-hook.json
-// on first call, returns the existing path on subsequent calls.
+// TestEnsureStrictMCPConfigFile — writes a valid MCP server config to
+// HOME/.defer/strict-mcp.json, naming the current defer binary as the
+// "defer" server. Regenerated on every call so the binary path stays
+// current across upgrades.
 //
 // Note: os.UserHomeDir() reads HOME on Linux/macOS but USERPROFILE on
-// Windows. We set both so the test redirects to the temp dir on every
-// platform — without USERPROFILE override the Windows CI run wrote to
-// the real user home and the path comparison failed.
-func TestEnsureStrictHookFile(t *testing.T) {
+// Windows. Set both so the test redirects to the temp dir on every
+// platform.
+func TestEnsureStrictMCPConfigFile(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	t.Setenv("USERPROFILE", tmpHome)
 
-	// First call writes the file.
-	path, err := ensureStrictHookFile()
+	path, err := ensureStrictMCPConfigFile()
 	if err != nil {
-		t.Fatalf("first ensureStrictHookFile() error: %v", err)
+		t.Fatalf("ensureStrictMCPConfigFile() error: %v", err)
 	}
-	want := filepath.Join(tmpHome, ".defer", "strict-hook.json")
+	want := filepath.Join(tmpHome, ".defer", "strict-mcp.json")
 	if path != want {
 		t.Errorf("path = %q, want %q", path, want)
 	}
+
+	// File must be valid JSON with the Claude Code MCP server shape.
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("cannot read hook file: %v", err)
+		t.Fatalf("cannot read mcp config: %v", err)
 	}
-	if string(data) != strictHookSettingsJSON {
-		t.Error("hook file contents do not match strictHookSettingsJSON constant")
+	var parsed struct {
+		MCPServers map[string]struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		} `json:"mcpServers"`
 	}
-
-	// Second call returns the existing path without rewriting.
-	origStat, _ := os.Stat(path)
-	path2, err := ensureStrictHookFile()
-	if err != nil {
-		t.Fatalf("second ensureStrictHookFile() error: %v", err)
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("strict-mcp.json is not valid JSON: %v\n%s", err, data)
 	}
-	if path2 != path {
-		t.Errorf("second call returned different path: %q vs %q", path2, path)
+	if _, ok := parsed.MCPServers["defer"]; !ok {
+		t.Error(`mcp config must register a server named "defer"`)
 	}
-	newStat, _ := os.Stat(path2)
-	if !origStat.ModTime().Equal(newStat.ModTime()) {
-		t.Error("second call rewrote the file (modtime changed) — should have reused the existing one")
+	if parsed.MCPServers["defer"].Command == "" {
+		t.Error("defer server command must be set to a defer binary path")
+	}
+	if len(parsed.MCPServers["defer"].Args) < 2 || parsed.MCPServers["defer"].Args[0] != "serve" || parsed.MCPServers["defer"].Args[1] != "--mcp" {
+		t.Errorf("defer server args must be [serve, --mcp], got %v", parsed.MCPServers["defer"].Args)
 	}
 }
 
@@ -160,47 +133,65 @@ func TestHeadlessAppendSystemPromptCoversContaminationSources(t *testing.T) {
 }
 
 // TestStrictAppendSystemPromptExtendsHeadless — strict mode's appendix
-// must include the entire headless guidance as a prefix AND add the
-// DECIDED protocol on top. This catches regressions where a refactor
-// might drop one or the other.
+// must include the entire headless guidance as a prefix AND describe
+// the MCP gated-write protocol that replaced the old DECIDED-inline
+// approach. This catches regressions where a refactor might drop one
+// or the other.
 func TestStrictAppendSystemPromptExtendsHeadless(t *testing.T) {
 	if !strings.HasPrefix(strictAppendSystemPrompt, headlessAppendSystemPrompt) {
 		t.Error("strictAppendSystemPrompt should start with the full headlessAppendSystemPrompt text")
 	}
-	if !strings.Contains(strictAppendSystemPrompt, "DECIDED") {
-		t.Error("strictAppendSystemPrompt should reinforce the DECIDED protocol")
+	// Must describe the new MCP-based write protocol explicitly so the
+	// model knows that "Write" is not in its toolkit and mcp__defer__
+	// write_file is.
+	for _, marker := range []string{
+		"mcp__defer__register_decision",
+		"mcp__defer__write_file",
+		"FILE WRITE PROTOCOL",
+		"not available in this environment",
+	} {
+		if !strings.Contains(strictAppendSystemPrompt, marker) {
+			t.Errorf("strictAppendSystemPrompt should contain %q", marker)
+		}
 	}
-	// Still must name the allowed executor tools so the model knows what's
-	// available after the tool list restriction.
-	for _, tool := range []string{"Write", "Edit", "Read", "Glob", "Grep"} {
+	// Must still reference the read-only tools so the model knows it can
+	// explore with them.
+	for _, tool := range []string{"Read", "Glob", "Grep"} {
 		if !strings.Contains(strictAppendSystemPrompt, tool) {
-			t.Errorf("strictAppendSystemPrompt should list %q as an available tool", tool)
+			t.Errorf("strictAppendSystemPrompt should list %q as a read-only tool", tool)
 		}
 	}
 }
 
-// TestStrictAllowedToolsIncludesEssentials — regression guard so the
-// allow list keeps the file-write family and read-only exploration tools
-// that defer's executor actually needs. Also checks that contamination
-// tools (Skill, Task, ToolSearch, etc.) are NOT included — the whole
-// point of switching from denylist to allowlist was that the denylist
-// approach let the model bypass via ToolSearch(select:Skill).
+// TestStrictAllowedToolsIncludesEssentials — regression guard for the
+// --tools allowlist. After switching to the MCP gated-write
+// architecture, strict mode keeps only the read-only built-in tools;
+// file modification happens exclusively through the MCP tools, which
+// Claude Code auto-includes from the loaded --mcp-config servers
+// regardless of the --tools filter.
 func TestStrictAllowedToolsIncludesEssentials(t *testing.T) {
-	// Must-have tools for implementation:
-	required := []string{"Write", "Edit", "Read", "Glob", "Grep"}
+	// Must-have tools for exploration:
+	required := []string{"Read", "Glob", "Grep"}
 	for _, tool := range required {
 		if !strings.Contains(strictAllowedTools, tool) {
-			t.Errorf("strictAllowedTools should allow %q — defer executor needs it for implementation", tool)
+			t.Errorf("strictAllowedTools should allow %q — defer executor needs it for exploration", tool)
 		}
 	}
-	// Must-NOT-have tools (contamination sources):
-	forbidden := []string{"Bash", "Skill", "Task", "AskUserQuestion", "ToolSearch", "TodoWrite", "EnterPlanMode"}
+	// Must-NOT-have tools:
+	//   - native write tools (Write/Edit/NotebookEdit) — replaced by the
+	//     MCP gated-write path
+	//   - every contamination source (Bash/Skill/Task/AskUserQuestion/
+	//     ToolSearch/TodoWrite/EnterPlanMode)
+	forbidden := []string{
+		"Write", "Edit", "NotebookEdit",
+		"Bash", "Skill", "Task", "AskUserQuestion", "ToolSearch", "TodoWrite", "EnterPlanMode",
+	}
 	for _, tool := range forbidden {
 		// Use comma-delimited match so "Task" doesn't match "TaskOutput" etc.
 		parts := strings.Split(strictAllowedTools, ",")
 		for _, p := range parts {
 			if strings.TrimSpace(p) == tool {
-				t.Errorf("strictAllowedTools must not include %q — it's a contamination source", tool)
+				t.Errorf("strictAllowedTools must not include %q in strict mode", tool)
 			}
 		}
 	}
