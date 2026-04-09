@@ -105,20 +105,34 @@ func (tc *ToolCall) HumanDescription() string {
 	// --- Defer MCP gated-write tools ---
 	case "mcp__defer__register_decision":
 		var in struct {
-			Category string `json:"category"`
 			Question string `json:"question"`
 			Chosen   string `json:"chosen"`
 		}
 		json.Unmarshal(tc.Input, &in)
 		q := in.Question
-		if len(q) > 60 {
-			q = q[:57] + "..."
+		// Strip leading interrogative words for a tighter display.
+		for _, prefix := range []string{
+			"what ", "which ", "how ", "should ", "will ", "where ",
+			"what is the ", "what are the ", "how should ", "how is ",
+			"which ", "should the ", "will the ",
+		} {
+			if strings.HasPrefix(strings.ToLower(q), prefix) {
+				q = q[len(prefix):]
+				break
+			}
 		}
-		if q != "" && in.Chosen != "" {
-			return fmt.Sprintf("%s: %s → %s", in.Category, q, in.Chosen)
+		if len(q) > 40 {
+			q = q[:37] + "..."
+		}
+		chosen := in.Chosen
+		if len(chosen) > 40 {
+			chosen = chosen[:37] + "..."
+		}
+		if q != "" && chosen != "" {
+			return fmt.Sprintf("%s → %s", q, chosen)
 		}
 		if q != "" {
-			return fmt.Sprintf("Deciding: %s", q)
+			return q
 		}
 		return "Registering decision"
 	case "mcp__defer__write_file":
