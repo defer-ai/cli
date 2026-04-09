@@ -38,6 +38,22 @@ import (
 	"github.com/defer-ai/cli/internal/decision"
 )
 
+// loadCareLevels reads .defer/care-levels.json from the working directory.
+// The executor writes this file before launching the claude subprocess so
+// the MCP server knows which categories have care=review (pending for user)
+// vs care=auto (resolve immediately). Returns nil if the file doesn't exist.
+func loadCareLevels(cwd string) map[string]string {
+	data, err := os.ReadFile(filepath.Join(cwd, ".defer", "care-levels.json"))
+	if err != nil {
+		return nil
+	}
+	var levels map[string]string
+	if json.Unmarshal(data, &levels) != nil {
+		return nil
+	}
+	return levels
+}
+
 // normalizeForDedup strips a question down to lowercase alpha+space for
 // dedup matching. "HTTP router / framework?" → "http router framework".
 // This catches the most common duplicate scenario: decompose produces
@@ -114,29 +130,39 @@ func (s *Server) toolRegisterDecision(args json.RawMessage) callToolResult {
 		return errResult("'chosen' is required")
 	}
 
+	// Check care levels to determine whether this category requires
+	// human review or can be auto-resolved.
+	careLevels := loadCareLevels(s.cwd)
+	isReview := false
+	if careLevels != nil {
+		catKey := strings.ToLower(strings.TrimSpace(params.Category))
+		for k, v := range careLevels {
+			if strings.ToLower(strings.TrimSpace(k)) == catKey && v == "review" {
+				isReview = true
+				break
+			}
+		}
+	}
+
 	var result callToolResult
 	err := decision.WithStoreLock(s.cwd, func() error {
 		store, err := decision.LoadStore(s.cwd)
 		if err != nil || store == nil {
-			// No store yet — create one on the fly with an empty task.
-			// The executor phase runs inside a workdir that already has
-			// .defer/decisions.json in normal usage, but this path makes
-			// the tool useful in bare directories too (e.g. tests).
 			store = &decision.DecisionStore{Decisions: nil}
 		}
 
-		// Dedup: if a decision with the same question already exists
-		// (from the decompose phase or a prior register_decision call),
-		// update it in place instead of creating a duplicate. This is
-		// the MCP equivalent of the executor's reconcile logic — the
-		// agent's register_decision call is ground truth about what it's
-		// about to write, so it should overwrite the decompose plan.
 		answer := params.Chosen
+
+		// Dedup: if a decision with the same question already exists,
+		// return the existing ID. For review categories, don't overwrite
+		// the answer — leave it for the user to resolve.
 		if idx := findExistingDecision(store.Decisions, params.Category, params.Question); idx >= 0 {
 			existing := &store.Decisions[idx]
-			existing.SetAnswer(answer, "agent")
-			if params.Reasoning != "" {
-				existing.Reasoning = params.Reasoning
+			if !isReview {
+				existing.SetAnswer(answer, "agent")
+				if params.Reasoning != "" {
+					existing.Reasoning = params.Reasoning
+				}
 			}
 
 			if err := decision.SaveStore(s.cwd, store); err != nil {
@@ -144,10 +170,19 @@ func (s *Server) toolRegisterDecision(args json.RawMessage) callToolResult {
 				return nil
 			}
 
+			status := "resolved"
+			resolvedAnswer := interface{}(answer)
+			if isReview && existing.Answer == nil {
+				status = "pending_review"
+				resolvedAnswer = nil
+			} else if existing.Answer != nil {
+				resolvedAnswer = *existing.Answer
+			}
+
 			out := map[string]interface{}{
 				"decision_id":     existing.ID,
-				"resolved_answer": answer,
-				"status":          "resolved",
+				"resolved_answer": resolvedAnswer,
+				"status":          status,
 				"deduplicated":    true,
 			}
 			data, _ := json.MarshalIndent(out, "", "  ")
@@ -176,12 +211,22 @@ func (s *Server) toolRegisterDecision(args json.RawMessage) callToolResult {
 			Category:  params.Category,
 			Question:  strings.TrimRight(strings.TrimSpace(params.Question), "?"),
 			Options:   opts,
-			Answer:    &answer,
 			Source:    "agent",
 			Implicit:  true,
 			Reasoning: params.Reasoning,
 		}
 		d.MarkCreated()
+
+		// For review categories, leave Answer nil (pending for user).
+		// For auto categories, resolve immediately with the chosen value.
+		status := "resolved"
+		var resolvedAnswer interface{} = answer
+		if isReview {
+			status = "pending_review"
+			resolvedAnswer = nil
+		} else {
+			d.Answer = &answer
+		}
 
 		store.Decisions = append(store.Decisions, d)
 
@@ -192,8 +237,8 @@ func (s *Server) toolRegisterDecision(args json.RawMessage) callToolResult {
 
 		out := map[string]interface{}{
 			"decision_id":     id,
-			"resolved_answer": answer,
-			"status":          "resolved",
+			"resolved_answer": resolvedAnswer,
+			"status":          status,
 		}
 		data, _ := json.MarshalIndent(out, "", "  ")
 		result = textResult(string(data))

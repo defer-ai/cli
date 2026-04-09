@@ -107,6 +107,9 @@ mcp__defer__write_file will REJECT calls with an empty decision_ids list or with
 IMPORTANT — avoid duplicate decisions:
 Before registering a new decision, check the existing decisions (they are in your system prompt under "Decisions:" and also available via mcp__defer__read_decisions). If a decision about the same question already exists from the decompose phase, use its existing ID when calling write_file — do NOT re-register it. Only call register_decision for NEW choices not covered by the existing decisions list. If you do register a question that already exists, the tool will return the existing ID with "deduplicated": true.
 
+CARE LEVELS — some categories are marked "review" in the care levels list:
+When you call register_decision for a review-category decision, the tool returns status "pending_review" and resolved_answer null — the decision needs human approval before it can be used in write_file. Do NOT include pending_review decision_ids in write_file calls (they will be rejected as unresolved). Skip files that depend on pending decisions and continue with other work. The user will resolve pending decisions in the TUI, and the next execution round will pick them up.
+
 Do not attempt to use a "Write" or "Edit" tool — they are not in your toolkit. Use mcp__defer__write_file.`
 
 // strictAllowedTools is the comma-separated list of tool names that

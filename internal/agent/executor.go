@@ -160,6 +160,12 @@ func (e *Executor) Execute(ctx context.Context) {
 		}
 	}()
 
+	// Persist care levels to disk so the MCP server subprocess can read
+	// them. The MCP server needs to know which categories are "review"
+	// (pending for user) vs "auto" (resolve immediately) when
+	// register_decision is called.
+	e.writeCarelevels()
+
 	// Wait for any existing pending decisions first
 	if e.waitForPendingDecisions(ctx) {
 		return
@@ -278,6 +284,19 @@ func (e *Executor) decisionSummary() string {
 		lines = append(lines, fmt.Sprintf("%s: %s -> %s", d.ID, d.Question, answer))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// writeCarelevels persists the per-category care levels to
+// .defer/care-levels.json so the MCP server subprocess can read them
+// when deciding whether to auto-resolve or leave a decision pending.
+func (e *Executor) writeCarelevels() {
+	dir := filepath.Join(e.cwd, ".defer")
+	os.MkdirAll(dir, 0o755)
+	data, err := json.Marshal(e.priorities)
+	if err != nil {
+		return
+	}
+	os.WriteFile(filepath.Join(dir, "care-levels.json"), data, 0o644)
 }
 
 // freshProvider creates a new provider for isolated sessions.
